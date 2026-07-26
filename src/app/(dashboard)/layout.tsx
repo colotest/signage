@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { logoutAction } from "@/lib/actions/auth";
 
+// This is a live control panel, not public content — always render fresh
+// rather than relying on revalidatePath to invalidate a static/ISR cache.
+export const dynamic = "force-dynamic";
+
 export default function DashboardLayout({
   children,
 }: {
