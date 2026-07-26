@@ -1,6 +1,6 @@
-import type { Database, FitMode, MediaType, ScreenOrientation } from "./database.types";
+import type { Database, FitMode, MediaType } from "./database.types";
 
-export type { FitMode, MediaType, ScreenOrientation };
+export type { FitMode, MediaType };
 
 export type Screen = Database["public"]["Tables"]["screens"]["Row"];
 export type Folder = Database["public"]["Tables"]["folders"]["Row"];

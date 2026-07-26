@@ -6,11 +6,9 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { MediaThumb } from "@/components/MediaThumb";
 import { deleteScreen } from "@/lib/actions/screens";
-import { cn } from "@/lib/utils/cn";
 import { useScreenPresence } from "@/lib/realtime/useScreenPresence";
 import type { Screen } from "@/types/domain";
 import { RenameScreenDialog } from "./RenameScreenDialog";
-import { OrientationToggle } from "./OrientationToggle";
 import { MediaMenuSheet } from "./MediaMenuSheet";
 
 export function ScreenTile({ screen }: { screen: Screen }) {
@@ -35,10 +33,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
-          className={cn(
-            "group relative flex items-center justify-center bg-black/[.04] dark:bg-white/[.06]",
-            screen.orientation === "landscape" ? "aspect-video w-full" : "aspect-[9/16] h-64 mx-auto",
-          )}
+          className="group relative flex aspect-video w-full items-center justify-center bg-black/[.04] dark:bg-white/[.06]"
         >
           {nowPlaying ? (
             <div className="absolute inset-0">
@@ -99,8 +94,6 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               </button>
             )}
           </div>
-
-          <OrientationToggle screenId={screen.id} orientation={screen.orientation} />
 
           <a
             href={playerPath}

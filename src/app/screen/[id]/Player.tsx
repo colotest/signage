@@ -186,10 +186,7 @@ export function Player({
   }, [playlist.length, currentIndex]);
 
   return (
-    <div
-      className="relative h-dvh w-dvw overflow-hidden bg-black"
-      data-orientation={screen.orientation}
-    >
+    <div className="relative h-dvh w-dvw overflow-hidden bg-black">
       {!current ? (
         <div className="flex h-full w-full items-center justify-center text-white/30">
           <p className="text-lg">No content assigned</p>

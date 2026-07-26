@@ -4,7 +4,6 @@
 // and this file can be replaced outright — the shape below matches what that
 // command produces, so nothing else in the app needs to change.
 
-export type ScreenOrientation = "landscape" | "portrait";
 export type MediaType = "image" | "video" | "pdf";
 export type FitMode = "contain" | "cover";
 
@@ -15,21 +14,18 @@ export type Database = {
         Row: {
           id: number;
           name: string;
-          orientation: ScreenOrientation;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: number;
           name?: string;
-          orientation?: ScreenOrientation;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: number;
           name?: string;
-          orientation?: ScreenOrientation;
           created_at?: string;
           updated_at?: string;
         };
