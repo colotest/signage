@@ -45,8 +45,16 @@ export function Player({
     }
   }, []);
 
+  // Multiple realtime events firing in quick succession (e.g. assigning an
+  // item and then immediately editing its duration) each kick off their own
+  // async refetch — network responses can resolve out of order, so an older
+  // refetch's result could otherwise clobber a newer one. Track a sequence
+  // number and only apply the result from the most recently started refetch.
+  const refetchSeqRef = useRef(0);
+
   useEffect(() => {
     async function refetch() {
+      const seq = ++refetchSeqRef.current;
       const [{ data: freshScreen }, { data: freshPlaylist }] = await Promise.all([
         supabase.from("screens").select("*").eq("id", screen.id).single(),
         supabase
@@ -55,6 +63,7 @@ export function Player({
           .eq("screen_id", screen.id)
           .order("position", { ascending: true }),
       ]);
+      if (seq !== refetchSeqRef.current) return; // a newer refetch has since started — discard
       if (freshScreen) setScreen(freshScreen);
       if (freshPlaylist) setPlaylist(freshPlaylist as unknown as PlaylistItemWithMedia[]);
     }

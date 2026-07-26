@@ -16,13 +16,13 @@ import { MediaMenuSheet } from "./MediaMenuSheet";
 export function ScreenTile({ screen }: { screen: Screen }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pending, startTransition] = useTransition();
   const { online, nowPlaying } = useScreenPresence(screen.id);
 
   const playerPath = `/screen/${screen.id}`;
 
   function handleDelete() {
-    if (!window.confirm(`Delete "${screen.name}"? This cannot be undone.`)) return;
     startTransition(async () => {
       await deleteScreen(screen.id);
       router.refresh();
@@ -69,14 +69,35 @@ export function ScreenTile({ screen }: { screen: Screen }) {
         <div className="flex flex-col gap-3 p-4">
           <div className="flex items-center justify-between gap-2">
             <RenameScreenDialog screenId={screen.id} name={screen.name} />
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={pending}
-              className="text-[13px] text-danger hover:opacity-70"
-            >
-              Delete
-            </button>
+            {confirmingDelete ? (
+              <div className="flex shrink-0 items-center gap-2 text-[13px]">
+                <span className="text-muted">Delete screen?</span>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={pending}
+                  className="font-medium text-danger hover:opacity-70"
+                >
+                  {pending ? "Deleting…" : "Confirm"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={pending}
+                  className="text-muted hover:opacity-70"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="shrink-0 text-[13px] font-medium text-danger hover:opacity-70"
+              >
+                Delete Screen
+              </button>
+            )}
           </div>
 
           <OrientationToggle screenId={screen.id} orientation={screen.orientation} />
