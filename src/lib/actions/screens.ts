@@ -8,9 +8,16 @@ import type { ScreenOrientation } from "@/types/domain";
 export async function createScreen() {
   await requireSession();
   const admin = createAdminClient();
+
+  // Reuse the smallest free id (e.g. a deleted screen's slot) instead of
+  // always incrementing, so the URL namespace doesn't grow unbounded as
+  // TVs get reconfigured.
+  const { data: nextId, error: idError } = await admin.rpc("next_free_screen_id");
+  if (idError) throw new Error(idError.message);
+
   const { data, error } = await admin
     .from("screens")
-    .insert({})
+    .insert({ id: nextId })
     .select()
     .single();
   if (error) throw new Error(error.message);

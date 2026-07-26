@@ -23,13 +23,53 @@ export function Player({
   const [screen, setScreen] = useState(initialScreen);
   const [playlist, setPlaylist] = useState(initialPlaylist);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const supabase = useMemo(() => createBrowserClient(), []);
 
   const current = playlist.length > 0 ? playlist[currentIndex % playlist.length] : null;
 
-  function advance() {
-    setCurrentIndex((i) => (playlist.length > 0 ? (i + 1) % playlist.length : 0));
+  // The playback loop reads the playlist/index through refs and reschedules
+  // itself directly (see scheduleTick below) rather than through a
+  // useEffect keyed on currentIndex. That's deliberate: when a playlist has
+  // only one item, advancing computes the same index (0 -> 0), and React
+  // bails out of re-rendering for an unchanged state value — an effect
+  // keyed on that index would then simply never run again, silently
+  // killing the cycle the first time a duplicate index came up. A newly
+  // assigned second item would then never appear, since nothing was left
+  // to notice the playlist had grown.
+  const playlistRef = useRef(playlist);
+  useEffect(() => {
+    playlistRef.current = playlist;
+  }, [playlist]);
+
+  const indexRef = useRef(currentIndex);
+  useEffect(() => {
+    indexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function advanceNow() {
+    const items = playlistRef.current;
+    const next = items.length > 0 ? (indexRef.current + 1) % items.length : 0;
+    indexRef.current = next;
+    setCurrentIndex(next);
+  }
+
+  function scheduleTick() {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const items = playlistRef.current;
+    if (items.length === 0) return;
+    const item = items[indexRef.current % items.length];
+    if (!item || item.media_item.media_type === "video") return; // videos advance via onEnded instead
+    timerRef.current = setTimeout(() => {
+      advanceNow();
+      scheduleTick(); // re-arm for the new current item, regardless of whether the index visibly changed
+    }, item.duration_seconds * 1000);
+  }
+
+  function handleVideoEnded() {
+    advanceNow();
+    scheduleTick(); // in case the next item is an image/PDF that needs a timer
   }
 
   // Cache whatever we last successfully rendered so a reload while offline
@@ -126,18 +166,17 @@ export function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen.id, current?.id]);
 
-  // Images and PDFs advance on a timer; videos advance via onEnded instead
-  // (see the <video> element below), so no timer is set for them here.
+  // Kicks off the playback loop, and restarts it promptly if the currently
+  // shown item's own duration is edited mid-display. Once started,
+  // scheduleTick() re-arms itself directly (see above) — this effect does
+  // not need to fire again just to keep the cycle going.
   useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (!current || current.media_item.media_type === "video") return;
-
-    timerRef.current = setTimeout(advance, current.duration_seconds * 1000);
+    scheduleTick();
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id]);
+  }, [current?.id, current?.duration_seconds]);
 
   // Reset to a valid index if the playlist shrinks (e.g. an item was unassigned).
   useEffect(() => {
@@ -156,7 +195,7 @@ export function Player({
           <p className="text-lg">No content assigned</p>
         </div>
       ) : (
-        <Slide key={current.id} item={current} onVideoEnded={advance} />
+        <Slide key={current.id} item={current} onVideoEnded={handleVideoEnded} />
       )}
     </div>
   );

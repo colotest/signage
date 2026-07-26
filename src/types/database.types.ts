@@ -150,6 +150,10 @@ export type Database = {
         Args: { p_screen_id: number; p_media_ids: string[] };
         Returns: undefined;
       };
+      next_free_screen_id: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
