@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { loginAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { brandFont } from "@/lib/fonts";
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState(loginAction, undefined);
@@ -11,7 +12,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-full items-center justify-center bg-background p-6">
       <Card className="w-full max-w-sm p-8">
-        <h1 className="text-[22px] font-semibold tracking-tight">Signage</h1>
+        <h1 className={`${brandFont.className} text-[26px] tracking-tight`}>Colo Cloud</h1>
         <p className="mt-1 text-sm text-muted">Enter the dashboard password to continue.</p>
 
         <form action={action} className="mt-6 flex flex-col gap-3">
