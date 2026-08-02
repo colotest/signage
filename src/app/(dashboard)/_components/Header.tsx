@@ -17,7 +17,9 @@ export function Header() {
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[var(--surface-elevated)] px-5 py-3 backdrop-blur-xl">
       <nav className="flex items-center gap-5">
-        <span className={`${brandFont.className} text-[19px] tracking-tight`}>Colo Cloud</span>
+        <span className={`${brandFont.className} mt-[0.1em] text-[19px] tracking-tight`}>
+          Colo Cloud
+        </span>
         {NAV_ITEMS.map((item) => (
           <Link
             key={item.href}
