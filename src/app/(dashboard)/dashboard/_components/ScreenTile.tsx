@@ -3,19 +3,25 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { MediaThumb } from "@/components/MediaThumb";
 import { deleteScreen } from "@/lib/actions/screens";
+import { cn } from "@/lib/utils/cn";
 import { useScreenPresence } from "@/lib/realtime/useScreenPresence";
 import type { Screen } from "@/types/domain";
 import { RenameScreenDialog } from "./RenameScreenDialog";
 import { FitModeToggle } from "./FitModeToggle";
 import { MediaMenuSheet } from "./MediaMenuSheet";
 
+// Preview "postage stamp" footprint — flipping just swaps these two, like
+// physically rotating the same little rectangle 90°.
+const PREVIEW_LONG = 160;
+const PREVIEW_SHORT = 90;
+
 export function ScreenTile({ screen }: { screen: Screen }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [previewLandscape, setPreviewLandscape] = useState(true);
   const [pending, startTransition] = useTransition();
   const { online, nowPlaying } = useScreenPresence(screen.id);
 
@@ -28,16 +34,24 @@ export function ScreenTile({ screen }: { screen: Screen }) {
     });
   }
 
+  const previewWidth = previewLandscape ? PREVIEW_LONG : PREVIEW_SHORT;
+  const previewHeight = previewLandscape ? PREVIEW_SHORT : PREVIEW_LONG;
+
   return (
     <>
-      <Card className="flex flex-col overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setMenuOpen(true)}
-          className="group relative flex aspect-video w-full items-center justify-center bg-black/[.04] dark:bg-white/[.06]"
-        >
-          {nowPlaying ? (
-            <div className="absolute inset-0">
+      <div className="flex flex-col gap-3">
+        {/* Preview — sharp corners, deliberately small; purely a cosmetic
+            orientation preview, doesn't touch the real screen at all. */}
+        <div className="relative" style={{ width: previewWidth, height: previewHeight }}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            className={cn(
+              "group absolute inset-0 flex items-center justify-center overflow-hidden",
+              online ? "bg-black/[.04] dark:bg-white/[.06]" : "bg-[#0a0a0a]",
+            )}
+          >
+            {online && nowPlaying && (
               <MediaThumb
                 item={{
                   id: nowPlaying.mediaItemId,
@@ -50,19 +64,27 @@ export function ScreenTile({ screen }: { screen: Screen }) {
                   created_at: "",
                 }}
               />
-            </div>
-          ) : (
-            <span className="text-sm text-muted">No content assigned</span>
-          )}
-          <Badge className="absolute right-2 top-2" tone={online ? "success" : "neutral"}>
-            {online ? "Live" : "Offline"}
-          </Badge>
-          <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[15px] font-medium text-white group-hover:flex">
-            Manage Content
-          </span>
-        </button>
+            )}
+            {online && !nowPlaying && (
+              <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
+            )}
+            <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[12px] font-medium text-white group-hover:flex">
+              Manage Content
+            </span>
+          </button>
 
-        <div className="flex flex-col gap-3 p-4">
+          <button
+            type="button"
+            onClick={() => setPreviewLandscape((v) => !v)}
+            title="Flip preview orientation (visual only)"
+            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/40 text-white transition-colors hover:bg-black/60"
+          >
+            <RotateIcon />
+          </button>
+        </div>
+
+        {/* Info card — rounded corners, visually detached from the preview. */}
+        <Card className="flex flex-col gap-3 p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <RenameScreenDialog screenId={screen.id} name={screen.name} />
@@ -99,6 +121,14 @@ export function ScreenTile({ screen }: { screen: Screen }) {
             )}
           </div>
 
+          <div className="flex items-center gap-1.5">
+            <span
+              className={cn("h-2 w-2 rounded-full", online ? "bg-accent" : "bg-danger")}
+              aria-hidden
+            />
+            <span className="text-[13px] text-muted">{online ? "Live" : "Offline"}</span>
+          </div>
+
           <a
             href={playerPath}
             target="_blank"
@@ -107,10 +137,19 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           >
             {playerPath}
           </a>
-        </div>
-      </Card>
+        </Card>
+      </div>
 
       <MediaMenuSheet screen={screen} open={menuOpen} onOpenChange={setMenuOpen} />
     </>
+  );
+}
+
+function RotateIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 12a9 9 0 1 1-3-6.7" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="21 3 21 9 15 9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

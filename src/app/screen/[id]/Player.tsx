@@ -141,7 +141,9 @@ export function Player({
   }, [screen.id]);
 
   // Broadcasts "now playing" so the dashboard can show a live preview and
-  // online/offline status without polling the database.
+  // online/offline status without polling the database. Always tracks once
+  // connected, even with nothing assigned — "online" means a player is
+  // connected, which is a distinct fact from whether it has content.
   useEffect(() => {
     const presence = supabase.channel(presenceChannelName(screen.id));
     presence.subscribe((status) => {
@@ -155,9 +157,7 @@ export function Player({
           startedAt: Date.now(),
         });
       } else {
-        // Nothing assigned (or just unassigned) — clear any previously
-        // tracked payload so the dashboard doesn't keep showing stale content.
-        presence.untrack();
+        presence.track({});
       }
     });
     return () => {
