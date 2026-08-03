@@ -4,11 +4,12 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { setFitMode } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
+import { FitIcon, FillIcon } from "@/components/icons/FitIcons";
 import type { FitMode } from "@/types/domain";
 
-const OPTIONS: { value: FitMode; label: string }[] = [
-  { value: "contain", label: "Fit" },
-  { value: "cover", label: "Fill" },
+const OPTIONS: { value: FitMode; label: string; Icon: typeof FitIcon }[] = [
+  { value: "contain", label: "Fit", Icon: FitIcon },
+  { value: "cover", label: "Fill", Icon: FillIcon },
 ];
 
 export function FitModeToggle({ screenId, fitMode }: { screenId: number; fitMode: FitMode }) {
@@ -30,12 +31,14 @@ export function FitModeToggle({ screenId, fitMode }: { screenId: number; fitMode
           key={option.value}
           type="button"
           onClick={() => choose(option.value)}
+          title={option.label}
+          aria-label={option.label}
           className={cn(
-            "rounded-full px-3 py-1 transition-colors",
+            "rounded-full p-1.5 transition-colors",
             fitMode === option.value ? "bg-surface shadow-sm text-foreground" : "text-muted",
           )}
         >
-          {option.label}
+          <option.Icon className="h-4 w-4" />
         </button>
       ))}
     </div>
