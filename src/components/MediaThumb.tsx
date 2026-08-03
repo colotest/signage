@@ -23,23 +23,36 @@ export function MediaThumb({ item }: { item: MediaItem }) {
 
 // Shows the video's first frame as a static thumbnail, without playing it.
 // There's no server-side thumbnail generation (no ffmpeg pipeline) — instead
-// we nudge currentTime forward a hair once the browser has data, which
-// reliably forces it to decode and paint a frame instead of staying blank.
+// we rely on two overlapping tricks, since browsers vary in how reliably
+// either one alone decodes and paints a frame on its own:
+// - a Media Fragments URI (#t=0.1) hints the browser to seek there itself
+//   while loading metadata, which several browsers honor without any JS;
+// - a JS nudge to currentTime as a fallback, tried on whichever of
+//   loadedmetadata/loadeddata/canplay fires first for a given browser.
 function VideoThumb({ url }: { url: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const seekedRef = useRef(false);
+
+  function trySeek() {
+    if (seekedRef.current) return;
+    const video = videoRef.current;
+    if (video && video.currentTime === 0) {
+      seekedRef.current = true;
+      video.currentTime = 0.1;
+    }
+  }
 
   return (
     <video
       ref={videoRef}
-      src={url}
+      src={`${url}#t=0.1`}
       muted
       playsInline
       preload="metadata"
       className="pointer-events-none h-full w-full object-cover"
-      onLoadedData={() => {
-        const video = videoRef.current;
-        if (video && video.currentTime === 0) video.currentTime = 0.01;
-      }}
+      onLoadedMetadata={trySeek}
+      onLoadedData={trySeek}
+      onCanPlay={trySeek}
     />
   );
 }

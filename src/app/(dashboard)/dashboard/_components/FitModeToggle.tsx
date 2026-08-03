@@ -24,7 +24,7 @@ export function FitModeToggle({ screenId, fitMode }: { screenId: number; fitMode
   }
 
   return (
-    <div className="inline-flex rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[13px]">
+    <div className="inline-flex shrink-0 rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[13px]">
       {OPTIONS.map((option) => (
         <button
           key={option.value}

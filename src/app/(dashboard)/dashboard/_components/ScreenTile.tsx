@@ -64,7 +64,10 @@ export function ScreenTile({ screen }: { screen: Screen }) {
 
         <div className="flex flex-col gap-3 p-4">
           <div className="flex items-center justify-between gap-2">
-            <RenameScreenDialog screenId={screen.id} name={screen.name} />
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <RenameScreenDialog screenId={screen.id} name={screen.name} />
+              <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
+            </div>
             {confirmingDelete ? (
               <div className="flex shrink-0 items-center gap-2 text-[13px]">
                 <span className="text-muted">Delete screen?</span>
@@ -95,8 +98,6 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               </button>
             )}
           </div>
-
-          <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
 
           <a
             href={playerPath}
