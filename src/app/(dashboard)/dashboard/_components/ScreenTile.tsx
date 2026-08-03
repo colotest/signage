@@ -68,6 +68,21 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   const contentWidth = previewLandscape ? PREVIEW_LONG : PREVIEW_SHORT;
   const contentHeight = previewLandscape ? PREVIEW_SHORT : PREVIEW_LONG;
 
+  // The frame's shadow is rotated by the exact same transform as the frame
+  // itself (rather than being a separate, non-rotating layer whose size is
+  // interpolated) — that's what makes its motion read as "the same
+  // rotation" instead of a competing morph. Left un-compensated, rotating
+  // the shadow along with the frame would swing it away from "pointing
+  // down" once portrait. So instead of animating the box-shadow itself,
+  // its offset is pre-rotated by the inverse angle, so that after the
+  // element's own rotation is applied the shadow always resolves back to
+  // the same on-screen direction. For rotate(-90deg) that maps local
+  // offset (x, y) -> screen (-y, x); solving for a screen result of
+  // (-1, 4) gives a local offset of (-4, -1).
+  const frameShadow = previewLandscape
+    ? "-1px 4px 8px -2px rgba(0, 0, 0, 1)"
+    : "-4px -1px 8px -2px rgba(0, 0, 0, 1)";
+
   return (
     <>
       <div className="flex flex-col gap-[18px]">
@@ -78,55 +93,45 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           className="group/preview relative self-center shrink-0"
           style={{ width: PREVIEW_LONG, height: PREVIEW_LONG }}
         >
-          {/* Shadow layer — deliberately separate from the rotating frame,
-              and never itself rotated: a shadow that spun along with the
-              frame would swing away from "pointing down" mid-flip. Sized
-              to the settled (final) footprint directly, so it always casts
-              straight down regardless of the frame's current angle. */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div
-              className="transition-all duration-300 ease-out"
-              style={{
-                width: contentWidth,
-                height: contentHeight,
-                boxShadow: "-1px 4px 8px -2px rgba(0, 0, 0, 1)",
-              }}
-            />
-          </div>
-
-          {/* Frame layer — border and background only, plus the click
+          {/* Frame layer — background and shadow only, plus the click
               target. This is the piece that actually rotates; it holds no
-              text or images, since those would visibly spin along with it.
-              Always laid out at its landscape size; "portrait" is a genuine
-              rotate() of that same shape (counter-clockwise) rather than a
-              width/height morph, so it turns like a little card. */}
+              border (that lives on the content layer instead, so it can't
+              clash with the image) and no text or images, since those
+              would visibly spin along with it. Always laid out at its
+              landscape size; "portrait" is a genuine rotate() of that same
+              shape (counter-clockwise) rather than a width/height morph,
+              so it turns like a little card — and the shadow's offset is
+              swapped (not resized) in lockstep, so it turns with it too. */}
           <div className="absolute inset-0 flex items-center justify-center">
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
               className={cn(
-                "transition-transform duration-300 ease-out",
+                "transition-[transform,box-shadow] duration-300 ease-out",
                 online ? "bg-black" : "bg-[#0a0a0a]",
               )}
               style={{
                 width: PREVIEW_LONG,
                 height: PREVIEW_SHORT,
                 transform: previewLandscape ? "rotate(0deg)" : "rotate(-90deg)",
-                border: "7px solid #2e2e2e",
+                boxShadow: frameShadow,
               }}
             />
           </div>
 
           {/* Content layer — never rotates. Swaps straight to the new
               orientation's plain dimensions while faded out, then fades
-              back in once the frame above has finished turning. */}
+              back in once the frame above has finished turning. Bordered
+              directly (rather than the frame underneath) so the border
+              always wraps exactly what's on screen instead of overlapping
+              or being overlapped by it. */}
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div
               className={cn(
                 "relative overflow-hidden transition-opacity duration-150",
                 contentHidden ? "opacity-0" : "opacity-100",
               )}
-              style={{ width: contentWidth, height: contentHeight }}
+              style={{ width: contentWidth, height: contentHeight, border: "7px solid #2e2e2e" }}
             >
               {online && nowPlaying && (
                 <MediaThumb
@@ -152,14 +157,18 @@ export function ScreenTile({ screen }: { screen: Screen }) {
             </div>
           </div>
 
-          {/* Sits right at the frame's edge, only visible on hover/focus. */}
+          {/* Sits right at the frame's edge, only visible on hover/focus.
+              Landscape can only rotate counter-clockwise (into portrait);
+              portrait can only rotate clockwise (back into landscape) — so
+              the icon always shows the direction the next click will
+              actually turn, not a fixed glyph. */}
           <button
             type="button"
             onClick={handleFlip}
             title="Flip preview orientation (visual only)"
             className="absolute -right-2 -top-2 text-muted opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/preview:opacity-100"
           >
-            <RotateIcon />
+            <RotateIcon direction={previewLandscape ? "ccw" : "cw"} />
           </button>
         </div>
 
@@ -225,13 +234,23 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   );
 }
 
-// Mirror of a clockwise refresh glyph — arrow curls counter-clockwise to
-// match the direction the preview itself actually rotates.
-function RotateIcon() {
+// Mirrored per direction so the arrow always curls the way the preview is
+// about to actually turn: counter-clockwise from landscape, clockwise from
+// portrait back to landscape.
+function RotateIcon({ direction }: { direction: "cw" | "ccw" }) {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 12a9 9 0 1 0 3-6.7" strokeLinecap="round" strokeLinejoin="round" />
-      <polyline points="3 3 3 9 9 9" strokeLinecap="round" strokeLinejoin="round" />
+      {direction === "ccw" ? (
+        <>
+          <path d="M3 12a9 9 0 1 0 3-6.7" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="3 3 3 9 9 9" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      ) : (
+        <>
+          <path d="M21 12a9 9 0 1 1-3-6.7" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="21 3 21 9 15 9" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      )}
     </svg>
   );
 }
