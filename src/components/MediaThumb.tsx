@@ -4,7 +4,20 @@ import { useRef } from "react";
 import { mediaPublicUrl } from "@/types/domain";
 import type { FitMode, MediaItem } from "@/types/domain";
 
-export function MediaThumb({ item, fit = "cover" }: { item: MediaItem; fit?: FitMode }) {
+export function MediaThumb({
+  item,
+  fit = "cover",
+  live = false,
+}: {
+  item: MediaItem;
+  fit?: FitMode;
+  // Actually plays the video instead of showing a static first frame — a
+  // handful of muted, small preview videos costs negligible CPU/bandwidth,
+  // so screen tiles (where there's only ever one per screen) use this for
+  // a genuinely live-looking preview. Lists of many items (media library,
+  // assignment menus) keep the still-frame default instead.
+  live?: boolean;
+}) {
   const fitClass = fit === "contain" ? "object-contain" : "object-cover";
 
   if (item.media_type === "image") {
@@ -15,6 +28,18 @@ export function MediaThumb({ item, fit = "cover" }: { item: MediaItem; fit?: Fit
 
   if (item.media_type === "video") {
     const url = mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path);
+    if (live) {
+      return (
+        <video
+          src={url}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className={`pointer-events-none h-full w-full ${fitClass}`}
+        />
+      );
+    }
     return <VideoThumb url={url} fitClass={fitClass} />;
   }
 

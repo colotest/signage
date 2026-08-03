@@ -136,6 +136,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               {online && nowPlaying && (
                 <MediaThumb
                   fit={screen.fit_mode}
+                  live
                   item={{
                     id: nowPlaying.mediaItemId,
                     name: nowPlaying.name,
@@ -177,7 +178,13 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <RenameScreenDialog screenId={screen.id} name={screen.name} />
-              <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
+              <span className="flex shrink-0 items-center gap-1.5">
+                <span
+                  className={cn("h-2 w-2 rounded-full", online ? "bg-accent" : "bg-danger")}
+                  aria-hidden
+                />
+                <span className="text-[13px] text-muted">{online ? "Online" : "Offline"}</span>
+              </span>
             </div>
             {confirmingDelete ? (
               <div className="flex shrink-0 items-center gap-2 text-[13px]">
@@ -210,13 +217,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <span
-              className={cn("h-2 w-2 rounded-full", online ? "bg-accent" : "bg-danger")}
-              aria-hidden
-            />
-            <span className="text-[13px] text-muted">{online ? "Live" : "Offline"}</span>
-          </div>
+          <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
 
           <a
             href={playerPath}
