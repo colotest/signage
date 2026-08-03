@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
 import { deleteScreen } from "@/lib/actions/screens";
@@ -20,11 +20,15 @@ import { MediaMenuSheet } from "./MediaMenuSheet";
 const PREVIEW_LONG = 320;
 const PREVIEW_SHORT = 180;
 
+const FRAME_ROTATE_MS = 300;
+
 export function ScreenTile({ screen }: { screen: Screen }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [previewLandscape, setPreviewLandscape] = useState(true);
+  const [contentHidden, setContentHidden] = useState(false);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pending, startTransition] = useTransition();
   const { online, nowPlaying } = useScreenPresence(screen.id);
 
@@ -37,6 +41,26 @@ export function ScreenTile({ screen }: { screen: Screen }) {
     });
   }
 
+  // The bordered/shadowed frame rotates as one piece, but its content
+  // (thumbnail/text) must not visibly spin along with it — instead it
+  // fades out, swaps to the new orientation's plain (unrotated) dimensions
+  // while hidden, and fades back in once the frame has finished turning.
+  function handleFlip() {
+    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+    setContentHidden(true);
+    setPreviewLandscape((v) => !v);
+    revealTimerRef.current = setTimeout(() => setContentHidden(false), FRAME_ROTATE_MS);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+    };
+  }, []);
+
+  const contentWidth = previewLandscape ? PREVIEW_LONG : PREVIEW_SHORT;
+  const contentHeight = previewLandscape ? PREVIEW_SHORT : PREVIEW_LONG;
+
   return (
     <>
       <div className="flex flex-col gap-[18px]">
@@ -44,18 +68,23 @@ export function ScreenTile({ screen }: { screen: Screen }) {
             footprint never changes, so flipping can't shift the card below
             or the tile's outer size. */}
         <div
-          className="relative self-center shrink-0"
+          className="group/preview relative self-center shrink-0"
           style={{ width: PREVIEW_LONG, height: PREVIEW_LONG }}
         >
+          {/* Frame layer — border, shadow, background, and the click target.
+              This is the piece that actually rotates; it holds no text or
+              images, since those would visibly spin along with it. Always
+              laid out at its landscape size; "portrait" is a genuine
+              rotate() of that same shape (counter-clockwise) rather than a
+              width/height morph, so it turns like a little card. */}
           <div className="absolute inset-0 flex items-center justify-center">
-            {/* The actual preview — sharp corners, deliberately small;
-                purely a cosmetic orientation preview, doesn't touch the
-                real screen at all. Always laid out at its landscape size;
-                "portrait" is a genuine rotate() of that same shape (counter-
-                clockwise) rather than a width/height morph, so it turns like
-                a little card instead of stretching into place. */}
-            <div
-              className="relative overflow-hidden transition-transform duration-300 ease-out"
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className={cn(
+                "transition-transform duration-300 ease-out",
+                online ? "bg-black/[.04] dark:bg-white/[.06]" : "bg-[#0a0a0a]",
+              )}
               style={{
                 width: PREVIEW_LONG,
                 height: PREVIEW_SHORT,
@@ -63,47 +92,50 @@ export function ScreenTile({ screen }: { screen: Screen }) {
                 border: "1px solid #2e2e2e",
                 boxShadow: "-1px 4px 8px -2px rgba(0, 0, 0, 1)",
               }}
+            />
+          </div>
+
+          {/* Content layer — never rotates. Swaps straight to the new
+              orientation's plain dimensions while faded out, then fades
+              back in once the frame above has finished turning. */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div
+              className={cn(
+                "relative overflow-hidden transition-opacity duration-150",
+                contentHidden ? "opacity-0" : "opacity-100",
+              )}
+              style={{ width: contentWidth, height: contentHeight }}
             >
-              <button
-                type="button"
-                onClick={() => setMenuOpen(true)}
-                className={cn(
-                  "group absolute inset-0 flex items-center justify-center",
-                  online ? "bg-black/[.04] dark:bg-white/[.06]" : "bg-[#0a0a0a]",
-                )}
-              >
-                {online && nowPlaying && (
-                  <MediaThumb
-                    fit={screen.fit_mode}
-                    item={{
-                      id: nowPlaying.mediaItemId,
-                      name: nowPlaying.name,
-                      media_type: nowPlaying.mediaType,
-                      storage_path: nowPlaying.storagePath,
-                      folder_id: null,
-                      mime_type: "",
-                      size_bytes: null,
-                      created_at: "",
-                    }}
-                  />
-                )}
-                {online && !nowPlaying && (
-                  <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
-                )}
-                <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[12px] font-medium text-white group-hover:flex">
-                  Manage Content
-                </span>
-              </button>
+              {online && nowPlaying && (
+                <MediaThumb
+                  fit={screen.fit_mode}
+                  item={{
+                    id: nowPlaying.mediaItemId,
+                    name: nowPlaying.name,
+                    media_type: nowPlaying.mediaType,
+                    storage_path: nowPlaying.storagePath,
+                    folder_id: null,
+                    mime_type: "",
+                    size_bytes: null,
+                    created_at: "",
+                  }}
+                />
+              )}
+              {online && !nowPlaying && (
+                <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
+              )}
+              <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[12px] font-medium text-white group-hover/preview:flex">
+                Manage Content
+              </span>
             </div>
           </div>
 
-          {/* Floats outside the square, detached from the preview itself so
-              it never rotates along with it. */}
+          {/* Sits right at the frame's edge, only visible on hover/focus. */}
           <button
             type="button"
-            onClick={() => setPreviewLandscape((v) => !v)}
+            onClick={handleFlip}
             title="Flip preview orientation (visual only)"
-            className="absolute -right-8 -top-8 text-muted transition-colors hover:text-foreground"
+            className="absolute -right-2 -top-2 text-muted opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/preview:opacity-100"
           >
             <RotateIcon />
           </button>
