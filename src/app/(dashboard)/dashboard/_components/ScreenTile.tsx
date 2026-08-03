@@ -39,7 +39,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
 
   return (
     <>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-[18px]">
         {/* Fixed-size square, centered above the info card — its own
             footprint never changes, so flipping can't shift the card below
             or the tile's outer size. */}
@@ -60,6 +60,8 @@ export function ScreenTile({ screen }: { screen: Screen }) {
                 width: PREVIEW_LONG,
                 height: PREVIEW_SHORT,
                 transform: previewLandscape ? "rotate(0deg)" : "rotate(-90deg)",
+                border: "1px solid #2e2e2e",
+                boxShadow: "-1px 4px 8px -2px rgba(0, 0, 0, 1)",
               }}
             >
               <button
