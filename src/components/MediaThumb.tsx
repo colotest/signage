@@ -2,18 +2,20 @@
 
 import { useRef } from "react";
 import { mediaPublicUrl } from "@/types/domain";
-import type { MediaItem } from "@/types/domain";
+import type { FitMode, MediaItem } from "@/types/domain";
 
-export function MediaThumb({ item }: { item: MediaItem }) {
+export function MediaThumb({ item, fit = "cover" }: { item: MediaItem; fit?: FitMode }) {
+  const fitClass = fit === "contain" ? "object-contain" : "object-cover";
+
   if (item.media_type === "image") {
     const url = mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path);
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={item.name} className="h-full w-full object-cover" />;
+    return <img src={url} alt={item.name} className={`h-full w-full ${fitClass}`} />;
   }
 
   if (item.media_type === "video") {
     const url = mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path);
-    return <VideoThumb url={url} />;
+    return <VideoThumb url={url} fitClass={fitClass} />;
   }
 
   return (
@@ -29,7 +31,7 @@ export function MediaThumb({ item }: { item: MediaItem }) {
 //   while loading metadata, which several browsers honor without any JS;
 // - a JS nudge to currentTime as a fallback, tried on whichever of
 //   loadedmetadata/loadeddata/canplay fires first for a given browser.
-function VideoThumb({ url }: { url: string }) {
+function VideoThumb({ url, fitClass }: { url: string; fitClass: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const seekedRef = useRef(false);
 
@@ -49,7 +51,7 @@ function VideoThumb({ url }: { url: string }) {
       muted
       playsInline
       preload="metadata"
-      className="pointer-events-none h-full w-full object-cover"
+      className={`pointer-events-none h-full w-full ${fitClass}`}
       onLoadedMetadata={trySeek}
       onLoadedData={trySeek}
       onCanPlay={trySeek}

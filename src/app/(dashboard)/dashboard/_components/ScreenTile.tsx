@@ -37,9 +37,6 @@ export function ScreenTile({ screen }: { screen: Screen }) {
     });
   }
 
-  const previewWidth = previewLandscape ? PREVIEW_LONG : PREVIEW_SHORT;
-  const previewHeight = previewLandscape ? PREVIEW_SHORT : PREVIEW_LONG;
-
   return (
     <>
       <div className="flex flex-col gap-3">
@@ -53,21 +50,29 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           <div className="absolute inset-0 flex items-center justify-center">
             {/* The actual preview — sharp corners, deliberately small;
                 purely a cosmetic orientation preview, doesn't touch the
-                real screen at all. This is what visibly resizes on flip. */}
+                real screen at all. Always laid out at its landscape size;
+                "portrait" is a genuine rotate() of that same shape (counter-
+                clockwise) rather than a width/height morph, so it turns like
+                a little card instead of stretching into place. */}
             <div
-              className="relative transition-all duration-200"
-              style={{ width: previewWidth, height: previewHeight }}
+              className="relative overflow-hidden transition-transform duration-300 ease-out"
+              style={{
+                width: PREVIEW_LONG,
+                height: PREVIEW_SHORT,
+                transform: previewLandscape ? "rotate(0deg)" : "rotate(-90deg)",
+              }}
             >
               <button
                 type="button"
                 onClick={() => setMenuOpen(true)}
                 className={cn(
-                  "group absolute inset-0 flex items-center justify-center overflow-hidden",
+                  "group absolute inset-0 flex items-center justify-center",
                   online ? "bg-black/[.04] dark:bg-white/[.06]" : "bg-[#0a0a0a]",
                 )}
               >
                 {online && nowPlaying && (
                   <MediaThumb
+                    fit={screen.fit_mode}
                     item={{
                       id: nowPlaying.mediaItemId,
                       name: nowPlaying.name,
@@ -87,17 +92,19 @@ export function ScreenTile({ screen }: { screen: Screen }) {
                   Manage Content
                 </span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setPreviewLandscape((v) => !v)}
-                title="Flip preview orientation (visual only)"
-                className="absolute -right-2 -top-2 text-muted transition-colors hover:text-foreground"
-              >
-                <RotateIcon />
-              </button>
             </div>
           </div>
+
+          {/* Floats outside the square, detached from the preview itself so
+              it never rotates along with it. */}
+          <button
+            type="button"
+            onClick={() => setPreviewLandscape((v) => !v)}
+            title="Flip preview orientation (visual only)"
+            className="absolute -right-8 -top-8 text-muted transition-colors hover:text-foreground"
+          >
+            <RotateIcon />
+          </button>
         </div>
 
         {/* Info card — rounded corners, visually detached from the preview. */}
@@ -162,11 +169,13 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   );
 }
 
+// Mirror of a clockwise refresh glyph — arrow curls counter-clockwise to
+// match the direction the preview itself actually rotates.
 function RotateIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 12a9 9 0 1 1-3-6.7" strokeLinecap="round" strokeLinejoin="round" />
-      <polyline points="21 3 21 9 15 9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 12a9 9 0 1 0 3-6.7" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="3 3 3 9 9 9" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
