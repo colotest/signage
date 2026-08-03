@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils/cn";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/library", label: "Library" },
+  { href: "/library", label: "Media" },
 ];
 
 export function Header() {

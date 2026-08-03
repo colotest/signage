@@ -23,7 +23,7 @@ export function LibraryView({ folders, media }: { folders: Folder[]; media: Medi
 
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-[28px] font-semibold tracking-tight">Library</h1>
+          <h1 className="text-[28px] font-semibold tracking-tight">Media</h1>
           <UploadDropzone folderId={uploadFolderId} />
         </div>
 

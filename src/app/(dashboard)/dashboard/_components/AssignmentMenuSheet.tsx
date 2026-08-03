@@ -63,7 +63,7 @@ export function AssignmentMenuSheet({
         {loading ? (
           <p className="text-muted">Loading…</p>
         ) : media.length === 0 ? (
-          <p className="text-muted">Your library is empty — upload files on the Library page first.</p>
+          <p className="text-muted">Your media library is empty — upload files on the Media page first.</p>
         ) : (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
             {media.map((item) => {
