@@ -20,6 +20,7 @@ import { MediaMenuSheet } from "./MediaMenuSheet";
 const PREVIEW_LONG = 320;
 const PREVIEW_SHORT = 180;
 
+const FADE_MS = 150;
 const FRAME_ROTATE_MS = 300;
 
 export function ScreenTile({ screen }: { screen: Screen }) {
@@ -28,7 +29,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [previewLandscape, setPreviewLandscape] = useState(true);
   const [contentHidden, setContentHidden] = useState(false);
-  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [pending, startTransition] = useTransition();
   const { online, nowPlaying } = useScreenPresence(screen.id);
 
@@ -41,20 +42,26 @@ export function ScreenTile({ screen }: { screen: Screen }) {
     });
   }
 
-  // The bordered/shadowed frame rotates as one piece, but its content
-  // (thumbnail/text) must not visibly spin along with it — instead it
-  // fades out, swaps to the new orientation's plain (unrotated) dimensions
-  // while hidden, and fades back in once the frame has finished turning.
+  // The bordered frame rotates as one piece, but its content (thumbnail/
+  // text) must not visibly spin along with it. Sequenced rather than run
+  // in parallel, so each phase is finished before the next starts: fade
+  // the content out, then rotate the (now-invisible) frame, then fade the
+  // content back in at its new, plain (unrotated) dimensions.
   function handleFlip() {
-    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
     setContentHidden(true);
-    setPreviewLandscape((v) => !v);
-    revealTimerRef.current = setTimeout(() => setContentHidden(false), FRAME_ROTATE_MS);
+    timersRef.current.push(
+      setTimeout(() => {
+        setPreviewLandscape((v) => !v);
+        timersRef.current.push(setTimeout(() => setContentHidden(false), FRAME_ROTATE_MS));
+      }, FADE_MS),
+    );
   }
 
   useEffect(() => {
     return () => {
-      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+      timersRef.current.forEach(clearTimeout);
     };
   }, []);
 
@@ -71,10 +78,26 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           className="group/preview relative self-center shrink-0"
           style={{ width: PREVIEW_LONG, height: PREVIEW_LONG }}
         >
-          {/* Frame layer — border, shadow, background, and the click target.
-              This is the piece that actually rotates; it holds no text or
-              images, since those would visibly spin along with it. Always
-              laid out at its landscape size; "portrait" is a genuine
+          {/* Shadow layer — deliberately separate from the rotating frame,
+              and never itself rotated: a shadow that spun along with the
+              frame would swing away from "pointing down" mid-flip. Sized
+              to the settled (final) footprint directly, so it always casts
+              straight down regardless of the frame's current angle. */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div
+              className="transition-all duration-300 ease-out"
+              style={{
+                width: contentWidth,
+                height: contentHeight,
+                boxShadow: "-1px 4px 8px -2px rgba(0, 0, 0, 1)",
+              }}
+            />
+          </div>
+
+          {/* Frame layer — border and background only, plus the click
+              target. This is the piece that actually rotates; it holds no
+              text or images, since those would visibly spin along with it.
+              Always laid out at its landscape size; "portrait" is a genuine
               rotate() of that same shape (counter-clockwise) rather than a
               width/height morph, so it turns like a little card. */}
           <div className="absolute inset-0 flex items-center justify-center">
@@ -83,14 +106,13 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               onClick={() => setMenuOpen(true)}
               className={cn(
                 "transition-transform duration-300 ease-out",
-                online ? "bg-black/[.04] dark:bg-white/[.06]" : "bg-[#0a0a0a]",
+                online ? "bg-black" : "bg-[#0a0a0a]",
               )}
               style={{
                 width: PREVIEW_LONG,
                 height: PREVIEW_SHORT,
                 transform: previewLandscape ? "rotate(0deg)" : "rotate(-90deg)",
-                border: "1px solid #2e2e2e",
-                boxShadow: "-1px 4px 8px -2px rgba(0, 0, 0, 1)",
+                border: "7px solid #2e2e2e",
               }}
             />
           </div>
