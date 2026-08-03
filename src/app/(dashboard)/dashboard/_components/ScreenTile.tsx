@@ -175,7 +175,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
 
         {/* Info card — rounded corners, visually detached from the preview. */}
         <Card className="flex flex-col gap-3 p-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <RenameScreenDialog screenId={screen.id} name={screen.name} />
               <span className="flex shrink-0 items-center gap-1.5">
@@ -185,6 +185,14 @@ export function ScreenTile({ screen }: { screen: Screen }) {
                 />
                 <span className="text-[13px] text-muted">{online ? "Online" : "Offline"}</span>
               </span>
+              <a
+                href={playerPath}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-w-0 flex-1 truncate rounded-[var(--radius-sm)] bg-black/[.03] dark:bg-white/[.05] px-2 py-1 font-mono text-[11px] text-muted hover:text-accent"
+              >
+                {playerPath}
+              </a>
             </div>
             {confirmingDelete ? (
               <div className="flex shrink-0 items-center gap-2 text-[13px]">
@@ -218,15 +226,6 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           </div>
 
           <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
-
-          <a
-            href={playerPath}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="truncate rounded-[var(--radius-sm)] bg-black/[.03] dark:bg-white/[.05] px-2.5 py-1.5 font-mono text-[12px] text-muted hover:text-accent"
-          >
-            {playerPath}
-          </a>
         </Card>
       </div>
 
