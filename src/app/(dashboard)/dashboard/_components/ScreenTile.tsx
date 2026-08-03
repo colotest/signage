@@ -8,8 +8,10 @@ import { deleteScreen } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import { useScreenPresence } from "@/lib/realtime/useScreenPresence";
 import type { Screen } from "@/types/domain";
+import { PauseIcon } from "@/components/icons/PlaybackIcons";
 import { RenameScreenDialog } from "./RenameScreenDialog";
 import { FitModeToggle } from "./FitModeToggle";
+import { PlaybackControls } from "./PlaybackControls";
 import { MediaMenuSheet } from "./MediaMenuSheet";
 
 // Preview "postage stamp" footprint — flipping just swaps these two, like
@@ -152,6 +154,11 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               {online && !nowPlaying && (
                 <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
               )}
+              {online && nowPlaying?.paused && (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  <PauseIcon className="h-8 w-8 text-white" />
+                </span>
+              )}
               <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[12px] font-medium text-white group-hover/preview:flex">
                 Manage Content
               </span>
@@ -175,7 +182,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
 
         {/* Info card — rounded corners, visually detached from the preview. */}
         <Card className="flex flex-col gap-3 p-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <RenameScreenDialog screenId={screen.id} name={screen.name} />
               <span className="flex shrink-0 items-center gap-1.5">
@@ -185,6 +192,14 @@ export function ScreenTile({ screen }: { screen: Screen }) {
                 />
                 <span className="text-[13px] text-muted">{online ? "Online" : "Offline"}</span>
               </span>
+              <a
+                href={playerPath}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-w-0 flex-1 truncate rounded-[var(--radius-sm)] bg-black/[.03] dark:bg-white/[.05] px-2 py-1 font-mono text-[11px] text-muted hover:text-accent"
+              >
+                {playerPath}
+              </a>
             </div>
             {confirmingDelete ? (
               <div className="flex shrink-0 items-center gap-2 text-[13px]">
@@ -217,16 +232,14 @@ export function ScreenTile({ screen }: { screen: Screen }) {
             )}
           </div>
 
-          <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
-
-          <a
-            href={playerPath}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="truncate rounded-[var(--radius-sm)] bg-black/[.03] dark:bg-white/[.05] px-2.5 py-1.5 font-mono text-[12px] text-muted hover:text-accent"
-          >
-            {playerPath}
-          </a>
+          <div className="flex items-center gap-2">
+            <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
+            <PlaybackControls
+              screenId={screen.id}
+              paused={nowPlaying?.paused ?? false}
+              disabled={!online || !nowPlaying}
+            />
+          </div>
         </Card>
       </div>
 
