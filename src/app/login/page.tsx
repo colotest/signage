@@ -12,7 +12,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-full items-center justify-center bg-background p-6">
       <Card className="w-full max-w-sm p-8">
-        <h1 className={`${brandFont.className} text-[39px] uppercase tracking-tight`}>Colo Cloud</h1>
+        <h1 className={`${brandFont.className} text-[52px] uppercase tracking-tight`}>Colo Cloud</h1>
         <p className="mt-1 text-sm text-muted">Enter the dashboard password to continue.</p>
 
         <form action={action} className="mt-6 flex flex-col gap-3">

@@ -17,7 +17,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[var(--surface-elevated)] px-5 py-3 backdrop-blur-xl">
       <nav className="flex items-center gap-5">
-        <span className={`${brandFont.className} mt-[0.1em] text-[28.5px] uppercase tracking-tight`}>
+        <span className={`${brandFont.className} mt-[0.1em] text-[38px] uppercase tracking-tight`}>
           Colo Cloud
         </span>
         {NAV_ITEMS.map((item) => (
