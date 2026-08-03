@@ -9,6 +9,7 @@ import { deleteScreen } from "@/lib/actions/screens";
 import { useScreenPresence } from "@/lib/realtime/useScreenPresence";
 import type { Screen } from "@/types/domain";
 import { RenameScreenDialog } from "./RenameScreenDialog";
+import { FitModeToggle } from "./FitModeToggle";
 import { MediaMenuSheet } from "./MediaMenuSheet";
 
 export function ScreenTile({ screen }: { screen: Screen }) {
@@ -94,6 +95,8 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               </button>
             )}
           </div>
+
+          <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
 
           <a
             href={playerPath}

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { playlistChannelName, presenceChannelName } from "@/lib/realtime/channels";
 import { mediaPublicUrl } from "@/types/domain";
-import type { PlaylistItemWithMedia, Screen } from "@/types/domain";
+import type { FitMode, PlaylistItemWithMedia, Screen } from "@/types/domain";
 import { loadFromCache, saveToCache } from "@/lib/cache/playerCache";
 
 // pdf.js needs browser canvas APIs, so this must never run during SSR.
@@ -192,7 +192,7 @@ export function Player({
           <p className="text-lg">No content assigned</p>
         </div>
       ) : (
-        <Slide key={current.id} item={current} onVideoEnded={handleVideoEnded} />
+        <Slide key={current.id} item={current} fitMode={screen.fit_mode} onVideoEnded={handleVideoEnded} />
       )}
     </div>
   );
@@ -200,13 +200,15 @@ export function Player({
 
 function Slide({
   item,
+  fitMode,
   onVideoEnded,
 }: {
   item: PlaylistItemWithMedia;
+  fitMode: FitMode;
   onVideoEnded: () => void;
 }) {
   const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
-  const fitClass = item.fit_mode === "cover" ? "object-cover" : "object-contain";
+  const fitClass = fitMode === "cover" ? "object-cover" : "object-contain";
 
   if (item.media_item.media_type === "video") {
     return (
@@ -223,7 +225,7 @@ function Slide({
   }
 
   if (item.media_item.media_type === "pdf") {
-    return <PdfSlide url={url} fit={item.fit_mode} />;
+    return <PdfSlide url={url} fit={fitMode} />;
   }
 
   // eslint-disable-next-line @next/next/no-img-element
