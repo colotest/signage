@@ -13,9 +13,12 @@ import { FitModeToggle } from "./FitModeToggle";
 import { MediaMenuSheet } from "./MediaMenuSheet";
 
 // Preview "postage stamp" footprint — flipping just swaps these two, like
-// physically rotating the same little rectangle 90°.
-const PREVIEW_LONG = 160;
-const PREVIEW_SHORT = 90;
+// physically rotating the same little rectangle 90°. The square wrapper
+// below is always PREVIEW_LONG on each side so flipping never changes the
+// tile's outer footprint or pushes the info card — only the rectangle
+// inside it changes shape, staying centered in that fixed square.
+const PREVIEW_LONG = 320;
+const PREVIEW_SHORT = 180;
 
 export function ScreenTile({ screen }: { screen: Screen }) {
   const router = useRouter();
@@ -40,47 +43,61 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   return (
     <>
       <div className="flex flex-col gap-3">
-        {/* Preview — sharp corners, deliberately small; purely a cosmetic
-            orientation preview, doesn't touch the real screen at all. */}
-        <div className="relative" style={{ width: previewWidth, height: previewHeight }}>
-          <button
-            type="button"
-            onClick={() => setMenuOpen(true)}
-            className={cn(
-              "group absolute inset-0 flex items-center justify-center overflow-hidden",
-              online ? "bg-black/[.04] dark:bg-white/[.06]" : "bg-[#0a0a0a]",
-            )}
-          >
-            {online && nowPlaying && (
-              <MediaThumb
-                item={{
-                  id: nowPlaying.mediaItemId,
-                  name: nowPlaying.name,
-                  media_type: nowPlaying.mediaType,
-                  storage_path: nowPlaying.storagePath,
-                  folder_id: null,
-                  mime_type: "",
-                  size_bytes: null,
-                  created_at: "",
-                }}
-              />
-            )}
-            {online && !nowPlaying && (
-              <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
-            )}
-            <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[12px] font-medium text-white group-hover:flex">
-              Manage Content
-            </span>
-          </button>
+        {/* Fixed-size square, centered above the info card — its own
+            footprint never changes, so flipping can't shift the card below
+            or the tile's outer size. */}
+        <div
+          className="relative self-center shrink-0"
+          style={{ width: PREVIEW_LONG, height: PREVIEW_LONG }}
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            {/* The actual preview — sharp corners, deliberately small;
+                purely a cosmetic orientation preview, doesn't touch the
+                real screen at all. This is what visibly resizes on flip. */}
+            <div
+              className="relative transition-all duration-200"
+              style={{ width: previewWidth, height: previewHeight }}
+            >
+              <button
+                type="button"
+                onClick={() => setMenuOpen(true)}
+                className={cn(
+                  "group absolute inset-0 flex items-center justify-center overflow-hidden",
+                  online ? "bg-black/[.04] dark:bg-white/[.06]" : "bg-[#0a0a0a]",
+                )}
+              >
+                {online && nowPlaying && (
+                  <MediaThumb
+                    item={{
+                      id: nowPlaying.mediaItemId,
+                      name: nowPlaying.name,
+                      media_type: nowPlaying.mediaType,
+                      storage_path: nowPlaying.storagePath,
+                      folder_id: null,
+                      mime_type: "",
+                      size_bytes: null,
+                      created_at: "",
+                    }}
+                  />
+                )}
+                {online && !nowPlaying && (
+                  <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
+                )}
+                <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[12px] font-medium text-white group-hover:flex">
+                  Manage Content
+                </span>
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setPreviewLandscape((v) => !v)}
-            title="Flip preview orientation (visual only)"
-            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/40 text-white transition-colors hover:bg-black/60"
-          >
-            <RotateIcon />
-          </button>
+              <button
+                type="button"
+                onClick={() => setPreviewLandscape((v) => !v)}
+                title="Flip preview orientation (visual only)"
+                className="absolute -right-2 -top-2 text-muted transition-colors hover:text-foreground"
+              >
+                <RotateIcon />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Info card — rounded corners, visually detached from the preview. */}
@@ -147,7 +164,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
 
 function RotateIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M21 12a9 9 0 1 1-3-6.7" strokeLinecap="round" strokeLinejoin="round" />
       <polyline points="21 3 21 9 15 9" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
