@@ -44,6 +44,11 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   // during SSR, so reading it any earlier would mismatch hydration.
   const [previewLandscape, setPreviewLandscape] = useState(true);
   const [contentHidden, setContentHidden] = useState(false);
+  // Transitions stay off until the stored orientation has been applied and
+  // painted once, so restoring "portrait" on load snaps into place instead
+  // of visibly rotating there — the rotate animation is reserved for an
+  // actual user-triggered flip afterward.
+  const [skipTransition, setSkipTransition] = useState(true);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [pending, startTransition] = useTransition();
   const { online, nowPlaying } = useScreenPresence(screen.id);
@@ -84,6 +89,8 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   useEffect(() => {
     const stored = readStoredOrientation(screen.id);
     if (stored !== null) setPreviewLandscape(stored);
+    const raf = requestAnimationFrame(() => setSkipTransition(false));
+    return () => cancelAnimationFrame(raf);
   }, [screen.id]);
 
   useEffect(() => {
@@ -134,7 +141,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               type="button"
               onClick={() => setMenuOpen(true)}
               className={cn(
-                "transition-[transform,box-shadow] duration-300 ease-out",
+                !skipTransition && "transition-[transform,box-shadow] duration-300 ease-out",
                 online ? "bg-black" : "bg-[#0a0a0a]",
               )}
               style={{
