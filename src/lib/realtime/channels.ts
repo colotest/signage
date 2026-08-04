@@ -18,6 +18,17 @@ export type PresencePayload = {
   mediaType: "image" | "video" | "pdf";
   storagePath: string;
   startedAt: number;
+  paused: boolean;
 } | {
   mediaItemId?: undefined;
 };
+
+// One-off playback commands sent from a dashboard tile to a screen's live
+// player. Broadcast-only (never persisted) — the player applies the command
+// immediately and reports the resulting paused state back via presence, so
+// there's nothing for the dashboard to reconcile on its own.
+export function controlChannelName(screenId: number) {
+  return `screen-control:${screenId}`;
+}
+
+export type ControlMessage = { type: "play" | "pause" | "next" | "prev" };

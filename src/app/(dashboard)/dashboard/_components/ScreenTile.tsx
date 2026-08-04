@@ -8,8 +8,10 @@ import { deleteScreen } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import { useScreenPresence } from "@/lib/realtime/useScreenPresence";
 import type { Screen } from "@/types/domain";
+import { PauseIcon } from "@/components/icons/PlaybackIcons";
 import { RenameScreenDialog } from "./RenameScreenDialog";
 import { FitModeToggle } from "./FitModeToggle";
+import { PlaybackControls } from "./PlaybackControls";
 import { MediaMenuSheet } from "./MediaMenuSheet";
 
 // Preview "postage stamp" footprint — flipping just swaps these two, like
@@ -186,6 +188,11 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               {online && !nowPlaying && (
                 <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
               )}
+              {online && nowPlaying?.paused && (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  <PauseIcon className="h-8 w-8 text-white" />
+                </span>
+              )}
               <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[12px] font-medium text-white group-hover/preview:flex">
                 Manage Content
               </span>
@@ -259,7 +266,14 @@ export function ScreenTile({ screen }: { screen: Screen }) {
             )}
           </div>
 
-          <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
+          <div className="flex items-center gap-2">
+            <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
+            <PlaybackControls
+              screenId={screen.id}
+              paused={nowPlaying?.paused ?? false}
+              disabled={!online || !nowPlaying}
+            />
+          </div>
         </Card>
       </div>
 
