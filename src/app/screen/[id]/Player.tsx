@@ -49,6 +49,40 @@ export function Player({
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // A video/image/PDF that's mid-fetch when the network dies just stays
+  // stuck there — browsers don't automatically resume a failed media fetch
+  // on their own, unlike our Realtime channels which reconnect by design.
+  // Bumping this forces the current slide to fully remount (fresh <video>/
+  // <img> element, fresh fetch) once connectivity is confirmed back, so
+  // nobody has to walk over and manually reload the tab.
+  const [reloadToken, setReloadToken] = useState(0);
+  const wasDisconnectedRef = useRef(false);
+
+  function markDisconnected() {
+    wasDisconnectedRef.current = true;
+  }
+
+  function reconnectIfNeeded() {
+    if (!wasDisconnectedRef.current) return;
+    wasDisconnectedRef.current = false;
+    setReloadToken((t) => t + 1);
+  }
+
+  // The browser's own online/offline events are a useful supplementary
+  // signal, but navigator.onLine only reflects the local network
+  // interface — a router that stays "connected" locally while its WAN link
+  // is actually down won't necessarily fire these. The playlist channel's
+  // own reconnect below (tied to an actual round-trip with Supabase) is
+  // the more reliable signal and covers that gap.
+  useEffect(() => {
+    window.addEventListener("offline", markDisconnected);
+    window.addEventListener("online", reconnectIfNeeded);
+    return () => {
+      window.removeEventListener("offline", markDisconnected);
+      window.removeEventListener("online", reconnectIfNeeded);
+    };
+  }, []);
+
   // Pause freezes the current image/PDF's duration countdown rather than
   // resetting it — remainingMsRef holds what's left, segmentStartRef marks
   // when the current running segment began, and pauseTick/resumeTick bank
@@ -205,8 +239,12 @@ export function Player({
         // Websocket reconnects don't replay missed deltas, so reconcile
         // with a full refetch every time the channel (re)connects — this
         // also covers the case where the tab was offline and just came back.
-        if (status === "SUBSCRIBED") refetch();
+        if (status === "SUBSCRIBED") {
+          refetch();
+          reconnectIfNeeded();
+        }
         if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+          markDisconnected();
           const cached = loadFromCache(screen.id);
           if (cached) {
             setScreen(cached.screen);
@@ -349,7 +387,13 @@ export function Player({
           <p className="text-lg">No content assigned</p>
         </div>
       ) : (
-        <Slide key={current.id} item={current} fitMode={screen.fit_mode} paused={paused} onVideoEnded={handleVideoEnded} />
+        <Slide
+          key={`${current.id}-${reloadToken}`}
+          item={current}
+          fitMode={screen.fit_mode}
+          paused={paused}
+          onVideoEnded={handleVideoEnded}
+        />
       )}
     </div>
   );
