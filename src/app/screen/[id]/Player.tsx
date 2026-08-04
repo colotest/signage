@@ -146,8 +146,8 @@ export function Player({
   // connected, which is a distinct fact from whether it has content.
   useEffect(() => {
     const presence = supabase.channel(presenceChannelName(screen.id));
-    presence.subscribe((status) => {
-      if (status !== "SUBSCRIBED") return;
+
+    function track() {
       if (current) {
         presence.track({
           mediaItemId: current.media_item.id,
@@ -159,8 +159,23 @@ export function Player({
       } else {
         presence.track({});
       }
+    }
+
+    presence.subscribe((status) => {
+      if (status === "SUBSCRIBED") track();
     });
+
+    // A silent socket blip (sleep/wake, a flaky network, an idle timeout
+    // overnight) can drop presence membership without the channel itself
+    // ever reporting closed/errored — unlike postgres_changes, which just
+    // resumes delivering new events on reconnect, presence needs an
+    // explicit re-track since a rejoin doesn't restore what was tracked
+    // before. Re-sending on a heartbeat bounds how long "Online" can stay
+    // wrong to one interval, without requiring anyone to reload the tab.
+    const heartbeat = setInterval(track, 25_000);
+
     return () => {
+      clearInterval(heartbeat);
       supabase.removeChannel(presence);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
