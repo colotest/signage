@@ -23,10 +23,25 @@ const PREVIEW_SHORT = 180;
 const FADE_MS = 150;
 const FRAME_ROTATE_MS = 300;
 
+// Purely a local display preference — persisted per screen so a page
+// reload doesn't snap every tile back to landscape.
+const ORIENTATION_KEY_PREFIX = "colo-cloud:preview-orientation:";
+
+function readStoredOrientation(screenId: number): boolean | null {
+  if (typeof window === "undefined") return null;
+  const stored = window.localStorage.getItem(`${ORIENTATION_KEY_PREFIX}${screenId}`);
+  if (stored === "landscape") return true;
+  if (stored === "portrait") return false;
+  return null;
+}
+
 export function ScreenTile({ screen }: { screen: Screen }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Starts landscape to match the server-rendered markup, then corrects
+  // from localStorage right after mount — localStorage isn't available
+  // during SSR, so reading it any earlier would mismatch hydration.
   const [previewLandscape, setPreviewLandscape] = useState(true);
   const [contentHidden, setContentHidden] = useState(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -53,11 +68,23 @@ export function ScreenTile({ screen }: { screen: Screen }) {
     setContentHidden(true);
     timersRef.current.push(
       setTimeout(() => {
-        setPreviewLandscape((v) => !v);
+        setPreviewLandscape((v) => {
+          const next = !v;
+          window.localStorage.setItem(
+            `${ORIENTATION_KEY_PREFIX}${screen.id}`,
+            next ? "landscape" : "portrait",
+          );
+          return next;
+        });
         timersRef.current.push(setTimeout(() => setContentHidden(false), FRAME_ROTATE_MS));
       }, FADE_MS),
     );
   }
+
+  useEffect(() => {
+    const stored = readStoredOrientation(screen.id);
+    if (stored !== null) setPreviewLandscape(stored);
+  }, [screen.id]);
 
   useEffect(() => {
     return () => {
