@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { deleteMediaItem } from "@/lib/actions/media";
 import type { MediaItem } from "@/types/domain";
 import { MediaThumb } from "@/components/MediaThumb";
+import { ReplaceMediaButton } from "./ReplaceMediaButton";
 
 export function MediaList({ items }: { items: MediaItem[] }) {
   const router = useRouter();
@@ -44,14 +45,17 @@ export function MediaList({ items }: { items: MediaItem[] }) {
                 day: "numeric",
               })}
             </p>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => handleDelete(item)}
-              className="mt-1 self-start text-[13px] text-danger hover:opacity-70"
-            >
-              Delete
-            </button>
+            <div className="mt-1 flex items-center gap-3">
+              <ReplaceMediaButton item={item} />
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => handleDelete(item)}
+                className="self-start text-[13px] text-danger hover:opacity-70"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </Card>
       ))}

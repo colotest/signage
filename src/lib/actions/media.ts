@@ -77,6 +77,83 @@ export async function finalizeMediaUpload({
   revalidatePath("/library");
 }
 
+// Mints a signed upload URL for a *replacement* file — always a fresh
+// storage path, never the item's current one. That means nothing relies on
+// cache invalidation to pick up the swap: any browser/player that already
+// has the old URL loaded is completely unaffected until finalizeMediaReplace
+// repoints the item, and even then it'll simply request a URL it's never
+// seen before.
+export async function createReplaceUploadUrl({
+  filename,
+  contentType,
+}: {
+  filename: string;
+  contentType: string;
+}) {
+  await requireSession();
+  const mediaType = mediaTypeFromMime(contentType);
+
+  const ext = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")) : "";
+  const storagePath = `${randomUUID()}${ext}`;
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(storagePath);
+  if (error) throw new Error(error.message);
+
+  return {
+    storagePath,
+    mediaType,
+    signedUrl: data.signedUrl,
+    token: data.token,
+  };
+}
+
+// Repoints an existing media item at a newly-uploaded file — same id, so
+// every playlist_items row referencing it (and any screen currently
+// showing it) keeps working with no playlist rebuilding. The old object is
+// only removed from storage after the row update succeeds, so a failed
+// update never leaves the item pointing at something already deleted; a
+// failure to clean up the now-orphaned old file afterward is logged but
+// doesn't fail the whole operation, since the part the user actually
+// cares about — the item now serving the new file — already succeeded.
+export async function finalizeMediaReplace({
+  mediaItemId,
+  storagePath,
+  mediaType,
+  mimeType,
+  sizeBytes,
+}: {
+  mediaItemId: string;
+  storagePath: string;
+  mediaType: MediaType;
+  mimeType: string;
+  sizeBytes: number;
+}) {
+  await requireSession();
+  const admin = createAdminClient();
+
+  const { data: existing, error: fetchError } = await admin
+    .from("media_items")
+    .select("storage_path")
+    .eq("id", mediaItemId)
+    .single();
+  if (fetchError) throw new Error(fetchError.message);
+
+  const { error: updateError } = await admin
+    .from("media_items")
+    .update({ storage_path: storagePath, media_type: mediaType, mime_type: mimeType, size_bytes: sizeBytes })
+    .eq("id", mediaItemId);
+  if (updateError) throw new Error(updateError.message);
+
+  const { error: removeError } = await admin.storage.from(BUCKET).remove([existing.storage_path]);
+  if (removeError) {
+    console.error(`Failed to remove old storage object "${existing.storage_path}" after replace:`, removeError.message);
+  }
+
+  revalidatePath("/library");
+  revalidatePath("/dashboard");
+}
+
 export async function deleteMediaItem(id: string) {
   await requireSession();
   const admin = createAdminClient();
