@@ -43,6 +43,14 @@ export async function setFitMode(id: number, fitMode: FitMode) {
   revalidatePath("/dashboard");
 }
 
+export async function setScreenLandscape(id: number, landscape: boolean) {
+  await requireSession();
+  const admin = createAdminClient();
+  const { error } = await admin.from("screens").update({ landscape }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
+
 export async function deleteScreen(id: number) {
   await requireSession();
   const admin = createAdminClient();

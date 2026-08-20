@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
-import { deleteScreen } from "@/lib/actions/screens";
+import { deleteScreen, setScreenLandscape } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import { useScreenPresence } from "@/lib/realtime/useScreenPresence";
 import type { Screen } from "@/types/domain";
@@ -25,32 +25,15 @@ const PREVIEW_SHORT = 180;
 const FADE_MS = 150;
 const FRAME_ROTATE_MS = 300;
 
-// Purely a local display preference — persisted per screen so a page
-// reload doesn't snap every tile back to landscape.
-const ORIENTATION_KEY_PREFIX = "colo-cloud:preview-orientation:";
-
-function readStoredOrientation(screenId: number): boolean | null {
-  if (typeof window === "undefined") return null;
-  const stored = window.localStorage.getItem(`${ORIENTATION_KEY_PREFIX}${screenId}`);
-  if (stored === "landscape") return true;
-  if (stored === "portrait") return false;
-  return null;
-}
-
 export function ScreenTile({ screen }: { screen: Screen }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  // Starts landscape to match the server-rendered markup, then corrects
-  // from localStorage right after mount — localStorage isn't available
-  // during SSR, so reading it any earlier would mismatch hydration.
-  const [previewLandscape, setPreviewLandscape] = useState(true);
+  // Seeded straight from the server-persisted value — no hydration-mismatch
+  // risk the way a localStorage-sourced value would have, since this is
+  // part of the SSR'd props rather than something only available post-mount.
+  const [previewLandscape, setPreviewLandscape] = useState(screen.landscape !== false);
   const [contentHidden, setContentHidden] = useState(false);
-  // Transitions stay off until the stored orientation has been applied and
-  // painted once, so restoring "portrait" on load snaps into place instead
-  // of visibly rotating there — the rotate animation is reserved for an
-  // actual user-triggered flip afterward.
-  const [skipTransition, setSkipTransition] = useState(true);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [pending, startTransition] = useTransition();
   const { online, nowPlaying } = useScreenPresence(screen.id);
@@ -68,32 +51,26 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   // text) must not visibly spin along with it. Sequenced rather than run
   // in parallel, so each phase is finished before the next starts: fade
   // the content out, then rotate the (now-invisible) frame, then fade the
-  // content back in at its new, plain (unrotated) dimensions.
+  // content back in at its new, plain (unrotated) dimensions. The flip is
+  // no longer just cosmetic — it now persists to the screen's real
+  // orientation, which the live player reads to counter-rotate content for
+  // a physically portrait-mounted screen.
   function handleFlip() {
     timersRef.current.forEach(clearTimeout);
     timersRef.current = [];
     setContentHidden(true);
     timersRef.current.push(
       setTimeout(() => {
-        setPreviewLandscape((v) => {
-          const next = !v;
-          window.localStorage.setItem(
-            `${ORIENTATION_KEY_PREFIX}${screen.id}`,
-            next ? "landscape" : "portrait",
-          );
-          return next;
+        const next = !previewLandscape;
+        setPreviewLandscape(next);
+        startTransition(async () => {
+          await setScreenLandscape(screen.id, next);
+          router.refresh();
         });
         timersRef.current.push(setTimeout(() => setContentHidden(false), FRAME_ROTATE_MS));
       }, FADE_MS),
     );
   }
-
-  useEffect(() => {
-    const stored = readStoredOrientation(screen.id);
-    if (stored !== null) setPreviewLandscape(stored);
-    const raf = requestAnimationFrame(() => setSkipTransition(false));
-    return () => cancelAnimationFrame(raf);
-  }, [screen.id]);
 
   useEffect(() => {
     return () => {
@@ -143,7 +120,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               type="button"
               onClick={() => setMenuOpen(true)}
               className={cn(
-                !skipTransition && "transition-[transform,box-shadow] duration-300 ease-out",
+                "transition-[transform,box-shadow] duration-300 ease-out",
                 online ? "bg-black" : "bg-[#0a0a0a]",
               )}
               style={{
@@ -207,7 +184,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           <button
             type="button"
             onClick={handleFlip}
-            title="Flip preview orientation (visual only)"
+            title={previewLandscape ? "Rotate screen to portrait" : "Rotate screen to landscape"}
             className="absolute -right-2 -top-2 text-muted opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/preview:opacity-100"
           >
             <RotateIcon direction={previewLandscape ? "ccw" : "cw"} />

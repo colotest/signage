@@ -15,6 +15,7 @@ export type Database = {
           id: number;
           name: string;
           fit_mode: FitMode;
+          landscape: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -22,6 +23,7 @@ export type Database = {
           id?: number;
           name?: string;
           fit_mode?: FitMode;
+          landscape?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -29,6 +31,7 @@ export type Database = {
           id?: number;
           name?: string;
           fit_mode?: FitMode;
+          landscape?: boolean;
           created_at?: string;
           updated_at?: string;
         };

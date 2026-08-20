@@ -49,12 +49,14 @@ export function Player({
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // A video/image/PDF that's mid-fetch when the network dies just stays
-  // stuck there — browsers don't automatically resume a failed media fetch
-  // on their own, unlike our Realtime channels which reconnect by design.
-  // Bumping this forces the current slide to fully remount (fresh <video>/
-  // <img> element, fresh fetch) once connectivity is confirmed back, so
-  // nobody has to walk over and manually reload the tab.
+  // Forces the current slide to fully remount (fresh <video>/<img> element,
+  // fresh fetch) — bumped in two situations: (1) connectivity returns after
+  // a drop, since a video/image/PDF that was mid-fetch when the network
+  // died just stays stuck there rather than resuming on its own; (2) every
+  // advance/retreat, which matters specifically for a single-item playlist
+  // — looping back to the *same* index leaves current.id unchanged, so the
+  // key wouldn't otherwise change and a finished video would just sit on
+  // its last frame instead of restarting.
   const [reloadToken, setReloadToken] = useState(0);
   const wasDisconnectedRef = useRef(false);
 
@@ -100,6 +102,7 @@ export function Player({
     const next = items.length > 0 ? (indexRef.current + 1) % items.length : 0;
     indexRef.current = next;
     setCurrentIndex(next);
+    setReloadToken((t) => t + 1);
   }
 
   function retreatNow() {
@@ -107,6 +110,7 @@ export function Player({
     const next = items.length > 0 ? (indexRef.current - 1 + items.length) % items.length : 0;
     indexRef.current = next;
     setCurrentIndex(next);
+    setReloadToken((t) => t + 1);
   }
 
   function armTimer(ms: number) {
@@ -382,19 +386,44 @@ export function Player({
 
   return (
     <div className="relative h-dvh w-dvw overflow-hidden bg-black">
-      {!current ? (
-        <div className="flex h-full w-full items-center justify-center text-white/30">
-          <p className="text-lg">No content assigned</p>
-        </div>
-      ) : (
-        <Slide
-          key={`${current.id}-${reloadToken}`}
-          item={current}
-          fitMode={screen.fit_mode}
-          paused={paused}
-          onVideoEnded={handleVideoEnded}
-        />
-      )}
+      {/* A screen marked portrait is physically mounted rotated 90deg
+          counterclockwise, so its native (still landscape) frame buffer
+          needs content rotated 90deg clockwise to cancel that out and land
+          upright for the viewer — that's the whole point: media never has
+          to be pre-rotated for a portrait deployment. The box is laid out
+          at the viewport's *swapped* dimensions (its width is the
+          viewport's height and vice versa) before the rotation, so that
+          once rotated it exactly fills the landscape viewport with no
+          gaps — see the geometry note on ScreenTile's shadow rotation for
+          the same underlying trick applied the other direction. */}
+      <div
+        className="absolute"
+        style={
+          screen.landscape !== false
+            ? { inset: 0 }
+            : {
+                top: "50%",
+                left: "50%",
+                width: "100vh",
+                height: "100vw",
+                transform: "translate(-50%, -50%) rotate(90deg)",
+              }
+        }
+      >
+        {!current ? (
+          <div className="flex h-full w-full items-center justify-center text-white/30">
+            <p className="text-lg">No content assigned</p>
+          </div>
+        ) : (
+          <Slide
+            key={`${current.id}-${reloadToken}`}
+            item={current}
+            fitMode={screen.fit_mode}
+            paused={paused}
+            onVideoEnded={handleVideoEnded}
+          />
+        )}
+      </div>
     </div>
   );
 }
