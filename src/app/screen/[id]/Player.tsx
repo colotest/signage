@@ -49,14 +49,15 @@ export function Player({
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Forces the current slide to fully remount (fresh <video>/<img> element,
-  // fresh fetch) — bumped in two situations: (1) connectivity returns after
-  // a drop, since a video/image/PDF that was mid-fetch when the network
-  // died just stays stuck there rather than resuming on its own; (2) every
-  // advance/retreat, which matters specifically for a single-item playlist
-  // — looping back to the *same* index leaves current.id unchanged, so the
-  // key wouldn't otherwise change and a finished video would just sit on
-  // its last frame instead of restarting.
+  // A video/image/PDF that's mid-fetch when the network dies just stays
+  // stuck there — browsers don't automatically resume a failed media fetch
+  // on their own, unlike our Realtime channels which reconnect by design.
+  // Bumping this forces the current slide to fully remount (fresh <video>/
+  // <img> element, fresh fetch) once connectivity is confirmed back, so
+  // nobody has to walk over and manually reload the tab. Deliberately not
+  // used for the ordinary single-item-playlist loop (see VideoSlide's own
+  // `loop` handling below) — remounting means a fresh fetch, which is
+  // exactly the half-second black gap a same-item loop should never have.
   const [reloadToken, setReloadToken] = useState(0);
   const wasDisconnectedRef = useRef(false);
 
@@ -102,7 +103,6 @@ export function Player({
     const next = items.length > 0 ? (indexRef.current + 1) % items.length : 0;
     indexRef.current = next;
     setCurrentIndex(next);
-    setReloadToken((t) => t + 1);
   }
 
   function retreatNow() {
@@ -110,7 +110,6 @@ export function Player({
     const next = items.length > 0 ? (indexRef.current - 1 + items.length) % items.length : 0;
     indexRef.current = next;
     setCurrentIndex(next);
-    setReloadToken((t) => t + 1);
   }
 
   function armTimer(ms: number) {
@@ -420,6 +419,7 @@ export function Player({
             item={current}
             fitMode={screen.fit_mode}
             paused={paused}
+            loop={playlist.length === 1}
             onVideoEnded={handleVideoEnded}
           />
         )}
@@ -432,18 +432,20 @@ function Slide({
   item,
   fitMode,
   paused,
+  loop,
   onVideoEnded,
 }: {
   item: PlaylistItemWithMedia;
   fitMode: FitMode;
   paused: boolean;
+  loop: boolean;
   onVideoEnded: () => void;
 }) {
   const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
   const fitClass = fitMode === "cover" ? "object-cover" : "object-contain";
 
   if (item.media_item.media_type === "video") {
-    return <VideoSlide url={url} fitClass={fitClass} paused={paused} onVideoEnded={onVideoEnded} />;
+    return <VideoSlide url={url} fitClass={fitClass} paused={paused} loop={loop} onVideoEnded={onVideoEnded} />;
   }
 
   if (item.media_item.media_type === "pdf") {
@@ -465,11 +467,19 @@ function VideoSlide({
   url,
   fitClass,
   paused,
+  loop,
   onVideoEnded,
 }: {
   url: string;
   fitClass: string;
   paused: boolean;
+  // A single-item playlist "advancing" is really just looping the same
+  // video — letting the browser handle that natively (seeking back to 0
+  // in place) is what keeps it gapless. The remount-based reload token
+  // elsewhere in this file is a different, deliberately heavier tool for a
+  // different job (recovering a genuinely stuck fetch after a connectivity
+  // drop), not something to reach for on every ordinary loop.
+  loop: boolean;
   onVideoEnded: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -492,6 +502,7 @@ function VideoSlide({
       src={url}
       autoPlay
       muted
+      loop={loop}
       playsInline
       onEnded={onVideoEnded}
       className={`h-full w-full ${fitClass}`}
