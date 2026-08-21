@@ -1,27 +1,32 @@
 "use client";
 
-import { cn } from "@/lib/utils/cn";
 import { useScreenControl } from "@/lib/realtime/useScreenControl";
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@/components/icons/PlaybackIcons";
 
+// paused/onTogglePaused are owned by the parent (ScreenTile) rather than
+// this component, since the preview's pause overlay needs to reflect the
+// same state. There's no way to confirm a screen actually received and
+// applied a command — realtime presence used to report that back, but it
+// proved unreliable enough to remove — so this is a local, optimistic
+// reflection of "what was last asked of it" rather than a verified status.
 export function PlaybackControls({
   screenId,
   paused,
-  disabled,
+  onTogglePaused,
 }: {
   screenId: number;
   paused: boolean;
-  disabled?: boolean;
+  onTogglePaused: () => void;
 }) {
   const { send } = useScreenControl(screenId);
 
+  function handleTogglePause() {
+    send({ type: paused ? "play" : "pause" });
+    onTogglePaused();
+  }
+
   return (
-    <div
-      className={cn(
-        "inline-flex self-start shrink-0 rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[13px]",
-        disabled && "pointer-events-none opacity-40",
-      )}
-    >
+    <div className="inline-flex self-start shrink-0 rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[13px]">
       <button
         type="button"
         onClick={() => send({ type: "prev" })}
@@ -33,7 +38,7 @@ export function PlaybackControls({
       </button>
       <button
         type="button"
-        onClick={() => send({ type: paused ? "play" : "pause" })}
+        onClick={handleTogglePause}
         title={paused ? "Play" : "Pause"}
         aria-label={paused ? "Play" : "Pause"}
         className="rounded-full p-1.5 text-muted transition-colors hover:text-foreground"

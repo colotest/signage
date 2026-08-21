@@ -1,10 +1,12 @@
 "use client";
 
-import type { Screen } from "@/types/domain";
+import type { PlaylistItemWithMedia, Screen } from "@/types/domain";
 import { ScreenTile } from "./ScreenTile";
 import { AddScreenButton } from "./AddScreenButton";
 
-export function ScreenGrid({ screens }: { screens: Screen[] }) {
+type ScreenWithPlaylist = Screen & { playlist: PlaylistItemWithMedia[] };
+
+export function ScreenGrid({ screens }: { screens: ScreenWithPlaylist[] }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
@@ -20,7 +22,7 @@ export function ScreenGrid({ screens }: { screens: Screen[] }) {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {screens.map((screen) => (
-            <ScreenTile key={screen.id} screen={screen} />
+            <ScreenTile key={screen.id} screen={screen} playlist={screen.playlist} />
           ))}
         </div>
       )}

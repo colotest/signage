@@ -6,8 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
 import { deleteScreen, setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
-import { useScreenPresence } from "@/lib/realtime/useScreenPresence";
-import type { Screen, ScreenRotation } from "@/types/domain";
+import type { PlaylistItemWithMedia, Screen, ScreenRotation } from "@/types/domain";
 import { PauseIcon } from "@/components/icons/PlaybackIcons";
 import { RenameScreenDialog } from "./RenameScreenDialog";
 import { FitModeToggle } from "./FitModeToggle";
@@ -38,10 +37,21 @@ const FRAME_SHADOWS = [
   "4px 1px 8px -2px rgba(0, 0, 0, 1)",
 ];
 
-export function ScreenTile({ screen }: { screen: Screen }) {
+export function ScreenTile({
+  screen,
+  playlist,
+}: {
+  screen: Screen;
+  playlist: PlaylistItemWithMedia[];
+}) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Purely local and optimistic — there's no reliable way to confirm a
+  // screen actually received and applied a command (that used to come from
+  // realtime presence, which proved unreliable enough to remove entirely),
+  // so this just reflects the last thing asked of it from this dashboard.
+  const [paused, setPaused] = useState(false);
   // Seeded straight from the server-persisted value — no hydration-mismatch
   // risk the way a localStorage-sourced value would have, since this is
   // part of the SSR'd props rather than something only available post-mount.
@@ -56,7 +66,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   const [contentHidden, setContentHidden] = useState(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [pending, startTransition] = useTransition();
-  const { online, nowPlaying } = useScreenPresence(screen.id);
+  const firstItem = playlist[0];
 
   const playerPath = `/screen/${screen.id}`;
 
@@ -146,10 +156,7 @@ export function ScreenTile({ screen }: { screen: Screen }) {
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              className={cn(
-                "relative transition-[transform,box-shadow] duration-300 ease-out",
-                online ? "bg-black" : "bg-[#0a0a0a]",
-              )}
+              className="relative bg-black transition-[transform,box-shadow] duration-300 ease-out"
               style={{
                 width: PREVIEW_LONG,
                 height: PREVIEW_SHORT,
@@ -190,26 +197,12 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               )}
               style={{ width: contentWidth, height: contentHeight, border: "7px solid #2e2e2e" }}
             >
-              {online && nowPlaying && (
-                <MediaThumb
-                  fit={screen.fit_mode}
-                  live
-                  item={{
-                    id: nowPlaying.mediaItemId,
-                    name: nowPlaying.name,
-                    media_type: nowPlaying.mediaType,
-                    storage_path: nowPlaying.storagePath,
-                    folder_id: null,
-                    mime_type: "",
-                    size_bytes: null,
-                    created_at: "",
-                  }}
-                />
-              )}
-              {online && !nowPlaying && (
+              {firstItem ? (
+                <MediaThumb fit={screen.fit_mode} live item={firstItem.media_item} />
+              ) : (
                 <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
               )}
-              {online && nowPlaying?.paused && (
+              {paused && (
                 <span className="absolute inset-0 flex items-center justify-center bg-black/40">
                   <PauseIcon className="h-8 w-8 text-white" />
                 </span>
@@ -239,13 +232,6 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <RenameScreenDialog screenId={screen.id} name={screen.name} />
-              <span className="flex shrink-0 items-center gap-1.5">
-                <span
-                  className={cn("h-2 w-2 rounded-full", online ? "bg-accent" : "bg-danger")}
-                  aria-hidden
-                />
-                <span className="text-[13px] text-muted">{online ? "Online" : "Offline"}</span>
-              </span>
               <a
                 href={playerPath}
                 target="_blank"
@@ -290,8 +276,8 @@ export function ScreenTile({ screen }: { screen: Screen }) {
             <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
             <PlaybackControls
               screenId={screen.id}
-              paused={nowPlaying?.paused ?? false}
-              disabled={!online || !nowPlaying}
+              paused={paused}
+              onTogglePaused={() => setPaused((p) => !p)}
             />
           </div>
         </Card>

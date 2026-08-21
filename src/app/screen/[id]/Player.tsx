@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { controlChannelName, playlistChannelName, presenceChannelName } from "@/lib/realtime/channels";
+import { controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
 import type { ControlMessage } from "@/lib/realtime/channels";
 import { mediaPublicUrl } from "@/types/domain";
 import type { FitMode, PlaylistItemWithMedia, Screen } from "@/types/domain";
@@ -282,83 +282,9 @@ export function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen.id]);
 
-  // Broadcasts "now playing" so the dashboard can show a live preview and
-  // online/offline status without polling the database. Always tracks once
-  // connected, even with nothing assigned — "online" means a player is
-  // connected, which is a distinct fact from whether it has content.
-  //
-  // The channel itself is subscribed once per screen and left alone after
-  // that — re-tracking (rather than tearing down and resubscribing) on
-  // every current-item or paused change avoids a brief window with two
-  // overlapping presences where the dashboard's "latest wins" read could
-  // pick the stale one.
-  const presenceRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const presenceSubscribedRef = useRef(false);
-
-  // Reads the current item and paused flag through refs rather than the
-  // `current`/`paused` closures — this function is called both from a
-  // [current?.id, paused] effect (where the closure is always fresh) and
-  // from a heartbeat interval set up once at mount in a [screen.id]-only
-  // effect (where it wouldn't be — a closure captured there would forever
-  // report whatever "paused" was true at mount, silently reverting a live
-  // pause back to "playing" on the next tick).
-  function trackPresence() {
-    const presence = presenceRef.current;
-    if (!presence || !presenceSubscribedRef.current) return;
-    const items = playlistRef.current;
-    const item = items.length > 0 ? items[indexRef.current % items.length] : null;
-    if (item) {
-      presence.track({
-        mediaItemId: item.media_item.id,
-        name: item.media_item.name,
-        mediaType: item.media_item.media_type,
-        storagePath: item.media_item.storage_path,
-        startedAt: Date.now(),
-        paused: pausedRef.current,
-      });
-    } else {
-      presence.track({});
-    }
-  }
-
-  useEffect(() => {
-    const presence = supabase.channel(presenceChannelName(screen.id));
-    presenceRef.current = presence;
-    presence.subscribe((status) => {
-      if (status !== "SUBSCRIBED") return;
-      presenceSubscribedRef.current = true;
-      trackPresence();
-    });
-
-    // A silent socket blip (sleep/wake, a flaky network, an idle timeout
-    // overnight) can drop presence membership without the channel itself
-    // ever reporting closed/errored — unlike postgres_changes, which just
-    // resumes delivering new events on reconnect, presence needs an
-    // explicit re-track since a rejoin doesn't restore what was tracked
-    // before. Re-sending on a heartbeat bounds how long "Online" (and
-    // "paused") can stay wrong to one interval, without requiring anyone
-    // to reload the tab — kept fairly short since a screen sitting on a
-    // false "Offline" for the better part of half a minute is exactly the
-    // kind of thing someone glances at the dashboard and worries about.
-    const heartbeat = setInterval(trackPresence, 10_000);
-
-    return () => {
-      clearInterval(heartbeat);
-      presenceSubscribedRef.current = false;
-      presenceRef.current = null;
-      supabase.removeChannel(presence);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen.id]);
-
-  useEffect(() => {
-    trackPresence();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, paused]);
-
   // Playback commands from a dashboard tile arrive here as one-off
   // broadcasts rather than persisted state — the player applies them
-  // immediately and the presence effect above reports the result back.
+  // immediately with no report-back to the dashboard.
   useEffect(() => {
     const channel = supabase.channel(controlChannelName(screen.id));
     channel
