@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { controlChannelName, playlistChannelName, presenceChannelName } from "@/lib/realtime/channels";
 import type { ControlMessage } from "@/lib/realtime/channels";
@@ -13,6 +14,25 @@ import { loadFromCache, saveToCache } from "@/lib/cache/playerCache";
 const PdfSlide = dynamic(() => import("./PdfSlide"), { ssr: false });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+// Any value other than 0/90/180/270 (e.g. undefined, before the migration
+// adding this column has run) falls through to the plain, unrotated case —
+// same defensive default as the rest of this app's orientation handling.
+function rotationWrapperStyle(rotation: number): CSSProperties {
+  if (rotation === 90 || rotation === 270) {
+    return {
+      top: "50%",
+      left: "50%",
+      width: "100vh",
+      height: "100vw",
+      transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+    };
+  }
+  if (rotation === 180) {
+    return { inset: 0, transform: "rotate(180deg)" };
+  }
+  return { inset: 0 };
+}
 
 export function Player({
   screen: initialScreen,
@@ -385,30 +405,18 @@ export function Player({
 
   return (
     <div className="relative h-dvh w-dvw overflow-hidden bg-black">
-      {/* A screen marked portrait is physically mounted rotated 90deg
-          counterclockwise, so its native (still landscape) frame buffer
-          needs content rotated 90deg clockwise to cancel that out and land
+      {/* A screen mounted rotated N degrees counterclockwise needs its
+          content rotated N degrees clockwise to cancel that out and land
           upright for the viewer — that's the whole point: media never has
-          to be pre-rotated for a portrait deployment. The box is laid out
-          at the viewport's *swapped* dimensions (its width is the
-          viewport's height and vice versa) before the rotation, so that
-          once rotated it exactly fills the landscape viewport with no
-          gaps — see the geometry note on ScreenTile's shadow rotation for
-          the same underlying trick applied the other direction. */}
-      <div
-        className="absolute"
-        style={
-          screen.landscape !== false
-            ? { inset: 0 }
-            : {
-                top: "50%",
-                left: "50%",
-                width: "100vh",
-                height: "100vw",
-                transform: "translate(-50%, -50%) rotate(90deg)",
-              }
-        }
-      >
+          to be pre-rotated for a rotated deployment, at any of the four
+          quarter-turns. At 90/270° the box is laid out at the viewport's
+          *swapped* dimensions (its width is the viewport's height and vice
+          versa) before the rotation, so that once rotated it exactly fills
+          the landscape viewport with no gaps — see the geometry note on
+          ScreenTile's shadow rotation for the same underlying trick applied
+          the other direction. 0/180° don't need swapped dimensions since a
+          half-turn (or no turn) doesn't change which axis is longer. */}
+      <div className="absolute" style={rotationWrapperStyle(screen.rotation ?? 0)}>
         {!current ? (
           <div className="flex h-full w-full items-center justify-center text-white/30">
             <p className="text-lg">No content assigned</p>

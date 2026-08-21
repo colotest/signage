@@ -6,6 +6,9 @@
 
 export type MediaType = "image" | "video" | "pdf";
 export type FitMode = "contain" | "cover";
+// Degrees the screen is physically mounted rotated counterclockwise from
+// upright landscape — the only four quarter-turns a TV can actually sit at.
+export type ScreenRotation = 0 | 90 | 180 | 270;
 
 export type Database = {
   public: {
@@ -15,7 +18,7 @@ export type Database = {
           id: number;
           name: string;
           fit_mode: FitMode;
-          landscape: boolean;
+          rotation: ScreenRotation;
           created_at: string;
           updated_at: string;
         };
@@ -23,7 +26,7 @@ export type Database = {
           id?: number;
           name?: string;
           fit_mode?: FitMode;
-          landscape?: boolean;
+          rotation?: ScreenRotation;
           created_at?: string;
           updated_at?: string;
         };
@@ -31,7 +34,7 @@ export type Database = {
           id?: number;
           name?: string;
           fit_mode?: FitMode;
-          landscape?: boolean;
+          rotation?: ScreenRotation;
           created_at?: string;
           updated_at?: string;
         };

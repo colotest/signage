@@ -4,10 +4,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
-import { deleteScreen, setScreenLandscape } from "@/lib/actions/screens";
+import { deleteScreen, setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import { useScreenPresence } from "@/lib/realtime/useScreenPresence";
-import type { Screen } from "@/types/domain";
+import type { Screen, ScreenRotation } from "@/types/domain";
 import { PauseIcon } from "@/components/icons/PlaybackIcons";
 import { RenameScreenDialog } from "./RenameScreenDialog";
 import { FitModeToggle } from "./FitModeToggle";
@@ -25,6 +25,19 @@ const PREVIEW_SHORT = 180;
 const FADE_MS = 150;
 const FRAME_ROTATE_MS = 300;
 
+// One box-shadow offset per quarter-turn (0/90/180/270°), each pre-rotated
+// so that once the frame's own rotate() is applied, the shadow always
+// resolves back to the same "-1, 4" on-screen direction (down and slightly
+// left) — see the comment further down where these are actually applied
+// for the full derivation. Index i holds the offset for a 90*i degree
+// counterclockwise frame rotation.
+const FRAME_SHADOWS = [
+  "-1px 4px 8px -2px rgba(0, 0, 0, 1)",
+  "-4px -1px 8px -2px rgba(0, 0, 0, 1)",
+  "1px -4px 8px -2px rgba(0, 0, 0, 1)",
+  "4px 1px 8px -2px rgba(0, 0, 0, 1)",
+];
+
 export function ScreenTile({ screen }: { screen: Screen }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -32,7 +45,14 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   // Seeded straight from the server-persisted value — no hydration-mismatch
   // risk the way a localStorage-sourced value would have, since this is
   // part of the SSR'd props rather than something only available post-mount.
-  const [previewLandscape, setPreviewLandscape] = useState(screen.landscape !== false);
+  // Kept as an ever-increasing quarter-turn count rather than wrapping it
+  // back to 0-3 on every click: rotate() animates via the raw numeric
+  // difference between old and new values, so snapping 270deg back to 0deg
+  // would animate the *shortest* path (270deg clockwise, i.e. backwards)
+  // instead of continuing the one more counterclockwise step the button
+  // actually performed. The wrapped 0/90/180/270 value — what's actually
+  // rendered and persisted — is derived from this on every use.
+  const [previewTurns, setPreviewTurns] = useState(Math.round((screen.rotation ?? 0) / 90));
   const [contentHidden, setContentHidden] = useState(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [pending, startTransition] = useTransition();
@@ -50,21 +70,22 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   // The bordered frame rotates as one piece, but its content (thumbnail/
   // text) must not visibly spin along with it. Sequenced rather than run
   // in parallel, so each phase is finished before the next starts: fade
-  // the content out, then rotate the (now-invisible) frame, then fade the
-  // content back in at its new, plain (unrotated) dimensions. The flip is
-  // no longer just cosmetic — it now persists to the screen's real
-  // orientation, which the live player reads to counter-rotate content for
-  // a physically portrait-mounted screen.
+  // the content out, then rotate the (now-invisible) frame one more
+  // quarter-turn counterclockwise, then fade the content back in at its
+  // new, plain (unrotated) dimensions. The rotation isn't just cosmetic —
+  // it persists to the screen's real orientation, which the live player
+  // reads to counter-rotate content for a physically rotated screen.
   function handleFlip() {
     timersRef.current.forEach(clearTimeout);
     timersRef.current = [];
     setContentHidden(true);
     timersRef.current.push(
       setTimeout(() => {
-        const next = !previewLandscape;
-        setPreviewLandscape(next);
+        const nextTurns = previewTurns + 1;
+        setPreviewTurns(nextTurns);
+        const nextRotation = (((nextTurns % 4) + 4) % 4) * 90 as ScreenRotation;
         startTransition(async () => {
-          await setScreenLandscape(screen.id, next);
+          await setScreenRotation(screen.id, nextRotation);
           router.refresh();
         });
         timersRef.current.push(setTimeout(() => setContentHidden(false), FRAME_ROTATE_MS));
@@ -78,23 +99,24 @@ export function ScreenTile({ screen }: { screen: Screen }) {
     };
   }, []);
 
-  const contentWidth = previewLandscape ? PREVIEW_LONG : PREVIEW_SHORT;
-  const contentHeight = previewLandscape ? PREVIEW_SHORT : PREVIEW_LONG;
+  // The wrapped, "what orientation is this actually in" step — 0-3,
+  // matching FRAME_SHADOWS' index and how many quarter-turns from upright.
+  const step = (((previewTurns % 4) + 4) % 4);
+  const isPortrait = step % 2 === 1;
+  const contentWidth = isPortrait ? PREVIEW_SHORT : PREVIEW_LONG;
+  const contentHeight = isPortrait ? PREVIEW_LONG : PREVIEW_SHORT;
 
   // The frame's shadow is rotated by the exact same transform as the frame
   // itself (rather than being a separate, non-rotating layer whose size is
   // interpolated) — that's what makes its motion read as "the same
   // rotation" instead of a competing morph. Left un-compensated, rotating
   // the shadow along with the frame would swing it away from "pointing
-  // down" once portrait. So instead of animating the box-shadow itself,
-  // its offset is pre-rotated by the inverse angle, so that after the
-  // element's own rotation is applied the shadow always resolves back to
-  // the same on-screen direction. For rotate(-90deg) that maps local
-  // offset (x, y) -> screen (-y, x); solving for a screen result of
-  // (-1, 4) gives a local offset of (-4, -1).
-  const frameShadow = previewLandscape
-    ? "-1px 4px 8px -2px rgba(0, 0, 0, 1)"
-    : "-4px -1px 8px -2px rgba(0, 0, 0, 1)";
+  // down" at 90/180/270°. So instead of animating the box-shadow itself,
+  // its offset is pre-rotated by the inverse angle for each of the four
+  // quarter-turns (FRAME_SHADOWS above), so that after the element's own
+  // rotation is applied the shadow always resolves back to the same
+  // on-screen direction, however many turns it's taken.
+  const frameShadow = FRAME_SHADOWS[step];
 
   return (
     <>
@@ -111,25 +133,47 @@ export function ScreenTile({ screen }: { screen: Screen }) {
               border (that lives on the content layer instead, so it can't
               clash with the image) and no text or images, since those
               would visibly spin along with it. Always laid out at its
-              landscape size; "portrait" is a genuine rotate() of that same
-              shape (counter-clockwise) rather than a width/height morph,
-              so it turns like a little card — and the shadow's offset is
-              swapped (not resized) in lockstep, so it turns with it too. */}
+              landscape size; each quarter-turn is a genuine rotate() of
+              that same shape (counter-clockwise) rather than a width/height
+              morph, so it turns like a little card — and the shadow's
+              offset is swapped (not resized) in lockstep, so it turns with
+              it too. The transform uses the raw, ever-increasing turn count
+              rather than the wrapped 0-3 step — animating from 270deg back
+              to a wrapped 0deg would take the shortest path (270deg
+              clockwise) instead of continuing the one more turn the click
+              actually performed. */}
           <div className="absolute inset-0 flex items-center justify-center">
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
               className={cn(
-                "transition-[transform,box-shadow] duration-300 ease-out",
+                "relative transition-[transform,box-shadow] duration-300 ease-out",
                 online ? "bg-black" : "bg-[#0a0a0a]",
               )}
               style={{
                 width: PREVIEW_LONG,
                 height: PREVIEW_SHORT,
-                transform: previewLandscape ? "rotate(0deg)" : "rotate(-90deg)",
+                transform: `rotate(${-90 * previewTurns}deg)`,
                 boxShadow: frameShadow,
               }}
-            />
+            >
+              {/* A little IR-receiver-style bar at the frame's native
+                  bottom edge — since it's a plain child of the element that
+                  rotates, it's carried around for free and always ends up
+                  marking whichever edge was originally "down", which is the
+                  only way to tell 0° from 180° (or 90° from 270°) apart at
+                  a glance, since the box itself is the same shape and the
+                  content inside stays upright either way. Poking out just
+                  past the edge rather than sitting on the frame's own
+                  surface, since the content layer covers the frame's full
+                  footprint at every rotation and would otherwise hide it
+                  entirely — this reads as a small bezel detail instead. */}
+              <span
+                aria-hidden
+                className="absolute rounded-full bg-[#2e2e2e]"
+                style={{ bottom: -4, left: "50%", width: 48, height: 5, transform: "translateX(-50%)" }}
+              />
+            </button>
           </div>
 
           {/* Content layer — never rotates. Swaps straight to the new
@@ -177,17 +221,16 @@ export function ScreenTile({ screen }: { screen: Screen }) {
           </div>
 
           {/* Sits right at the frame's edge, only visible on hover/focus.
-              Landscape can only rotate counter-clockwise (into portrait);
-              portrait can only rotate clockwise (back into landscape) — so
-              the icon always shows the direction the next click will
-              actually turn, not a fixed glyph. */}
+              Always turns counterclockwise by one more quarter-turn — a
+              single direction is simpler than a bidirectional control and
+              still reaches all four orientations in at most three clicks. */}
           <button
             type="button"
             onClick={handleFlip}
-            title={previewLandscape ? "Rotate screen to portrait" : "Rotate screen to landscape"}
+            title="Rotate screen 90° counterclockwise"
             className="absolute -right-2 -top-2 text-muted opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/preview:opacity-100"
           >
-            <RotateIcon direction={previewLandscape ? "ccw" : "cw"} />
+            <RotateIcon />
           </button>
         </div>
 
@@ -259,23 +302,12 @@ export function ScreenTile({ screen }: { screen: Screen }) {
   );
 }
 
-// Mirrored per direction so the arrow always curls the way the preview is
-// about to actually turn: counter-clockwise from landscape, clockwise from
-// portrait back to landscape.
-function RotateIcon({ direction }: { direction: "cw" | "ccw" }) {
+// Always counterclockwise, matching the one direction the button turns.
+function RotateIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-      {direction === "ccw" ? (
-        <>
-          <path d="M3 12a9 9 0 1 0 3-6.7" strokeLinecap="round" strokeLinejoin="round" />
-          <polyline points="3 3 3 9 9 9" strokeLinecap="round" strokeLinejoin="round" />
-        </>
-      ) : (
-        <>
-          <path d="M21 12a9 9 0 1 1-3-6.7" strokeLinecap="round" strokeLinejoin="round" />
-          <polyline points="21 3 21 9 15 9" strokeLinecap="round" strokeLinejoin="round" />
-        </>
-      )}
+      <path d="M3 12a9 9 0 1 0 3-6.7" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="3 3 3 9 9 9" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

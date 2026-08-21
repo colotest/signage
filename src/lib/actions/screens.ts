@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { FitMode } from "@/types/domain";
+import type { FitMode, ScreenRotation } from "@/types/domain";
 
 export async function createScreen() {
   await requireSession();
@@ -43,10 +43,10 @@ export async function setFitMode(id: number, fitMode: FitMode) {
   revalidatePath("/dashboard");
 }
 
-export async function setScreenLandscape(id: number, landscape: boolean) {
+export async function setScreenRotation(id: number, rotation: ScreenRotation) {
   await requireSession();
   const admin = createAdminClient();
-  const { error } = await admin.from("screens").update({ landscape }).eq("id", id);
+  const { error } = await admin.from("screens").update({ rotation }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
 }
