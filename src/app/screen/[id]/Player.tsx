@@ -337,8 +337,10 @@ export function Player({
     // explicit re-track since a rejoin doesn't restore what was tracked
     // before. Re-sending on a heartbeat bounds how long "Online" (and
     // "paused") can stay wrong to one interval, without requiring anyone
-    // to reload the tab.
-    const heartbeat = setInterval(trackPresence, 25_000);
+    // to reload the tab — kept fairly short since a screen sitting on a
+    // false "Offline" for the better part of half a minute is exactly the
+    // kind of thing someone glances at the dashboard and worries about.
+    const heartbeat = setInterval(trackPresence, 10_000);
 
     return () => {
       clearInterval(heartbeat);
