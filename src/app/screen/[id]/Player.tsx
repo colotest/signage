@@ -440,8 +440,17 @@ function VideoSlide({
       muted
       loop={loop}
       playsInline
+      preload="auto"
       onEnded={onVideoEnded}
       className={`h-full w-full ${fitClass}`}
+      // A rotated screen puts a CSS transform on this element's ancestor
+      // (see rotationWrapperStyle above), which on its own tends to knock
+      // hardware video decode off its fast overlay path and onto a much
+      // more expensive CPU-side composite — exactly the kind of thing a
+      // weak set-top box's SoC struggles with. Promoting the video itself
+      // onto its own GPU layer keeps the decoded frames on a hardware
+      // surface that the compositor can still just rotate wholesale.
+      style={{ transform: "translateZ(0)", willChange: "transform" }}
     />
   );
 }
