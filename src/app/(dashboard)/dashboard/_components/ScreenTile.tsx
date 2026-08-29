@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
-import { deleteScreen, setScreenRotation } from "@/lib/actions/screens";
+import { setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import type { PlaylistItemWithMedia, Screen, ScreenRotation } from "@/types/domain";
 import { PauseIcon } from "@/components/icons/PlaybackIcons";
@@ -12,6 +12,7 @@ import { RenameScreenDialog } from "./RenameScreenDialog";
 import { FitModeToggle } from "./FitModeToggle";
 import { PlaybackControls } from "./PlaybackControls";
 import { MediaMenuSheet } from "./MediaMenuSheet";
+import { ScreenSetupMenu } from "./ScreenSetupMenu";
 
 // Preview "postage stamp" footprint — flipping just swaps these two, like
 // physically rotating the same little rectangle 90°. The square wrapper
@@ -46,7 +47,6 @@ export function ScreenTile({
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Purely local and optimistic — there's no reliable way to confirm a
   // screen actually received and applied a command (that used to come from
   // realtime presence, which proved unreliable enough to remove entirely),
@@ -69,13 +69,6 @@ export function ScreenTile({
   const firstItem = playlist[0];
 
   const playerPath = `/screen/${screen.id}`;
-
-  function handleDelete() {
-    startTransition(async () => {
-      await deleteScreen(screen.id);
-      router.refresh();
-    });
-  }
 
   // The bordered frame rotates as one piece, but its content (thumbnail/
   // text) must not visibly spin along with it. Sequenced rather than run
@@ -229,47 +222,11 @@ export function ScreenTile({
 
         {/* Info card — rounded corners, visually detached from the preview. */}
         <Card className="flex flex-col gap-3 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
               <RenameScreenDialog screenId={screen.id} name={screen.name} />
-              <a
-                href={playerPath}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="min-w-0 flex-1 truncate rounded-[var(--radius-sm)] bg-black/[.03] dark:bg-white/[.05] px-2 py-1 font-mono text-[11px] text-muted hover:text-accent"
-              >
-                {playerPath}
-              </a>
             </div>
-            {confirmingDelete ? (
-              <div className="flex shrink-0 items-center gap-2 text-[13px]">
-                <span className="text-muted">Delete screen?</span>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={pending}
-                  className="font-medium text-danger hover:opacity-70"
-                >
-                  {pending ? "Deleting…" : "Confirm"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(false)}
-                  disabled={pending}
-                  className="text-muted hover:opacity-70"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(true)}
-                className="shrink-0 text-[13px] font-medium text-danger hover:opacity-70"
-              >
-                Delete Screen
-              </button>
-            )}
+            <ScreenSetupMenu screenId={screen.id} playerPath={playerPath} />
           </div>
 
           <div className="flex items-center gap-2">
