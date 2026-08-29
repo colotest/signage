@@ -7,7 +7,7 @@ import { brandFont } from "@/lib/fonts";
 import { cn } from "@/lib/utils/cn";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Screens" },
   { href: "/library", label: "Media" },
 ];
 
