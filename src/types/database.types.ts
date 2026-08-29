@@ -67,6 +67,9 @@ export type Database = {
           media_type: MediaType;
           mime_type: string;
           size_bytes: number | null;
+          width: number | null;
+          height: number | null;
+          duration_seconds: number | null;
           created_at: string;
         };
         Insert: {
@@ -77,6 +80,9 @@ export type Database = {
           media_type: MediaType;
           mime_type: string;
           size_bytes?: number | null;
+          width?: number | null;
+          height?: number | null;
+          duration_seconds?: number | null;
           created_at?: string;
         };
         Update: {
@@ -87,6 +93,9 @@ export type Database = {
           media_type?: MediaType;
           mime_type?: string;
           size_bytes?: number | null;
+          width?: number | null;
+          height?: number | null;
+          duration_seconds?: number | null;
           created_at?: string;
         };
         Relationships: [

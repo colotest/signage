@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Spinner } from "@/components/ui/Spinner";
 import { createReplaceUploadUrl, finalizeMediaReplace } from "@/lib/actions/media";
+import { inspectFile } from "@/lib/media/inspectFile";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { MediaItem } from "@/types/domain";
 
@@ -32,9 +33,10 @@ export function ReplaceMediaButton({ item }: { item: MediaItem }) {
       });
 
       const supabase = createBrowserClient();
-      const { error: uploadError } = await supabase.storage
-        .from("media")
-        .uploadToSignedUrl(storagePath, token, file);
+      const [metadata, { error: uploadError }] = await Promise.all([
+        inspectFile(file, mediaType),
+        supabase.storage.from("media").uploadToSignedUrl(storagePath, token, file),
+      ]);
       if (uploadError) throw uploadError;
 
       await finalizeMediaReplace({
@@ -43,6 +45,9 @@ export function ReplaceMediaButton({ item }: { item: MediaItem }) {
         mediaType,
         mimeType: file.type,
         sizeBytes: file.size,
+        width: metadata.width,
+        height: metadata.height,
+        durationSeconds: metadata.durationSeconds,
       });
       router.refresh();
     } catch (err) {

@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { createUploadUrl, finalizeMediaUpload } from "@/lib/actions/media";
+import { inspectFile } from "@/lib/media/inspectFile";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 export function UploadDropzone({ folderId }: { folderId: string | null }) {
@@ -25,9 +26,10 @@ export function UploadDropzone({ folderId }: { folderId: string | null }) {
             contentType: file.type,
           });
 
-          const { error: uploadError } = await supabase.storage
-            .from("media")
-            .uploadToSignedUrl(storagePath, token, file);
+          const [metadata, { error: uploadError }] = await Promise.all([
+            inspectFile(file, mediaType),
+            supabase.storage.from("media").uploadToSignedUrl(storagePath, token, file),
+          ]);
           if (uploadError) throw uploadError;
 
           await finalizeMediaUpload({
@@ -38,6 +40,9 @@ export function UploadDropzone({ folderId }: { folderId: string | null }) {
             mediaType,
             mimeType: file.type,
             sizeBytes: file.size,
+            width: metadata.width,
+            height: metadata.height,
+            durationSeconds: metadata.durationSeconds,
           });
         } catch (err) {
           console.error("Upload failed", file.name, err);

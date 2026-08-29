@@ -53,6 +53,9 @@ export async function finalizeMediaUpload({
   mediaType,
   mimeType,
   sizeBytes,
+  width,
+  height,
+  durationSeconds,
 }: {
   mediaItemId: string;
   folderId: string | null;
@@ -61,6 +64,9 @@ export async function finalizeMediaUpload({
   mediaType: MediaType;
   mimeType: string;
   sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
 }) {
   await requireSession();
   const admin = createAdminClient();
@@ -72,6 +78,9 @@ export async function finalizeMediaUpload({
     media_type: mediaType,
     mime_type: mimeType,
     size_bytes: sizeBytes,
+    width,
+    height,
+    duration_seconds: durationSeconds,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/library");
@@ -122,12 +131,18 @@ export async function finalizeMediaReplace({
   mediaType,
   mimeType,
   sizeBytes,
+  width,
+  height,
+  durationSeconds,
 }: {
   mediaItemId: string;
   storagePath: string;
   mediaType: MediaType;
   mimeType: string;
   sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
 }) {
   await requireSession();
   const admin = createAdminClient();
@@ -141,7 +156,15 @@ export async function finalizeMediaReplace({
 
   const { error: updateError } = await admin
     .from("media_items")
-    .update({ storage_path: storagePath, media_type: mediaType, mime_type: mimeType, size_bytes: sizeBytes })
+    .update({
+      storage_path: storagePath,
+      media_type: mediaType,
+      mime_type: mimeType,
+      size_bytes: sizeBytes,
+      width,
+      height,
+      duration_seconds: durationSeconds,
+    })
     .eq("id", mediaItemId);
   if (updateError) throw new Error(updateError.message);
 
