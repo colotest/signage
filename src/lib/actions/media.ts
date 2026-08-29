@@ -177,6 +177,15 @@ export async function finalizeMediaReplace({
   revalidatePath("/dashboard");
 }
 
+export async function renameMediaItem(id: string, name: string) {
+  await requireSession();
+  const admin = createAdminClient();
+  const { error } = await admin.from("media_items").update({ name }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/library");
+  revalidatePath("/dashboard");
+}
+
 export async function deleteMediaItem(id: string) {
   await requireSession();
   const admin = createAdminClient();

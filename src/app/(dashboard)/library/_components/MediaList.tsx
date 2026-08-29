@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/utils/format";
 import type { MediaItem } from "@/types/domain";
 import { MediaThumb } from "@/components/MediaThumb";
+import { RenameableTitle } from "./RenameableTitle";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
 import type { ViewMode } from "./ViewToggle";
 
@@ -112,7 +113,7 @@ export function MediaList({ items, view }: { items: MediaItem[]; view: ViewMode 
                     <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
                       <MediaThumb item={item} />
                     </div>
-                    <span className="truncate font-medium">{item.name}</span>
+                    <RenameableTitle id={item.id} name={item.name} className="font-medium" />
                   </div>
                 </td>
                 <td className="whitespace-nowrap py-2 pr-3 text-muted">{kindLabel(item)}</td>
@@ -153,7 +154,7 @@ export function MediaList({ items, view }: { items: MediaItem[]; view: ViewMode 
             <MediaThumb item={item} />
           </div>
           <div className="flex flex-col gap-1 p-3">
-            <p className="truncate text-[14px] font-medium">{item.name}</p>
+            <RenameableTitle id={item.id} name={item.name} className="text-[14px] font-medium" />
             <p className="truncate text-[12px] text-muted">
               {kindLabel(item)}
               {item.media_type === "video" && item.duration_seconds != null
