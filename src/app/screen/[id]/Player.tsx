@@ -9,6 +9,8 @@ import type { ControlMessage } from "@/lib/realtime/channels";
 import { mediaPublicUrl } from "@/types/domain";
 import type { FitMode, PlaylistItemWithMedia, Screen } from "@/types/domain";
 import { loadFromCache, saveToCache } from "@/lib/cache/playerCache";
+import { brandFont } from "@/lib/fonts";
+import { QrCode } from "@/components/QrCode";
 
 // pdf.js needs browser canvas APIs, so this must never run during SSR.
 const PdfSlide = dynamic(() => import("./PdfSlide"), { ssr: false });
@@ -346,9 +348,7 @@ export function Player({
           half-turn (or no turn) doesn't change which axis is longer. */}
       <div className="absolute" style={rotationWrapperStyle(screen.rotation ?? 0)}>
         {!current ? (
-          <div className="flex h-full w-full items-center justify-center text-white/30">
-            <p className="text-lg">No content assigned</p>
-          </div>
+          <NoContentPlaceholder />
         ) : (
           <Slide
             key={`${current.id}-${reloadToken}`}
@@ -360,6 +360,25 @@ export function Player({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// The QR code's target depends on the origin this player happens to be
+// served from (custom domain, *.vercel.app, localhost), which is only known
+// client-side — so it renders one tick after mount rather than needing a
+// prop threaded down from the server.
+function NoContentPlaceholder() {
+  const [dashboardUrl, setDashboardUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDashboardUrl(`${window.location.origin}/dashboard`);
+  }, []);
+
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-6">
+      <span className={`${brandFont.className} text-[40px] uppercase tracking-tight text-white`}>Colo Cloud</span>
+      {dashboardUrl && <QrCode value={dashboardUrl} size={200} />}
     </div>
   );
 }
