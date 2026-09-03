@@ -90,15 +90,19 @@ export function ScreenTile({
   // orientation, which the live player reads to counter-rotate content for
   // a physically rotated screen.
   //
-  // Picking a rotation in the setup menu can jump more than one quarter
-  // turn (e.g. 0deg -> 270deg) — always animated counterclockwise, the one
-  // direction the old single-step control ever turned, so every bit of
-  // geometry below (FRAME_SHADOWS, the IR bar, the swapped dimensions)
-  // still applies unchanged rather than needing a second, clockwise path.
+  // Takes the shortest path rather than always turning the same direction:
+  // 3 quarter-turns forward (counterclockwise) lands on the same
+  // orientation as 1 quarter-turn back (clockwise), so a "downward" pick
+  // like 270deg -> 180deg turns clockwise instead of spinning 270deg the
+  // other way around to get there. Direction only ever affects the sign of
+  // previewTurns fed into rotate() below — FRAME_SHADOWS, the IR bar, and
+  // the swapped dimensions all key off the wrapped 0-3 step, not which way
+  // it got there, so nothing else here needs to change for either direction.
   function handleSelectRotation(target: ScreenRotation) {
     const currentStep = (((previewTurns % 4) + 4) % 4);
     const targetStep = target / 90;
-    const steps = (((targetStep - currentStep) % 4) + 4) % 4;
+    const forwardSteps = (((targetStep - currentStep) % 4) + 4) % 4;
+    const steps = forwardSteps > 2 ? forwardSteps - 4 : forwardSteps;
     if (steps === 0) return;
 
     timersRef.current.forEach(clearTimeout);
