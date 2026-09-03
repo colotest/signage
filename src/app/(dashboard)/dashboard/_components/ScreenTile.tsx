@@ -83,22 +83,32 @@ export function ScreenTile({
   // The bordered frame rotates as one piece, but its content (thumbnail/
   // text) must not visibly spin along with it. Sequenced rather than run
   // in parallel, so each phase is finished before the next starts: fade
-  // the content out, then rotate the (now-invisible) frame one more
-  // quarter-turn counterclockwise, then fade the content back in at its
-  // new, plain (unrotated) dimensions. The rotation isn't just cosmetic —
-  // it persists to the screen's real orientation, which the live player
-  // reads to counter-rotate content for a physically rotated screen.
-  function handleFlip() {
+  // the content out, then rotate the (now-invisible) frame however many
+  // quarter-turns get from the current orientation to the picked one, then
+  // fade the content back in at its new, plain (unrotated) dimensions. The
+  // rotation isn't just cosmetic — it persists to the screen's real
+  // orientation, which the live player reads to counter-rotate content for
+  // a physically rotated screen.
+  //
+  // Picking a rotation in the setup menu can jump more than one quarter
+  // turn (e.g. 0deg -> 270deg) — always animated counterclockwise, the one
+  // direction the old single-step control ever turned, so every bit of
+  // geometry below (FRAME_SHADOWS, the IR bar, the swapped dimensions)
+  // still applies unchanged rather than needing a second, clockwise path.
+  function handleSelectRotation(target: ScreenRotation) {
+    const currentStep = (((previewTurns % 4) + 4) % 4);
+    const targetStep = target / 90;
+    const steps = (((targetStep - currentStep) % 4) + 4) % 4;
+    if (steps === 0) return;
+
     timersRef.current.forEach(clearTimeout);
     timersRef.current = [];
     setContentHidden(true);
     timersRef.current.push(
       setTimeout(() => {
-        const nextTurns = previewTurns + 1;
-        setPreviewTurns(nextTurns);
-        const nextRotation = (((nextTurns % 4) + 4) % 4) * 90 as ScreenRotation;
+        setPreviewTurns(previewTurns + steps);
         startTransition(async () => {
-          await setScreenRotation(screen.id, nextRotation);
+          await setScreenRotation(screen.id, target);
           router.refresh();
         });
         timersRef.current.push(setTimeout(() => setContentHidden(false), FRAME_ROTATE_MS));
@@ -226,19 +236,6 @@ export function ScreenTile({
               </span>
             </div>
           </div>
-
-          {/* Sits right at the frame's edge, only visible on hover/focus.
-              Always turns counterclockwise by one more quarter-turn — a
-              single direction is simpler than a bidirectional control and
-              still reaches all four orientations in at most three clicks. */}
-          <button
-            type="button"
-            onClick={handleFlip}
-            title="Rotate screen 90° counterclockwise"
-            className="absolute -right-2 -top-2 text-muted opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/preview:opacity-100"
-          >
-            <RotateIcon />
-          </button>
         </div>
 
         {/* Info card — rounded corners, visually detached from the preview. */}
@@ -247,7 +244,12 @@ export function ScreenTile({
             <div className="min-w-0 flex-1">
               <RenameScreenDialog screenId={screen.id} name={screen.name} />
             </div>
-            <ScreenSetupMenu screenId={screen.id} playerPath={playerPath} />
+            <ScreenSetupMenu
+              screenId={screen.id}
+              playerPath={playerPath}
+              rotation={(step * 90) as ScreenRotation}
+              onSelectRotation={handleSelectRotation}
+            />
           </div>
 
           <div className="flex items-center gap-2">
@@ -263,15 +265,5 @@ export function ScreenTile({
 
       <MediaMenuSheet screen={screen} open={menuOpen} onOpenChange={setMenuOpen} />
     </>
-  );
-}
-
-// Always counterclockwise, matching the one direction the button turns.
-function RotateIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 12a9 9 0 1 0 3-6.7" strokeLinecap="round" strokeLinejoin="round" />
-      <polyline points="3 3 3 9 9 9" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
