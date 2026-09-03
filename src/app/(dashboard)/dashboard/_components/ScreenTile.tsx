@@ -15,12 +15,22 @@ import { MediaMenuSheet } from "./MediaMenuSheet";
 import { ScreenSetupMenu } from "./ScreenSetupMenu";
 
 // Preview "postage stamp" footprint — flipping just swaps these two, like
-// physically rotating the same little rectangle 90°. The square wrapper
-// below is always PREVIEW_LONG on each side so flipping never changes the
-// tile's outer footprint or pushes the info card — only the rectangle
-// inside it changes shape, staying centered in that fixed square.
+// physically rotating the same little rectangle 90°. These are the TRUE
+// content dimensions (a clean 16:9), not the bordered box's own size — see
+// BORDER_WIDTH below for why that distinction matters.
 const PREVIEW_LONG = 320;
 const PREVIEW_SHORT = 180;
+
+// The content layer's border used to be carved out of the PREVIEW_LONG ×
+// PREVIEW_SHORT box itself (border-box sizing subtracts border thickness
+// from the box you give it), so the actual rendered content ended up
+// slightly off-16:9 while only the outer, bordered box stayed a clean
+// 16:9. Fix: size that box (and the frame layer it sits flush against) up
+// by the border thickness on each side, so the border sits *outside* the
+// true 16:9 content area instead of eating into it.
+const BORDER_WIDTH = 7;
+const FRAME_LONG = PREVIEW_LONG + BORDER_WIDTH * 2;
+const FRAME_SHORT = PREVIEW_SHORT + BORDER_WIDTH * 2;
 
 const FADE_MS = 150;
 const FRAME_ROTATE_MS = 300;
@@ -126,10 +136,12 @@ export function ScreenTile({
       <div className="flex flex-col gap-[18px]">
         {/* Fixed-size square, centered above the info card — its own
             footprint never changes, so flipping can't shift the card below
-            or the tile's outer size. */}
+            or the tile's outer size. Sized off FRAME_LONG (the bordered
+            box's own footprint), not the smaller true-content PREVIEW_LONG,
+            so the frame can never clip against this wrapper's edge. */}
         <div
           className="group/preview relative self-center shrink-0"
-          style={{ width: PREVIEW_LONG, height: PREVIEW_LONG }}
+          style={{ width: FRAME_LONG, height: FRAME_LONG }}
         >
           {/* Frame layer — background and shadow only, plus the click
               target. This is the piece that actually rotates; it holds no
@@ -151,8 +163,8 @@ export function ScreenTile({
               onClick={() => setMenuOpen(true)}
               className="relative bg-black transition-[transform,box-shadow] duration-300 ease-out"
               style={{
-                width: PREVIEW_LONG,
-                height: PREVIEW_SHORT,
+                width: FRAME_LONG,
+                height: FRAME_SHORT,
                 transform: `rotate(${-90 * previewTurns}deg)`,
                 boxShadow: frameShadow,
               }}
@@ -181,14 +193,23 @@ export function ScreenTile({
               back in once the frame above has finished turning. Bordered
               directly (rather than the frame underneath) so the border
               always wraps exactly what's on screen instead of overlapping
-              or being overlapped by it. */}
+              or being overlapped by it. Sized to contentWidth/Height *plus*
+              the border on each side (matching FRAME_LONG/FRAME_SHORT) —
+              border-box sizing would otherwise carve the border out of a
+              true-16:9 box, leaving something slightly off-16:9 actually
+              rendering underneath it. This way the border sits outside the
+              true 16:9 area, so what's visible inside it stays exactly 16:9. */}
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div
               className={cn(
                 "relative overflow-hidden transition-opacity duration-150",
                 contentHidden ? "opacity-0" : "opacity-100",
               )}
-              style={{ width: contentWidth, height: contentHeight, border: "7px solid #2e2e2e" }}
+              style={{
+                width: contentWidth + BORDER_WIDTH * 2,
+                height: contentHeight + BORDER_WIDTH * 2,
+                border: `${BORDER_WIDTH}px solid #2e2e2e`,
+              }}
             >
               {firstItem ? (
                 <MediaThumb fit={screen.fit_mode} live item={firstItem.media_item} />
