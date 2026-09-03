@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { deleteScreen } from "@/lib/actions/screens";
-import { SettingsIcon } from "@/components/icons/SettingsIcon";
+import { WrenchIcon } from "@/components/icons/WrenchIcon";
 
 // The player URL and the delete action used to sit in plain view on every
 // tile; tucking them behind this button keeps the row down to just the
@@ -53,7 +53,7 @@ export function ScreenSetupMenu({ screenId, playerPath }: { screenId: number; pl
         aria-expanded={open}
         className="rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
       >
-        <SettingsIcon className="h-4 w-4" />
+        <WrenchIcon className="h-4 w-4" />
       </button>
 
       {open && (
