@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import type { Folder, MediaItem } from "@/types/domain";
-import { addMediaToPlaylist } from "@/lib/actions/playlists";
+import { useEffect, useState } from "react";
+import type { Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
+import { addMediaToPlaylist, reorderPlaylistEntries, reorderPlaylists } from "@/lib/actions/playlists";
 import { FileTree } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
 import { UploadDropzone } from "./UploadDropzone";
@@ -21,6 +21,15 @@ export function LibraryView({
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set());
+
+  // An optimistic mirror of the server-provided playlists, mutated
+  // immediately on reorder/add so the UI reflects what the user just did
+  // without waiting for router.refresh() to bring it back down as props —
+  // and resynced whenever fresh server data actually arrives.
+  const [localPlaylists, setLocalPlaylists] = useState(playlists);
+  useEffect(() => {
+    setLocalPlaylists(playlists);
+  }, [playlists]);
 
   function toggleMedia(id: string) {
     setSelectedMediaIds((current) => {
@@ -52,11 +61,58 @@ export function LibraryView({
     setSelectedMediaIds(new Set());
   }
 
+  function reorderPlaylistsLocal(next: PlaylistWithEntries[]) {
+    setLocalPlaylists(next);
+    reorderPlaylists(next.map((p) => p.id));
+    router.refresh();
+  }
+
+  function reorderEntriesLocal(playlistId: string, nextEntries: PlaylistEntryWithMedia[]) {
+    setLocalPlaylists((current) =>
+      current.map((p) => (p.id === playlistId ? { ...p, entries: nextEntries } : p)),
+    );
+    reorderPlaylistEntries(
+      playlistId,
+      nextEntries.map((e) => e.id),
+    );
+    router.refresh();
+  }
+
   async function confirmAdd(playlistId: string) {
     if (selectedMediaIds.size === 0) return;
-    await addMediaToPlaylist(playlistId, Array.from(selectedMediaIds));
+    const ids = Array.from(selectedMediaIds);
+    const mediaById = new Map(media.map((m) => [m.id, m]));
+    const addedAt = new Date().toISOString();
+
+    // Built from media already known client-side, matching the server's
+    // own defaults exactly (10s, appended at the end) so nothing visibly
+    // corrects itself once the real rows come back from router.refresh().
+    setLocalPlaylists((current) =>
+      current.map((playlist) => {
+        if (playlist.id !== playlistId) return playlist;
+        const startPosition = playlist.entries.length;
+        const newEntries: PlaylistEntryWithMedia[] = ids.flatMap((mediaId, i) => {
+          const mediaItem = mediaById.get(mediaId);
+          if (!mediaItem) return [];
+          return [
+            {
+              id: `optimistic-${mediaId}-${i}-${Date.now()}`,
+              playlist_id: playlistId,
+              media_item_id: mediaId,
+              position: startPosition + i,
+              duration_seconds: 10,
+              created_at: addedAt,
+              media_item: mediaItem,
+            },
+          ];
+        });
+        return { ...playlist, entries: [...playlist.entries, ...newEntries] };
+      }),
+    );
     setActivePlaylistId(null);
     setSelectedMediaIds(new Set());
+
+    await addMediaToPlaylist(playlistId, ids);
     router.refresh();
   }
 
@@ -95,12 +151,14 @@ export function LibraryView({
       <section className="flex min-h-0 flex-1 flex-col">
         <PlaylistSection
           className="min-h-0 flex-1"
-          playlists={playlists}
+          playlists={localPlaylists}
           activePlaylistId={activePlaylistId}
           selectedCount={selectedMediaIds.size}
           onArmSelection={armSelection}
           onCancelSelection={cancelSelection}
           onConfirmAdd={confirmAdd}
+          onReorderPlaylists={reorderPlaylistsLocal}
+          onReorderEntries={reorderEntriesLocal}
         />
       </section>
     </div>

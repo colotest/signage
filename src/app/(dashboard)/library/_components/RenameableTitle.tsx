@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { KeyboardEvent } from "react";
 import { renameMediaItem } from "@/lib/actions/media";
 import { cn } from "@/lib/utils/cn";
@@ -20,7 +20,16 @@ export function RenameableTitle({ id, name, className }: { id: string; name: str
   const [editing, setEditing] = useState(false);
   const [, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
-  const { base, ext } = splitExtension(name);
+  // Shown immediately on commit rather than waiting for router.refresh() to
+  // bring the new name back down as a prop — otherwise display mode would
+  // flash the stale `name` prop first and only jump to the real one later.
+  const [displayName, setDisplayName] = useState(name);
+
+  useEffect(() => {
+    setDisplayName(name);
+  }, [name]);
+
+  const { base, ext } = splitExtension(displayName);
 
   function startEditing() {
     setEditing(true);
@@ -39,8 +48,10 @@ export function RenameableTitle({ id, name, className }: { id: string; name: str
     const newBase = inputRef.current?.value.trim();
     setEditing(false);
     if (!newBase || newBase === base) return;
+    const nextName = `${newBase}${ext}`;
+    setDisplayName(nextName);
     startTransition(async () => {
-      await renameMediaItem(id, `${newBase}${ext}`);
+      await renameMediaItem(id, nextName);
       router.refresh();
     });
   }
@@ -84,7 +95,7 @@ export function RenameableTitle({ id, name, className }: { id: string; name: str
       title="Double-click to rename"
       className={cn("truncate", className)}
     >
-      {name}
+      {displayName}
     </span>
   );
 }

@@ -20,8 +20,6 @@ import {
   deletePlaylist,
   removePlaylistEntry,
   renamePlaylist,
-  reorderPlaylistEntries,
-  reorderPlaylists,
   updatePlaylistEntryDuration,
 } from "@/lib/actions/playlists";
 import type { Playlist, PlaylistEntryWithMedia } from "@/types/domain";
@@ -41,6 +39,8 @@ export function PlaylistSection({
   onArmSelection,
   onCancelSelection,
   onConfirmAdd,
+  onReorderPlaylists,
+  onReorderEntries,
 }: {
   className?: string;
   playlists: PlaylistWithEntries[];
@@ -49,6 +49,8 @@ export function PlaylistSection({
   onArmSelection: (playlistId: string) => void;
   onCancelSelection: () => void;
   onConfirmAdd: (playlistId: string) => void;
+  onReorderPlaylists: (next: PlaylistWithEntries[]) => void;
+  onReorderEntries: (playlistId: string, nextEntries: PlaylistEntryWithMedia[]) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -79,9 +81,7 @@ export function PlaylistSection({
     if (!over || active.id === over.id) return;
     const oldIndex = playlists.findIndex((p) => p.id === active.id);
     const newIndex = playlists.findIndex((p) => p.id === over.id);
-    const next = arrayMove(playlists, oldIndex, newIndex);
-    reorderPlaylists(next.map((p) => p.id));
-    router.refresh();
+    onReorderPlaylists(arrayMove(playlists, oldIndex, newIndex));
   }
 
   return (
@@ -121,6 +121,7 @@ export function PlaylistSection({
                     onArmSelection={() => onArmSelection(playlist.id)}
                     onCancelSelection={onCancelSelection}
                     onConfirmAdd={() => onConfirmAdd(playlist.id)}
+                    onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
                   />
                 ))}
               </ul>
@@ -143,6 +144,7 @@ function PlaylistRow({
   onArmSelection,
   onCancelSelection,
   onConfirmAdd,
+  onReorderEntries,
 }: {
   playlist: PlaylistWithEntries;
   isExpanded: boolean;
@@ -154,6 +156,7 @@ function PlaylistRow({
   onArmSelection: () => void;
   onCancelSelection: () => void;
   onConfirmAdd: () => void;
+  onReorderEntries: (nextEntries: PlaylistEntryWithMedia[]) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -171,15 +174,13 @@ function PlaylistRow({
     if (!over || active.id === over.id) return;
     const oldIndex = playlist.entries.findIndex((e) => e.id === active.id);
     const newIndex = playlist.entries.findIndex((e) => e.id === over.id);
-    const next = arrayMove(playlist.entries, oldIndex, newIndex);
-    reorderPlaylistEntries(
-      playlist.id,
-      next.map((e) => e.id),
-    );
-    router.refresh();
+    onReorderEntries(arrayMove(playlist.entries, oldIndex, newIndex));
   }
 
   function handleRemoveEntry(entryId: string) {
+    // Still resolving from an optimistic add — router.refresh() will settle
+    // it with a real id shortly; nothing to remove server-side yet.
+    if (entryId.startsWith("optimistic-")) return;
     startTransition(async () => {
       await removePlaylistEntry(entryId);
       router.refresh();
@@ -187,6 +188,7 @@ function PlaylistRow({
   }
 
   function handleDurationChange(entryId: string, seconds: number) {
+    if (entryId.startsWith("optimistic-")) return;
     startTransition(async () => {
       await updatePlaylistEntryDuration(entryId, seconds);
       router.refresh();

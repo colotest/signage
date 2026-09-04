@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { renameScreen } from "@/lib/actions/screens";
 
 export function RenameScreenDialog({
@@ -15,11 +15,20 @@ export function RenameScreenDialog({
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+  // Shown immediately on save rather than waiting for router.refresh() to
+  // bring the new name back down as a prop — otherwise the button would
+  // flash the stale `name` prop first and only jump to the real one later.
+  const [displayName, setDisplayName] = useState(name);
+
+  useEffect(() => {
+    setDisplayName(name);
+  }, [name]);
 
   function save() {
-    const next = inputRef.current?.value ?? "";
+    const next = inputRef.current?.value.trim() ?? "";
     setEditing(false);
-    if (!next.trim() || next === name) return;
+    if (!next || next === displayName) return;
+    setDisplayName(next);
     startTransition(async () => {
       await renameScreen(screenId, next);
       router.refresh();
@@ -31,7 +40,7 @@ export function RenameScreenDialog({
       <input
         ref={inputRef}
         autoFocus
-        defaultValue={name}
+        defaultValue={displayName}
         onBlur={save}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
@@ -50,7 +59,7 @@ export function RenameScreenDialog({
       className="truncate text-left text-[17px] font-semibold hover:opacity-70"
       title="Rename screen"
     >
-      {name}
+      {displayName}
     </button>
   );
 }

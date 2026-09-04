@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
 // Same double-click-to-edit mechanic as media's RenameableTitle, minus the
@@ -20,6 +20,15 @@ export function InlineRename({
   startInEditMode?: boolean;
 }) {
   const [editing, setEditing] = useState(startInEditMode);
+  // Shown the moment a rename commits rather than waiting for onSave's
+  // server round trip to bring the new name back down as a prop — without
+  // this, switching back to display mode would flash the stale `value`
+  // prop first and only jump to the real name once that resolves.
+  const [displayValue, setDisplayValue] = useState(value);
+
+  useEffect(() => {
+    setDisplayValue(value);
+  }, [value]);
 
   function attachInput(node: HTMLInputElement | null) {
     node?.focus();
@@ -29,7 +38,8 @@ export function InlineRename({
   function commit(next: string | undefined) {
     setEditing(false);
     const trimmed = next?.trim();
-    if (!trimmed || trimmed === value) return;
+    if (!trimmed || trimmed === displayValue) return;
+    setDisplayValue(trimmed);
     onSave(trimmed);
   }
 
@@ -37,7 +47,7 @@ export function InlineRename({
     return (
       <input
         ref={attachInput}
-        defaultValue={value}
+        defaultValue={displayValue}
         onBlur={(e) => commit(e.currentTarget.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -66,7 +76,7 @@ export function InlineRename({
       title="Double-click to rename"
       className={cn("truncate", className)}
     >
-      {value}
+      {displayValue}
     </span>
   );
 }
