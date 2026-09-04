@@ -12,6 +12,16 @@ export type PlaylistItemWithMedia = PlaylistItem & {
   media_item: MediaItem;
 };
 
+// Reusable, named playlists — independent of any screen. Deliberately a
+// separate concept from PlaylistItem above (which is "what a screen is
+// currently showing"), even though the two are structurally similar.
+export type Playlist = Database["public"]["Tables"]["playlists"]["Row"];
+export type PlaylistEntry = Database["public"]["Tables"]["playlist_entries"]["Row"];
+
+export type PlaylistEntryWithMedia = PlaylistEntry & {
+  media_item: MediaItem;
+};
+
 export function mediaPublicUrl(supabaseUrl: string, storagePath: string): string {
   return `${supabaseUrl}/storage/v1/object/public/media/${storagePath}`;
 }

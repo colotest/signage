@@ -1,55 +1,100 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import type { Folder, MediaItem } from "@/types/domain";
-import { FolderSidebar, type FolderFilter } from "./FolderSidebar";
-import { MediaList } from "./MediaList";
+import { addMediaToPlaylist } from "@/lib/actions/playlists";
+import { FileTree } from "./FileTree";
+import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
 import { UploadDropzone } from "./UploadDropzone";
-import { ViewToggle, type ViewMode } from "./ViewToggle";
 
-const VIEW_MODE_KEY = "colo-cloud:library-view-mode";
+export function LibraryView({
+  folders,
+  media,
+  playlists,
+}: {
+  folders: Folder[];
+  media: MediaItem[];
+  playlists: PlaylistWithEntries[];
+}) {
+  const router = useRouter();
+  const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set());
 
-export function LibraryView({ folders, media }: { folders: Folder[]; media: MediaItem[] }) {
-  const [selected, setSelected] = useState<FolderFilter>("all");
-  // Grid is the fixed value for the server-rendered/first-hydration pass —
-  // localStorage isn't available then. The effect below swaps in whatever
-  // was last chosen, same one-frame-late tradeoff as any browser-only
-  // preference with no server-persisted source of truth.
-  const [view, setView] = useState<ViewMode>("grid");
-
-  useEffect(() => {
-    const stored = localStorage.getItem(VIEW_MODE_KEY);
-    if (stored === "list" || stored === "grid") setView(stored);
-  }, []);
-
-  function handleViewChange(mode: ViewMode) {
-    setView(mode);
-    localStorage.setItem(VIEW_MODE_KEY, mode);
+  function toggleMedia(id: string) {
+    setSelectedMediaIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
-  const visibleMedia = useMemo(() => {
-    if (selected === "all") return media;
-    if (selected === "unsorted") return media.filter((m) => m.folder_id === null);
-    return media.filter((m) => m.folder_id === selected);
-  }, [media, selected]);
+  function toggleFolderIds(ids: string[], select: boolean) {
+    setSelectedMediaIds((current) => {
+      const next = new Set(current);
+      for (const id of ids) {
+        if (select) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
 
-  const uploadFolderId = selected === "all" || selected === "unsorted" ? null : selected;
+  function armSelection(playlistId: string) {
+    setActivePlaylistId(playlistId);
+    setSelectedMediaIds(new Set());
+  }
+
+  function cancelSelection() {
+    setActivePlaylistId(null);
+    setSelectedMediaIds(new Set());
+  }
+
+  async function confirmAdd(playlistId: string) {
+    if (selectedMediaIds.size === 0) return;
+    await addMediaToPlaylist(playlistId, Array.from(selectedMediaIds));
+    setActivePlaylistId(null);
+    setSelectedMediaIds(new Set());
+    router.refresh();
+  }
+
+  const uploadTargetFolder = uploadTargetId ? folders.find((f) => f.id === uploadTargetId) : null;
 
   return (
-    <div className="flex h-full flex-col gap-5 lg:flex-row">
-      <FolderSidebar folders={folders} selected={selected} onSelect={setSelected} />
-
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-[28px] font-semibold tracking-tight">Media</h1>
           <div className="flex items-center gap-3">
-            <ViewToggle mode={view} onChange={handleViewChange} />
-            <UploadDropzone folderId={uploadFolderId} />
+            <span className="text-[12px] text-muted">
+              Uploading to: <span className="text-foreground">{uploadTargetFolder ? uploadTargetFolder.name : "Root"}</span>
+            </span>
+            <UploadDropzone folderId={uploadTargetId} />
           </div>
         </div>
 
-        <MediaList items={visibleMedia} view={view} />
+        <FileTree
+          folders={folders}
+          media={media}
+          selectionMode={activePlaylistId !== null}
+          selectedIds={selectedMediaIds}
+          onToggleMedia={toggleMedia}
+          onToggleFolderIds={toggleFolderIds}
+          uploadTargetId={uploadTargetId}
+          onActivateFolder={setUploadTargetId}
+        />
       </div>
+
+      <PlaylistSection
+        playlists={playlists}
+        activePlaylistId={activePlaylistId}
+        selectedCount={selectedMediaIds.size}
+        onArmSelection={armSelection}
+        onCancelSelection={cancelSelection}
+        onConfirmAdd={confirmAdd}
+      />
     </div>
   );
 }

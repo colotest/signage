@@ -4,12 +4,16 @@ import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export async function createFolder(name: string) {
+export async function createFolder(name: string, parentId: string | null = null) {
   await requireSession();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
   const admin = createAdminClient();
-  const { data, error } = await admin.from("folders").insert({ name: trimmed }).select().single();
+  const { data, error } = await admin
+    .from("folders")
+    .insert({ name: trimmed, parent_id: parentId })
+    .select()
+    .single();
   if (error) throw new Error(error.message);
   revalidatePath("/library");
   return data;

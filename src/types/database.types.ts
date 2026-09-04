@@ -43,20 +43,31 @@ export type Database = {
       folders: {
         Row: {
           id: string;
+          parent_id: string | null;
           name: string;
           created_at: string;
         };
         Insert: {
           id?: string;
+          parent_id?: string | null;
           name: string;
           created_at?: string;
         };
         Update: {
           id?: string;
+          parent_id?: string | null;
           name?: string;
           created_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "folders_parent_id_fkey";
+            columns: ["parent_id"];
+            isOneToOne: false;
+            referencedRelation: "folders";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       media_items: {
         Row: {
@@ -153,6 +164,69 @@ export type Database = {
           },
         ];
       };
+      playlists: {
+        Row: {
+          id: string;
+          name: string;
+          position: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      playlist_entries: {
+        Row: {
+          id: string;
+          playlist_id: string;
+          media_item_id: string;
+          position: number;
+          duration_seconds: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          playlist_id: string;
+          media_item_id: string;
+          position: number;
+          duration_seconds?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          playlist_id?: string;
+          media_item_id?: string;
+          position?: number;
+          duration_seconds?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "playlist_entries_playlist_id_fkey";
+            columns: ["playlist_id"];
+            isOneToOne: false;
+            referencedRelation: "playlists";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "playlist_entries_media_item_id_fkey";
+            columns: ["media_item_id"];
+            isOneToOne: false;
+            referencedRelation: "media_items";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -167,6 +241,18 @@ export type Database = {
       next_free_screen_id: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      reorder_playlists: {
+        Args: { p_ids: string[] };
+        Returns: undefined;
+      };
+      reorder_playlist_entries: {
+        Args: { p_playlist_id: string; p_ids: string[] };
+        Returns: undefined;
+      };
+      add_media_to_playlist: {
+        Args: { p_playlist_id: string; p_media_ids: string[] };
+        Returns: undefined;
       };
     };
     Enums: Record<string, never>;
