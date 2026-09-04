@@ -129,9 +129,13 @@ export function FileTree({
     });
   }
 
-  function handleExpandAndActivate(id: string) {
-    toggleExpanded(id);
-    onActivateFolder(id);
+  // Expanding a folder makes it the upload target — collapsing one hands
+  // that back to its parent (or Root) rather than leaving a now-collapsed,
+  // no-longer-visible folder as the target.
+  function handleFolderRowClick(folder: FolderNode) {
+    const wasExpanded = expanded.has(folder.id);
+    toggleExpanded(folder.id);
+    onActivateFolder(wasExpanded ? folder.parent_id : folder.id);
   }
 
   if (roots.length === 0 && rootFiles.length === 0) {
@@ -168,7 +172,7 @@ export function FileTree({
             files={sortFiles(rootFiles)}
             depth={0}
             expanded={expanded}
-            onToggleExpanded={handleExpandAndActivate}
+            onFolderRowClick={handleFolderRowClick}
             creatingIn={creatingIn}
             onStartCreating={(id) => {
               setCreatingIn(id);
@@ -206,7 +210,7 @@ function TreeLevel({
   files,
   depth,
   expanded,
-  onToggleExpanded,
+  onFolderRowClick,
   creatingIn,
   onStartCreating,
   onDoneCreating,
@@ -223,7 +227,7 @@ function TreeLevel({
   files: MediaItem[];
   depth: number;
   expanded: Set<string>;
-  onToggleExpanded: (id: string) => void;
+  onFolderRowClick: (folder: FolderNode) => void;
   creatingIn: string | null | undefined;
   onStartCreating: (id: string | null) => void;
   onDoneCreating: () => void;
@@ -255,7 +259,7 @@ function TreeLevel({
               folder={folder}
               depth={depth}
               isExpanded={isExpanded}
-              onToggleExpanded={() => onToggleExpanded(folder.id)}
+              onExpandAndActivate={() => onFolderRowClick(folder)}
               selectionMode={selectionMode}
               checkState={checkState}
               onToggleSelect={() => onToggleFolderIds(descendantIds, checkState !== "all")}
@@ -269,7 +273,7 @@ function TreeLevel({
                 files={sortFiles(folder.files)}
                 depth={depth + 1}
                 expanded={expanded}
-                onToggleExpanded={onToggleExpanded}
+                onFolderRowClick={onFolderRowClick}
                 creatingIn={creatingIn}
                 onStartCreating={onStartCreating}
                 onDoneCreating={onDoneCreating}
@@ -350,7 +354,7 @@ function FolderRow({
   folder,
   depth,
   isExpanded,
-  onToggleExpanded,
+  onExpandAndActivate,
   selectionMode,
   checkState,
   onToggleSelect,
@@ -361,7 +365,7 @@ function FolderRow({
   folder: FolderNode;
   depth: number;
   isExpanded: boolean;
-  onToggleExpanded: () => void;
+  onExpandAndActivate: () => void;
   selectionMode: boolean;
   checkState: "all" | "some" | "none";
   onToggleSelect: () => void;
@@ -371,8 +375,7 @@ function FolderRow({
 }) {
   const [pending, startTransition] = useTransition();
 
-  function handleDelete(e: React.MouseEvent) {
-    e.stopPropagation();
+  function handleDelete() {
     if (!window.confirm(`Delete folder "${folder.name}"? Subfolders are removed too; files inside move to Unsorted.`)) return;
     startTransition(async () => {
       await deleteFolder(folder.id);
@@ -380,8 +383,30 @@ function FolderRow({
     });
   }
 
+  // In selection mode the row's job is picking files for a playlist, so a
+  // click anywhere on it toggles selection instead — the chevron is carved
+  // out separately (see its own onClick) so folders stay browsable while
+  // selecting without that also touching selection or the upload target.
+  function handleRowClick() {
+    if (selectionMode) onToggleSelect();
+    else onExpandAndActivate();
+  }
+
+  function handleChevronClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    onExpandAndActivate();
+  }
+
+  const isHighlighted = selectionMode ? checkState === "all" : isUploadTarget;
+
   return (
-    <tr className="group/row border-b border-border last:border-0 hover:bg-black/[.02] dark:hover:bg-white/[.03]">
+    <tr
+      onClick={handleRowClick}
+      className={cn(
+        "group/row cursor-pointer border-b border-border last:border-0",
+        isHighlighted ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
+      )}
+    >
       <td className="py-2 pl-4 pr-3">
         <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: depth * 20 }}>
           {selectionMode && (
@@ -389,7 +414,7 @@ function FolderRow({
           )}
           <button
             type="button"
-            onClick={onToggleExpanded}
+            onClick={handleChevronClick}
             className="shrink-0 text-muted hover:text-foreground"
             aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
           >
@@ -404,7 +429,7 @@ function FolderRow({
                 router.refresh();
               });
             }}
-            className={cn("font-medium", isUploadTarget && "text-accent")}
+            className="font-medium"
           />
         </div>
       </td>
@@ -416,7 +441,10 @@ function FolderRow({
       </td>
       <td className="whitespace-nowrap py-2 pr-3 text-muted">{formatDate(folder.created_at)}</td>
       <td className="py-2 pr-4">
-        <div className="flex items-center justify-end gap-3 whitespace-nowrap opacity-0 transition-opacity group-hover/row:opacity-100">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center justify-end gap-3 whitespace-nowrap opacity-0 transition-opacity group-hover/row:opacity-100"
+        >
           <button type="button" onClick={onStartCreating} className="text-muted hover:text-foreground" title="New subfolder">
             + Folder
           </button>
@@ -455,7 +483,14 @@ function FileRow({
   }
 
   return (
-    <tr className="border-b border-border last:border-0 hover:bg-black/[.02] dark:hover:bg-white/[.03]">
+    <tr
+      onClick={selectionMode ? onToggleSelect : undefined}
+      className={cn(
+        "border-b border-border last:border-0",
+        selectionMode && "cursor-pointer",
+        selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
+      )}
+    >
       <td className="py-2 pl-4 pr-3">
         <div className="flex min-w-0 items-center gap-2.5" style={{ paddingLeft: depth * 20 + 18 }}>
           {selectionMode && <Checkbox state={selected} onChange={onToggleSelect} />}
@@ -473,7 +508,7 @@ function FileRow({
       <td className="whitespace-nowrap py-2 pr-3 text-muted">{formatBytes(item.size_bytes)}</td>
       <td className="whitespace-nowrap py-2 pr-3 text-muted">{formatDate(item.created_at)}</td>
       <td className="py-2 pr-4">
-        <div className="flex items-center justify-end gap-3 whitespace-nowrap">
+        <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-end gap-3 whitespace-nowrap">
           <ReplaceMediaButton item={item} />
           <button type="button" disabled={pending} onClick={handleDelete} className="text-danger hover:opacity-70">
             Delete

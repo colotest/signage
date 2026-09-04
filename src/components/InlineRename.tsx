@@ -69,6 +69,12 @@ export function InlineRename({
 
   return (
     <span
+      // Stopped on every click, not just the double-click that starts
+      // editing — a row this sits in may treat its own click as "select
+      // this row," and the title needs to opt out of that entirely rather
+      // than translate into two of those (a double-click fires two plain
+      // click events before the dblclick itself).
+      onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => {
         e.stopPropagation();
         setEditing(true);
