@@ -69,6 +69,7 @@ function formatDate(iso: string): string {
 }
 
 export function FileTree({
+  className,
   folders,
   media,
   selectionMode,
@@ -78,6 +79,7 @@ export function FileTree({
   uploadTargetId,
   onActivateFolder,
 }: {
+  className?: string;
   folders: Folder[];
   media: MediaItem[];
   selectionMode: boolean;
@@ -134,7 +136,12 @@ export function FileTree({
 
   if (roots.length === 0 && rootFiles.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border py-16 text-center">
+      <div
+        className={cn(
+          "flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border py-16 text-center",
+          className,
+        )}
+      >
         <p className="text-[17px] font-medium">No files here</p>
         <p className="text-sm text-muted">Upload images, videos, or PDFs, or create a folder to get started.</p>
       </div>
@@ -142,10 +149,10 @@ export function FileTree({
   }
 
   return (
-    <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-border">
+    <div className={cn("overflow-auto rounded-[var(--radius-lg)] border border-border", className)}>
       <table className="w-full min-w-[760px] border-collapse text-[13px]">
-        <thead>
-          <tr className="border-b border-border bg-black/[.02] dark:bg-white/[.03] text-left text-[12px] text-muted">
+        <thead className="sticky top-0 z-10">
+          <tr className="border-b border-border bg-[var(--surface-elevated)] backdrop-blur-xl text-left text-[12px] text-muted">
             <Th label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} className="pl-4" />
             <Th label="Kind" sortKey="kind" active={sortKey} dir={sortDir} onClick={toggleSort} />
             <Th label="Resolution" sortKey="resolution" active={sortKey} dir={sortDir} onClick={toggleSort} />

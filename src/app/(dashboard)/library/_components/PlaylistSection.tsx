@@ -34,6 +34,7 @@ function formatDate(iso: string): string {
 }
 
 export function PlaylistSection({
+  className,
   playlists,
   activePlaylistId,
   selectedCount,
@@ -41,6 +42,7 @@ export function PlaylistSection({
   onCancelSelection,
   onConfirmAdd,
 }: {
+  className?: string;
   playlists: PlaylistWithEntries[];
   activePlaylistId: string | null;
   selectedCount: number;
@@ -83,7 +85,7 @@ export function PlaylistSection({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className={cn("flex min-h-0 flex-col gap-3", className)}>
       <div className="flex items-center justify-between">
         <h2 className="text-[20px] font-semibold tracking-tight">Playlists</h2>
         <button
@@ -102,27 +104,29 @@ export function PlaylistSection({
           <p className="text-sm text-muted">Create one to start grouping frequently-used content.</p>
         </div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndPlaylists}>
-          <SortableContext items={playlists.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-            <ul className="flex flex-col gap-3">
-              {playlists.map((playlist) => (
-                <PlaylistRow
-                  key={playlist.id}
-                  playlist={playlist}
-                  isExpanded={expanded.has(playlist.id)}
-                  onToggleExpanded={() => toggleExpanded(playlist.id)}
-                  startInRename={creatingId === playlist.id}
-                  onDoneRenaming={() => setCreatingId(null)}
-                  isActive={activePlaylistId === playlist.id}
-                  selectedCount={selectedCount}
-                  onArmSelection={() => onArmSelection(playlist.id)}
-                  onCancelSelection={onCancelSelection}
-                  onConfirmAdd={() => onConfirmAdd(playlist.id)}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndPlaylists}>
+            <SortableContext items={playlists.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+              <ul className="flex flex-col gap-3 pb-1">
+                {playlists.map((playlist) => (
+                  <PlaylistRow
+                    key={playlist.id}
+                    playlist={playlist}
+                    isExpanded={expanded.has(playlist.id)}
+                    onToggleExpanded={() => toggleExpanded(playlist.id)}
+                    startInRename={creatingId === playlist.id}
+                    onDoneRenaming={() => setCreatingId(null)}
+                    isActive={activePlaylistId === playlist.id}
+                    selectedCount={selectedCount}
+                    onArmSelection={() => onArmSelection(playlist.id)}
+                    onCancelSelection={onCancelSelection}
+                    onConfirmAdd={() => onConfirmAdd(playlist.id)}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        </div>
       )}
     </div>
   );

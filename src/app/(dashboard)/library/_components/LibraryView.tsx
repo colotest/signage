@@ -63,8 +63,12 @@ export function LibraryView({
   const uploadTargetFolder = uploadTargetId ? folders.find((f) => f.id === uploadTargetId) : null;
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-6">
+      {/* Two fixed halves, each exactly half of the available height — the
+          file tree and the playlists below it are always both in view at
+          once, with only their own content scrolling internally, rather
+          than the whole page growing past the viewport. */}
+      <section className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-[28px] font-semibold tracking-tight">Media</h1>
           <div className="flex items-center gap-3">
@@ -76,6 +80,7 @@ export function LibraryView({
         </div>
 
         <FileTree
+          className="min-h-0 flex-1"
           folders={folders}
           media={media}
           selectionMode={activePlaylistId !== null}
@@ -85,16 +90,19 @@ export function LibraryView({
           uploadTargetId={uploadTargetId}
           onActivateFolder={setUploadTargetId}
         />
-      </div>
+      </section>
 
-      <PlaylistSection
-        playlists={playlists}
-        activePlaylistId={activePlaylistId}
-        selectedCount={selectedMediaIds.size}
-        onArmSelection={armSelection}
-        onCancelSelection={cancelSelection}
-        onConfirmAdd={confirmAdd}
-      />
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PlaylistSection
+          className="min-h-0 flex-1"
+          playlists={playlists}
+          activePlaylistId={activePlaylistId}
+          selectedCount={selectedMediaIds.size}
+          onArmSelection={armSelection}
+          onCancelSelection={cancelSelection}
+          onConfirmAdd={confirmAdd}
+        />
+      </section>
     </div>
   );
 }
