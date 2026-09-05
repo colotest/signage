@@ -10,7 +10,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-dvh flex-col bg-background">
+    // svh, not dvh — see the root layout for why: this shell's own height
+    // needs to be correct from the very first paint, without waiting on a
+    // scroll gesture the outer page never actually gets.
+    <div className="flex h-svh flex-col bg-background">
       <Header />
       <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6">{children}</main>
     </div>

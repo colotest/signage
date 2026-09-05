@@ -11,6 +11,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -19,13 +20,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // Sized (and pinned) to the *dynamic* viewport, not the ordinary %-based
-    // height a nested h-dvh alone would still be measured against — this is
-    // what stops Safari's collapsing address bar from leaving the page free
-    // to scroll past the app shell and expose a gap of bare background
-    // beneath it.
-    <html lang="en" className="h-dvh overflow-hidden">
-      <body className="h-dvh overflow-hidden">{children}</body>
+    // svh (small viewport height), not dvh: dvh is *dynamic* — on iOS
+    // Safari it only settles to the correct value once the page has
+    // actually been scrolled, which this app's outer html/body never is
+    // (everything scrolls in nested regions instead, on purpose, to avoid
+    // a separate double-scroll bug). Left on dvh, that meant Safari kept
+    // treating the address bar as the size it'd be if hidden, leaving a
+    // gap of bare background where the (still-visible) toolbar actually
+    // sits. svh is static — always the viewport height with the toolbar
+    // fully shown — so it's never wrong, just occasionally an underuse of
+    // space on the rare page where the toolbar does auto-hide.
+    <html lang="en" className="h-svh overflow-hidden">
+      <body className="h-svh overflow-hidden">{children}</body>
     </html>
   );
 }
