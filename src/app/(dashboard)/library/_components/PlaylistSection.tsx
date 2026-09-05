@@ -13,6 +13,7 @@ import {
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { InlineRename } from "@/components/InlineRename";
+import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import { formatDuration } from "@/lib/utils/format";
 import {
@@ -87,15 +88,10 @@ export function PlaylistSection({
   return (
     <div className={cn("flex min-h-0 flex-col gap-3", className)}>
       <div className="flex items-center justify-between">
-        <h2 className="text-[20px] font-semibold tracking-tight">Playlists</h2>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={handleCreate}
-          className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
-        >
+        <h2 className="text-[28px] font-semibold tracking-tight">Playlists</h2>
+        <Button onClick={handleCreate} disabled={pending}>
           + Create
-        </button>
+        </Button>
       </div>
 
       {playlists.length === 0 ? (
@@ -104,7 +100,11 @@ export function PlaylistSection({
           <p className="text-sm text-muted">Create one to start grouping frequently-used content.</p>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        // -mx-5 bleeds this out of the page's own left/right inset to reach
+        // the screen edges, matching the media list; scroll-fade-y stands
+        // in for the frame a rounded/bordered box would otherwise give
+        // scrolled-past cards to fade into.
+        <div className="scroll-fade-y -mx-5 min-h-0 flex-1 overflow-y-auto">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndPlaylists}>
             <SortableContext items={playlists.map((p) => p.id)} strategy={verticalListSortingStrategy}>
               <ul className="flex flex-col gap-3 pb-1">
@@ -206,7 +206,7 @@ function PlaylistRow({
     <li
       ref={setNodeRef}
       style={style}
-      className="rounded-[var(--radius-md)] border-2 border-accent bg-surface p-3"
+      className="border-2 border-accent bg-surface p-3"
     >
       <div className="flex items-center gap-3">
         <button

@@ -47,36 +47,6 @@ function buildTree(folders: Folder[], media: MediaItem[]) {
   return { roots, rootFiles, nodeById };
 }
 
-// useDroppable only resolves the *real* DndContext when called from a
-// component rendered as a child of <DndContext> — calling it directly in
-// FileTree (the component that creates that element) silently binds to the
-// library's no-op default context instead, so this needs to be its own
-// component rendered inside the JSX tree, not a hook call in FileTree itself.
-function RootDropZone({ draggingId }: { draggingId: string | null }) {
-  const { setNodeRef, isOver } = useDroppable({ id: "folder-root" });
-  return (
-    <div
-      ref={setNodeRef}
-      title="Drag a file here to move it to Root"
-      // A plain CSS class for -webkit-touch-callout gets its declaration
-      // silently stripped by the build's CSS minifier (lightningcss treats
-      // the non-standard vendor property as invalid) — inline style bypasses
-      // that pipeline.
-      style={{ WebkitTouchCallout: "none" }}
-      className={cn(
-        "flex w-full shrink-0 select-none items-center gap-1.5 rounded-[var(--radius-sm)] border px-3 py-1.5 text-[12px] font-medium transition-colors",
-        isOver
-          ? "border-accent bg-accent/25 text-foreground"
-          : draggingId
-            ? "border-accent border-dashed text-accent"
-            : "border-border text-muted",
-      )}
-    >
-      📁 Root
-    </div>
-  );
-}
-
 function collectMediaIds(node: FolderNode): string[] {
   return [...node.files.map((f) => f.id), ...node.children.flatMap(collectMediaIds)];
 }
@@ -171,9 +141,8 @@ export function FileTree({
 
     const mediaId = String(active.id);
     const overId = String(over.id);
-    const targetFolderId =
-      overId === "folder-root" ? null : overId.startsWith("folder-") ? overId.slice("folder-".length) : undefined;
-    if (targetFolderId === undefined) return;
+    if (!overId.startsWith("folder-")) return;
+    const targetFolderId = overId.slice("folder-".length);
 
     const item = mediaById.get(mediaId);
     if (!item || item.folder_id === targetFolderId) return;
@@ -246,27 +215,32 @@ export function FileTree({
       onDragEnd={handleDragEnd}
       onDragCancel={() => setDraggingId(null)}
     >
-      <div className={cn("flex min-h-0 flex-col gap-2", className)}>
-        <RootDropZone draggingId={draggingId} />
+      {/* -mx-5 bleeds this whole section — header row included, so it stays
+          aligned with the rows below it — out of the page's own left/right
+          inset to reach the screen edges for more row width. */}
+      <div className={cn("-mx-5 flex min-h-0 flex-col", className)}>
+        <div className="flex items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl">
+          <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} />
+          <SortButton
+            label="Date Added"
+            sortKey="date"
+            active={sortKey}
+            dir={sortDir}
+            onClick={toggleSort}
+            className="ml-auto mr-9"
+          />
+        </div>
 
         {/* overflow-x-hidden (not scroll) is the point — file details and
             row actions live behind the "⋯" menu precisely so a narrow row
-            never needs to scroll sideways to reach them. */}
+            never needs to scroll sideways to reach them. Sharp corners:
+            edge-to-edge leaves no room for rounding to actually read.
+            scroll-fade-y stands in for the frame a rounded/bordered box
+            would otherwise give scrolled content to fade into. */}
         <div
           style={{ WebkitTouchCallout: "none" }}
-          className="min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto rounded-[var(--radius-lg)] border border-border"
+          className="scroll-fade-y min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto"
         >
-          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl">
-            <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} />
-            <SortButton
-              label="Date Added"
-              sortKey="date"
-              active={sortKey}
-              dir={sortDir}
-              onClick={toggleSort}
-              className="ml-auto mr-9"
-            />
-          </div>
           <div>
             <TreeLevel
               folders={sortFolders(roots)}
@@ -704,6 +678,13 @@ function FileRow({
     });
   }
 
+  function handleMoveToRoot() {
+    startTransition(async () => {
+      await moveMediaItem(item.id, null);
+      router.refresh();
+    });
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -741,6 +722,11 @@ function FileRow({
         {item.media_type === "video" && <MenuInfo>{formatDuration(item.duration_seconds)}</MenuInfo>}
         <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>
         <div className="my-1 border-t border-border" />
+        {item.folder_id && (
+          <MenuItem disabled={pending} onClick={handleMoveToRoot}>
+            Move to Root
+          </MenuItem>
+        )}
         <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />
         <MenuItem danger disabled={pending} onClick={handleDelete}>
           Delete

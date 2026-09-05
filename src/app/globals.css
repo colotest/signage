@@ -94,3 +94,12 @@ body {
   animation: drag-pickup 180ms var(--ease-spring) forwards;
 }
 
+/* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide
+   scrolled-past content popping in and out at the top/bottom — this fades
+   it instead. Static (not scroll-position-aware): simpler, and the fade
+   reads fine even at the very start/end of a list. */
+.scroll-fade-y {
+  mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
+}
+

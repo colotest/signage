@@ -19,8 +19,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
-      <body className="h-full">{children}</body>
+    // Sized (and pinned) to the *dynamic* viewport, not the ordinary %-based
+    // height a nested h-dvh alone would still be measured against — this is
+    // what stops Safari's collapsing address bar from leaving the page free
+    // to scroll past the app shell and expose a gap of bare background
+    // beneath it.
+    <html lang="en" className="h-dvh overflow-hidden">
+      <body className="h-dvh overflow-hidden">{children}</body>
     </html>
   );
 }
