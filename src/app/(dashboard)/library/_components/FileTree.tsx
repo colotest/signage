@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -433,43 +433,18 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
   );
 }
 
-// The title+date pair reflows based on actual content, not a guessed
-// breakpoint: flex-wrap naturally drops the date to its own line the
-// moment the title's *full* text no longer fits alongside it (the title
-// keeps its content-based minimum size for this — see its `flex-auto` +
-// unset min-width below — so it's never squeezed into truncating early
-// just to keep the date on the same line). Only once the title alone
-// still doesn't fit its own line does `truncate` (which needs min-w-0,
-// applied directly on the title) actually clip it with "…".
-// A ResizeObserver watches for the resulting wrap (comparing the title's
-// and date's positions) purely to shrink the date's font once it lands
-// on its own line — CSS has no selector for "did this item wrap".
+// Title above, date below in a smaller font — always, for every row. With
+// everything else already tucked behind the "⋯" menu, a row only ever
+// holds these two lines, so there's no side-by-side layout worth keeping
+// around: stacking unconditionally gives the title the full row width
+// (rather than half of it next to a date) and keeps every row's rhythm
+// consistent while scrolling instead of some rows flipping layout and
+// others not.
 function RowInfo({ title, date }: { title: React.ReactNode; date: string }) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const [stacked, setStacked] = useState(false);
-
-  useLayoutEffect(() => {
-    const row = rowRef.current;
-    if (!row) return;
-
-    function measure() {
-      const [titleEl, dateEl] = row!.children;
-      if (!titleEl || !dateEl) return;
-      setStacked(dateEl.getBoundingClientRect().top > titleEl.getBoundingClientRect().top + 1);
-    }
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, []);
-
   return (
-    <div className="min-w-0 flex-1">
-      <div ref={rowRef} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-        {title}
-        <span className={cn("truncate text-muted", stacked ? "text-[10px]" : "text-[12px]")}>{date}</span>
-      </div>
+    <div className="flex min-w-0 flex-1 flex-col">
+      {title}
+      <span className="truncate text-[10px] text-muted">{date}</span>
     </div>
   );
 }
@@ -681,7 +656,7 @@ function FolderRow({
                 router.refresh();
               });
             }}
-            className="min-w-0 flex-auto truncate text-[13px] font-medium"
+            className="truncate text-[13px] font-medium"
           />
         }
         date={formatDate(folder.created_at)}
@@ -753,7 +728,7 @@ function FileRow({
           <RenameableTitle
             id={item.id}
             name={item.name}
-            className="min-w-0 flex-auto truncate text-[13px] font-medium"
+            className="truncate text-[13px] font-medium"
           />
         }
         date={formatDate(item.created_at)}
