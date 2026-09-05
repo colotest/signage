@@ -8,7 +8,7 @@ import { inspectFile } from "@/lib/media/inspectFile";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { MediaItem } from "@/types/domain";
 
-export function ReplaceMediaButton({ item }: { item: MediaItem }) {
+export function ReplaceMediaButton({ item, className }: { item: MediaItem; className?: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -72,7 +72,7 @@ export function ReplaceMediaButton({ item }: { item: MediaItem }) {
         type="button"
         disabled={uploading}
         onClick={() => inputRef.current?.click()}
-        className="self-start text-[13px] text-muted hover:opacity-70"
+        className={className ?? "self-start text-[13px] text-muted hover:opacity-70"}
       >
         {uploading ? <Spinner className="inline h-3.5 w-3.5" /> : "Replace"}
       </button>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   useDraggable,
   useDroppable,
@@ -57,8 +58,13 @@ function RootDropZone({ draggingId }: { draggingId: string | null }) {
     <div
       ref={setNodeRef}
       title="Drag a file here to move it to Root"
+      // A plain CSS class for -webkit-touch-callout gets its declaration
+      // silently stripped by the build's CSS minifier (lightningcss treats
+      // the non-standard vendor property as invalid) — inline style bypasses
+      // that pipeline.
+      style={{ WebkitTouchCallout: "none" }}
       className={cn(
-        "flex w-full shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border px-3 py-1.5 text-[12px] font-medium transition-colors",
+        "flex w-full shrink-0 select-none items-center gap-1.5 rounded-[var(--radius-sm)] border px-3 py-1.5 text-[12px] font-medium transition-colors",
         isOver
           ? "border-accent bg-accent/25 text-foreground"
           : draggingId
@@ -131,7 +137,15 @@ export function FileTree({
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // Mouse picks up on a small drag (immediate, like any desktop drag); touch
+  // instead waits out a held press before engaging — a plain touchstart (as
+  // opposed to one that's about to become a scroll) doesn't move much within
+  // that window, so this is what stops a scroll's initial touch from being
+  // misread as a pickup.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 5 } }),
+  );
 
   // Optimistic mirror of `media` — dragging a file onto a folder moves it in
   // the tree immediately, rather than waiting for router.refresh() to bring
@@ -235,59 +249,61 @@ export function FileTree({
       <div className={cn("flex min-h-0 flex-col gap-2", className)}>
         <RootDropZone draggingId={draggingId} />
 
-        <div className="min-h-0 flex-1 overflow-auto rounded-[var(--radius-lg)] border border-border">
-          <table className="w-full min-w-[760px] border-collapse text-[13px]">
-            <thead className="sticky top-0 z-10">
-              <tr className="border-b border-border bg-[var(--surface-elevated)] backdrop-blur-xl text-left text-[12px] text-muted">
-                <Th label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} className="pl-4" />
-                <Th label="Kind" sortKey="kind" active={sortKey} dir={sortDir} onClick={toggleSort} />
-                <Th label="Resolution" sortKey="resolution" active={sortKey} dir={sortDir} onClick={toggleSort} />
-                <Th label="Duration" sortKey="duration" active={sortKey} dir={sortDir} onClick={toggleSort} />
-                <Th label="Size" sortKey="size" active={sortKey} dir={sortDir} onClick={toggleSort} />
-                <Th label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={toggleSort} />
-                <th className="w-px" />
-              </tr>
-            </thead>
-            <tbody>
-              <TreeLevel
-                folders={sortFolders(roots)}
-                files={sortFiles(rootFiles)}
-                depth={0}
-                expanded={expanded}
-                onFolderRowClick={handleFolderRowClick}
-                creatingIn={creatingIn}
-                onStartCreating={(id) => {
-                  setCreatingIn(id);
-                  if (id) setExpanded((c) => new Set(c).add(id));
-                }}
-                onDoneCreating={() => setCreatingIn(undefined)}
-                selectionMode={selectionMode}
-                selectedIds={selectedIds}
-                onToggleMedia={onToggleMedia}
-                onToggleFolderIds={onToggleFolderIds}
-                uploadTargetId={uploadTargetId}
-                sortFiles={sortFiles}
-                sortFolders={sortFolders}
-                router={router}
-              />
-              {creatingIn === null ? (
-                <NewFolderRow depth={0} parentId={null} onDone={() => setCreatingIn(undefined)} router={router} />
-              ) : (
-                <tr>
-                  <td colSpan={7} className="py-2 pl-4">
-                    <button type="button" onClick={() => setCreatingIn(null)} className="text-[13px] font-medium text-accent">
-                      + New Folder
-                    </button>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {/* overflow-x-hidden (not scroll) is the point — file details and
+            row actions live behind the "⋯" menu precisely so a narrow row
+            never needs to scroll sideways to reach them. */}
+        <div
+          style={{ WebkitTouchCallout: "none" }}
+          className="min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto rounded-[var(--radius-lg)] border border-border"
+        >
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl">
+            <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} />
+            <SortButton
+              label="Date Added"
+              sortKey="date"
+              active={sortKey}
+              dir={sortDir}
+              onClick={toggleSort}
+              className="ml-auto mr-9"
+            />
+          </div>
+          <div>
+            <TreeLevel
+              folders={sortFolders(roots)}
+              files={sortFiles(rootFiles)}
+              depth={0}
+              expanded={expanded}
+              onFolderRowClick={handleFolderRowClick}
+              creatingIn={creatingIn}
+              onStartCreating={(id) => {
+                setCreatingIn(id);
+                if (id) setExpanded((c) => new Set(c).add(id));
+              }}
+              onDoneCreating={() => setCreatingIn(undefined)}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onToggleMedia={onToggleMedia}
+              onToggleFolderIds={onToggleFolderIds}
+              uploadTargetId={uploadTargetId}
+              sortFiles={sortFiles}
+              sortFolders={sortFolders}
+              router={router}
+            />
+            {creatingIn === null ? (
+              <NewFolderRow depth={0} parentId={null} onDone={() => setCreatingIn(undefined)} router={router} />
+            ) : (
+              <div className="px-4 py-2">
+                <button type="button" onClick={() => setCreatingIn(null)} className="text-[13px] font-medium text-accent">
+                  + New Folder
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <DragOverlay>
         {draggingItem && (
-          <div className="flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 shadow-[var(--shadow-card)]">
+          <div className="drag-pickup flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 shadow-[var(--shadow-card)]">
             <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
               <MediaThumb item={draggingItem} />
             </div>
@@ -348,7 +364,7 @@ function TreeLevel({
               : "some";
 
         return (
-          <FragmentRow key={folder.id}>
+          <div key={folder.id}>
             <FolderRow
               folder={folder}
               depth={depth}
@@ -384,7 +400,7 @@ function TreeLevel({
             {isExpanded && creatingIn === folder.id && (
               <NewFolderRow depth={depth + 1} parentId={folder.id} onDone={onDoneCreating} router={router} />
             )}
-          </FragmentRow>
+          </div>
         );
       })}
 
@@ -403,12 +419,6 @@ function TreeLevel({
   );
 }
 
-// A plain array-returning component so React can flatten these into
-// sibling <tr>s inside the <tbody> — <tbody> can't have a non-<tr> wrapper.
-function FragmentRow({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
-
 function Chevron({ open, className }: { open: boolean; className?: string }) {
   return (
     <svg
@@ -419,6 +429,32 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
       strokeWidth="2.5"
     >
       <polyline points="9 6 15 12 9 18" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// The title+date pair reflows around this container's own width — side by
+// side once there's room, stacked (with a smaller date) once there isn't.
+// It's a container query on the row itself rather than a viewport
+// breakpoint, since what actually runs out of room is the row (eaten into
+// by nesting depth and the leading icon), not the screen.
+function RowInfo({ title, date }: { title: React.ReactNode; date: string }) {
+  return (
+    <div className="@container min-w-0 flex-1">
+      <div className="flex min-w-0 flex-col @min-[190px]:flex-row @min-[190px]:items-baseline @min-[190px]:gap-2">
+        {title}
+        <span className="truncate text-[10px] text-muted @min-[190px]:shrink-0 @min-[190px]:text-[12px]">{date}</span>
+      </div>
+    </div>
+  );
+}
+
+function ThreeDotIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="19" cy="12" r="2" />
     </svg>
   );
 }
@@ -443,6 +479,94 @@ function Checkbox({
     />
   );
 }
+
+// The per-row overflow menu — everything that used to be a column (kind,
+// resolution, duration, size) or a hover-only action button (replace,
+// delete, +subfolder) now lives in here instead, so a row never needs to
+// grow wider or taller than its title + date to stay fully usable, and the
+// actions stay reachable on touch (hover was never going to fire there).
+function RowMenu({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative shrink-0"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={label}
+        aria-expanded={open}
+        className="shrink-0 cursor-pointer rounded-full p-1.5 text-muted transition-colors hover:bg-black/[.04] hover:text-foreground dark:hover:bg-white/[.06]"
+      >
+        <ThreeDotIcon className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          className="absolute right-0 top-full z-20 mt-1 w-48 rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuInfo({ children }: { children: React.ReactNode }) {
+  return <div className="px-2.5 py-1 text-[12px] text-muted">{children}</div>;
+}
+
+function MenuItem({
+  onClick,
+  danger,
+  disabled,
+  children,
+}: {
+  onClick?: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] disabled:opacity-50 dark:hover:bg-white/[.06]",
+        danger ? "text-danger" : "text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+const MENU_ITEM_CLASS =
+  "block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]";
 
 function FolderRow({
   folder,
@@ -493,13 +617,14 @@ function FolderRow({
   }
 
   const isHighlighted = selectionMode ? checkState === "all" : isUploadTarget;
+  const itemCount = folder.children.length + folder.files.length;
 
   return (
-    <tr
+    <div
       ref={setNodeRef}
       onClick={handleRowClick}
       className={cn(
-        "group/row cursor-pointer border-b border-border last:border-0",
+        "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
         isOver
           ? "bg-accent/25"
           : isHighlighted
@@ -507,20 +632,22 @@ function FolderRow({
             : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
-      <td className="py-2 pl-4 pr-3">
-        <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: depth * 20 }}>
-          {selectionMode && (
-            <Checkbox state={checkState === "some" ? "indeterminate" : checkState === "all"} onChange={onToggleSelect} />
-          )}
-          <button
-            type="button"
-            onClick={handleChevronClick}
-            className="shrink-0 text-muted hover:text-foreground"
-            aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
-          >
-            <Chevron open={isExpanded} />
-          </button>
-          <span className="shrink-0">📁</span>
+      {selectionMode && (
+        <Checkbox state={checkState === "some" ? "indeterminate" : checkState === "all"} onChange={onToggleSelect} />
+      )}
+      <div style={{ width: depth * 20 }} className="shrink-0" />
+      <button
+        type="button"
+        onClick={handleChevronClick}
+        className="shrink-0 text-muted hover:text-foreground"
+        aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+      >
+        <Chevron open={isExpanded} />
+      </button>
+      <span className="shrink-0">📁</span>
+
+      <RowInfo
+        title={
           <InlineRename
             value={folder.name}
             onSave={(next) => {
@@ -529,31 +656,23 @@ function FolderRow({
                 router.refresh();
               });
             }}
-            className="font-medium"
+            className="truncate text-[13px] font-medium @min-[190px]:flex-1"
           />
-        </div>
-      </td>
-      <td className="whitespace-nowrap py-2 pr-3 text-muted">Folder</td>
-      <td className="py-2 pr-3 text-muted">—</td>
-      <td className="py-2 pr-3 text-muted">—</td>
-      <td className="whitespace-nowrap py-2 pr-3 text-muted">
-        {folder.children.length + folder.files.length} item{folder.children.length + folder.files.length === 1 ? "" : "s"}
-      </td>
-      <td className="whitespace-nowrap py-2 pr-3 text-muted">{formatDate(folder.created_at)}</td>
-      <td className="py-2 pr-4">
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="flex items-center justify-end gap-3 whitespace-nowrap opacity-0 transition-opacity group-hover/row:opacity-100"
-        >
-          <button type="button" onClick={onStartCreating} className="text-muted hover:text-foreground" title="New subfolder">
-            + Folder
-          </button>
-          <button type="button" disabled={pending} onClick={handleDelete} className="text-danger hover:opacity-70">
-            Delete
-          </button>
-        </div>
-      </td>
-    </tr>
+        }
+        date={formatDate(folder.created_at)}
+      />
+
+      <RowMenu label={`${folder.name} actions`}>
+        <MenuInfo>
+          {itemCount} item{itemCount === 1 ? "" : "s"}
+        </MenuInfo>
+        <div className="my-1 border-t border-border" />
+        <MenuItem onClick={onStartCreating}>+ New Subfolder</MenuItem>
+        <MenuItem danger disabled={pending} onClick={handleDelete}>
+          Delete Folder
+        </MenuItem>
+      </RowMenu>
+    </div>
   );
 }
 
@@ -586,43 +705,48 @@ function FileRow({
   }
 
   return (
-    <tr
+    <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
       onClick={selectionMode ? onToggleSelect : undefined}
       className={cn(
-        "border-b border-border last:border-0",
+        "flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0",
         selectionMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
         selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
-      <td className="py-2 pl-4 pr-3">
-        <div className="flex min-w-0 items-center gap-2.5" style={{ paddingLeft: depth * 20 + 18 }}>
-          {selectionMode && <Checkbox state={selected} onChange={onToggleSelect} />}
-          <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
-            <MediaThumb item={item} />
-          </div>
-          <RenameableTitle id={item.id} name={item.name} className="font-medium" />
-        </div>
-      </td>
-      <td className="whitespace-nowrap py-2 pr-3 text-muted">{kindLabel(item)}</td>
-      <td className="whitespace-nowrap py-2 pr-3 text-muted">{formatResolution(item.width, item.height)}</td>
-      <td className="whitespace-nowrap py-2 pr-3 text-muted">
-        {item.media_type === "video" ? formatDuration(item.duration_seconds) : "—"}
-      </td>
-      <td className="whitespace-nowrap py-2 pr-3 text-muted">{formatBytes(item.size_bytes)}</td>
-      <td className="whitespace-nowrap py-2 pr-3 text-muted">{formatDate(item.created_at)}</td>
-      <td className="py-2 pr-4">
-        <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-end gap-3 whitespace-nowrap">
-          <ReplaceMediaButton item={item} />
-          <button type="button" disabled={pending} onClick={handleDelete} className="text-danger hover:opacity-70">
-            Delete
-          </button>
-        </div>
-      </td>
-    </tr>
+      {selectionMode && <Checkbox state={selected} onChange={onToggleSelect} />}
+      <div style={{ width: depth * 20 }} className="shrink-0" />
+      <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
+        <MediaThumb item={item} />
+      </div>
+
+      <RowInfo
+        title={
+          <RenameableTitle
+            id={item.id}
+            name={item.name}
+            className="truncate text-[13px] font-medium @min-[190px]:flex-1"
+          />
+        }
+        date={formatDate(item.created_at)}
+      />
+
+      <RowMenu label={`${item.name} actions`}>
+        <MenuInfo>
+          {kindLabel(item)} · {formatResolution(item.width, item.height)}
+        </MenuInfo>
+        {item.media_type === "video" && <MenuInfo>{formatDuration(item.duration_seconds)}</MenuInfo>}
+        <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>
+        <div className="my-1 border-t border-border" />
+        <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />
+        <MenuItem danger disabled={pending} onClick={handleDelete}>
+          Delete
+        </MenuItem>
+      </RowMenu>
+    </div>
   );
 }
 
@@ -657,26 +781,24 @@ function NewFolderRow({
   }
 
   return (
-    <tr>
-      <td colSpan={7} className="py-2 pl-4">
-        <input
-          ref={attachInput}
-          disabled={pending}
-          placeholder="Folder name"
-          onBlur={(e) => submit(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-            if (e.key === "Escape") onDone();
-          }}
-          style={{ marginLeft: depth * 20 + (parentId === null ? 0 : 20) }}
-          className="rounded-[var(--radius-sm)] border border-accent bg-transparent px-2 py-1 text-[13px] outline-none"
-        />
-      </td>
-    </tr>
+    <div className="px-4 py-2">
+      <input
+        ref={attachInput}
+        disabled={pending}
+        placeholder="Folder name"
+        onBlur={(e) => submit(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") onDone();
+        }}
+        style={{ marginLeft: depth * 20 + (parentId === null ? 0 : 20) }}
+        className="rounded-[var(--radius-sm)] border border-accent bg-transparent px-2 py-1 text-[13px] outline-none"
+      />
+    </div>
   );
 }
 
-function Th({
+function SortButton({
   label,
   sortKey,
   active,
@@ -693,18 +815,17 @@ function Th({
 }) {
   const isActive = active === sortKey;
   return (
-    <th className={cn("py-2 pr-3 font-medium", className)}>
-      <button
-        type="button"
-        onClick={() => onClick(sortKey)}
-        className={cn(
-          "inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground",
-          isActive && "text-foreground",
-        )}
-      >
-        {label}
-        {isActive && <span className="text-[10px]">{dir === "asc" ? "▲" : "▼"}</span>}
-      </button>
-    </th>
+    <button
+      type="button"
+      onClick={() => onClick(sortKey)}
+      className={cn(
+        "inline-flex items-center gap-1 whitespace-nowrap font-medium hover:text-foreground",
+        isActive && "text-foreground",
+        className,
+      )}
+    >
+      {label}
+      {isActive && <span className="text-[10px]">{dir === "asc" ? "▲" : "▼"}</span>}
+    </button>
   );
 }

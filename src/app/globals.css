@@ -78,3 +78,19 @@ body {
 ::selection {
   background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
+
+@keyframes drag-pickup {
+  from {
+    transform: scale(0.97);
+    box-shadow: var(--shadow-card);
+  }
+  to {
+    transform: scale(1.05);
+    box-shadow: var(--shadow-sheet);
+  }
+}
+
+.drag-pickup {
+  animation: drag-pickup 180ms var(--ease-spring) forwards;
+}
+

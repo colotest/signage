@@ -98,8 +98,19 @@ export function RenameableTitle({ id, name, className }: { id: string; name: str
         e.stopPropagation();
         startEditing();
       }}
+      // A row this sits in may double as a touch drag handle — stopping
+      // touchstart here keeps a held press on the title a normal text
+      // selection instead of picking the row up, matching the
+      // touch-callout opt-back-in below. Mouse is unaffected: a
+      // click-and-drag there was never ambiguous with selecting text the
+      // way a touch hold is, so it's left to keep working as a drag start.
+      onTouchStart={(e) => e.stopPropagation()}
       title="Double-click to rename"
-      className={cn("truncate", className)}
+      // Plain CSS class for this gets its declaration silently stripped by
+      // the build's CSS minifier (lightningcss treats the non-standard
+      // vendor property as invalid) — inline style bypasses that pipeline.
+      style={{ WebkitTouchCallout: "default" }}
+      className={cn("truncate select-text", className)}
     >
       {displayName}
     </span>
