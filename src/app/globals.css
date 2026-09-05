@@ -103,3 +103,14 @@ body {
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
 }
 
+/* viewport-fit=cover (see root layout) is what lets the app shell extend
+   this far down in the first place — into the strip iOS Safari's floating
+   bottom toolbar sits over, unreachable by touch even though it's part of
+   the page. Only the playlists list's bottom edge actually reaches there,
+   so only it needs padding that size (env(safe-area-inset-bottom)) on top
+   of the ordinary scroll-fade-y inset, so its last card scrolls clear of
+   the toolbar instead of stopping underneath it. */
+.playlists-bottom-inset {
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+

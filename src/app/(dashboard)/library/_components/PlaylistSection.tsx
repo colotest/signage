@@ -103,11 +103,15 @@ export function PlaylistSection({
         // -mx-5 bleeds this out of the page's own left/right inset to reach
         // the screen edges, matching the media list; scroll-fade-y stands
         // in for the frame a rounded/bordered box would otherwise give
-        // scrolled-past cards to fade into.
+        // scrolled-past cards to fade into. pt-5 (matching the fade's own
+        // 20px) keeps that fade off the first/last card themselves, landing
+        // on blank padding instead — playlists-bottom-inset adds the extra
+        // reach-past-the-Safari-toolbar padding on top, at the bottom only,
+        // since this is the last section on the page.
         <div className="scroll-fade-y -mx-5 min-h-0 flex-1 overflow-y-auto">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndPlaylists}>
             <SortableContext items={playlists.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-              <ul className="flex flex-col gap-3 pb-1">
+              <ul className="playlists-bottom-inset flex flex-col gap-3 pt-5">
                 {playlists.map((playlist) => (
                   <PlaylistRow
                     key={playlist.id}

@@ -236,10 +236,12 @@ export function FileTree({
             never needs to scroll sideways to reach them. Sharp corners:
             edge-to-edge leaves no room for rounding to actually read.
             scroll-fade-y stands in for the frame a rounded/bordered box
-            would otherwise give scrolled content to fade into. */}
+            would otherwise give scrolled content to fade into — pt-5/pb-5
+            (matching the fade's own 20px) keep that fade off the first and
+            last row themselves, landing on blank padding instead. */}
         <div
           style={{ WebkitTouchCallout: "none" }}
-          className="scroll-fade-y min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto"
+          className="scroll-fade-y min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto pt-5 pb-5"
         >
           <div>
             <TreeLevel
