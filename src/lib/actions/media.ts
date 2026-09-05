@@ -186,6 +186,14 @@ export async function renameMediaItem(id: string, name: string) {
   revalidatePath("/dashboard");
 }
 
+export async function moveMediaItem(id: string, folderId: string | null) {
+  await requireSession();
+  const admin = createAdminClient();
+  const { error } = await admin.from("media_items").update({ folder_id: folderId }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/library");
+}
+
 export async function deleteMediaItem(id: string) {
   await requireSession();
   const admin = createAdminClient();

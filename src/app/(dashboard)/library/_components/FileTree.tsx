@@ -1,13 +1,25 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { MediaThumb } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
 import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
-import { deleteMediaItem } from "@/lib/actions/media";
+import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
 import type { Folder, MediaItem } from "@/types/domain";
 import { RenameableTitle } from "./RenameableTitle";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
@@ -32,6 +44,31 @@ function buildTree(folders: Folder[], media: MediaItem[]) {
     else rootFiles.push(m);
   }
   return { roots, rootFiles, nodeById };
+}
+
+// useDroppable only resolves the *real* DndContext when called from a
+// component rendered as a child of <DndContext> — calling it directly in
+// FileTree (the component that creates that element) silently binds to the
+// library's no-op default context instead, so this needs to be its own
+// component rendered inside the JSX tree, not a hook call in FileTree itself.
+function RootDropZone({ draggingId }: { draggingId: string | null }) {
+  const { setNodeRef, isOver } = useDroppable({ id: "folder-root" });
+  return (
+    <div
+      ref={setNodeRef}
+      title="Drag a file here to move it to Root"
+      className={cn(
+        "flex w-full shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border px-3 py-1.5 text-[12px] font-medium transition-colors",
+        isOver
+          ? "border-accent bg-accent/25 text-foreground"
+          : draggingId
+            ? "border-accent border-dashed text-accent"
+            : "border-border text-muted",
+      )}
+    >
+      📁 Root
+    </div>
+  );
 }
 
 function collectMediaIds(node: FolderNode): string[] {
@@ -94,8 +131,43 @@ export function FileTree({
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  const { roots, rootFiles } = useMemo(() => buildTree(folders, media), [folders, media]);
+  // Optimistic mirror of `media` — dragging a file onto a folder moves it in
+  // the tree immediately, rather than waiting for router.refresh() to bring
+  // the new folder_id back down as a prop.
+  const [localMedia, setLocalMedia] = useState(media);
+  useEffect(() => {
+    setLocalMedia(media);
+  }, [media]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  const { roots, rootFiles } = useMemo(() => buildTree(folders, localMedia), [folders, localMedia]);
+  const mediaById = useMemo(() => new Map(localMedia.map((m) => [m.id, m])), [localMedia]);
+  const draggingItem = draggingId ? (mediaById.get(draggingId) ?? null) : null;
+
+  function handleDragStart(event: DragStartEvent) {
+    setDraggingId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setDraggingId(null);
+    if (!over) return;
+
+    const mediaId = String(active.id);
+    const overId = String(over.id);
+    const targetFolderId =
+      overId === "folder-root" ? null : overId.startsWith("folder-") ? overId.slice("folder-".length) : undefined;
+    if (targetFolderId === undefined) return;
+
+    const item = mediaById.get(mediaId);
+    if (!item || item.folder_id === targetFolderId) return;
+
+    setLocalMedia((current) => current.map((m) => (m.id === mediaId ? { ...m, folder_id: targetFolderId } : m)));
+    moveMediaItem(mediaId, targetFolderId);
+    router.refresh();
+  }
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -153,55 +225,77 @@ export function FileTree({
   }
 
   return (
-    <div className={cn("overflow-auto rounded-[var(--radius-lg)] border border-border", className)}>
-      <table className="w-full min-w-[760px] border-collapse text-[13px]">
-        <thead className="sticky top-0 z-10">
-          <tr className="border-b border-border bg-[var(--surface-elevated)] backdrop-blur-xl text-left text-[12px] text-muted">
-            <Th label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} className="pl-4" />
-            <Th label="Kind" sortKey="kind" active={sortKey} dir={sortDir} onClick={toggleSort} />
-            <Th label="Resolution" sortKey="resolution" active={sortKey} dir={sortDir} onClick={toggleSort} />
-            <Th label="Duration" sortKey="duration" active={sortKey} dir={sortDir} onClick={toggleSort} />
-            <Th label="Size" sortKey="size" active={sortKey} dir={sortDir} onClick={toggleSort} />
-            <Th label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={toggleSort} />
-            <th className="w-px" />
-          </tr>
-        </thead>
-        <tbody>
-          <TreeLevel
-            folders={sortFolders(roots)}
-            files={sortFiles(rootFiles)}
-            depth={0}
-            expanded={expanded}
-            onFolderRowClick={handleFolderRowClick}
-            creatingIn={creatingIn}
-            onStartCreating={(id) => {
-              setCreatingIn(id);
-              if (id) setExpanded((c) => new Set(c).add(id));
-            }}
-            onDoneCreating={() => setCreatingIn(undefined)}
-            selectionMode={selectionMode}
-            selectedIds={selectedIds}
-            onToggleMedia={onToggleMedia}
-            onToggleFolderIds={onToggleFolderIds}
-            uploadTargetId={uploadTargetId}
-            sortFiles={sortFiles}
-            sortFolders={sortFolders}
-            router={router}
-          />
-          {creatingIn === null ? (
-            <NewFolderRow depth={0} parentId={null} onDone={() => setCreatingIn(undefined)} router={router} />
-          ) : (
-            <tr>
-              <td colSpan={7} className="py-2 pl-4">
-                <button type="button" onClick={() => setCreatingIn(null)} className="text-[13px] font-medium text-accent">
-                  + New Folder
-                </button>
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setDraggingId(null)}
+    >
+      <div className={cn("flex min-h-0 flex-col gap-2", className)}>
+        <RootDropZone draggingId={draggingId} />
+
+        <div className="min-h-0 flex-1 overflow-auto rounded-[var(--radius-lg)] border border-border">
+          <table className="w-full min-w-[760px] border-collapse text-[13px]">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-border bg-[var(--surface-elevated)] backdrop-blur-xl text-left text-[12px] text-muted">
+                <Th label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} className="pl-4" />
+                <Th label="Kind" sortKey="kind" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <Th label="Resolution" sortKey="resolution" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <Th label="Duration" sortKey="duration" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <Th label="Size" sortKey="size" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <Th label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <th className="w-px" />
+              </tr>
+            </thead>
+            <tbody>
+              <TreeLevel
+                folders={sortFolders(roots)}
+                files={sortFiles(rootFiles)}
+                depth={0}
+                expanded={expanded}
+                onFolderRowClick={handleFolderRowClick}
+                creatingIn={creatingIn}
+                onStartCreating={(id) => {
+                  setCreatingIn(id);
+                  if (id) setExpanded((c) => new Set(c).add(id));
+                }}
+                onDoneCreating={() => setCreatingIn(undefined)}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                onToggleMedia={onToggleMedia}
+                onToggleFolderIds={onToggleFolderIds}
+                uploadTargetId={uploadTargetId}
+                sortFiles={sortFiles}
+                sortFolders={sortFolders}
+                router={router}
+              />
+              {creatingIn === null ? (
+                <NewFolderRow depth={0} parentId={null} onDone={() => setCreatingIn(undefined)} router={router} />
+              ) : (
+                <tr>
+                  <td colSpan={7} className="py-2 pl-4">
+                    <button type="button" onClick={() => setCreatingIn(null)} className="text-[13px] font-medium text-accent">
+                      + New Folder
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <DragOverlay>
+        {draggingItem && (
+          <div className="flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 shadow-[var(--shadow-card)]">
+            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
+              <MediaThumb item={draggingItem} />
+            </div>
+            <span className="max-w-[220px] truncate text-[13px] font-medium">{draggingItem.name}</span>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -374,6 +468,7 @@ function FolderRow({
   router: Router;
 }) {
   const [pending, startTransition] = useTransition();
+  const { setNodeRef, isOver } = useDroppable({ id: `folder-${folder.id}` });
 
   function handleDelete() {
     if (!window.confirm(`Delete folder "${folder.name}"? Subfolders are removed too; files inside move to Unsorted.`)) return;
@@ -401,10 +496,15 @@ function FolderRow({
 
   return (
     <tr
+      ref={setNodeRef}
       onClick={handleRowClick}
       className={cn(
         "group/row cursor-pointer border-b border-border last:border-0",
-        isHighlighted ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
+        isOver
+          ? "bg-accent/25"
+          : isHighlighted
+            ? "bg-accent/10 dark:bg-accent/15"
+            : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
       <td className="py-2 pl-4 pr-3">
@@ -473,6 +573,9 @@ function FileRow({
   router: Router;
 }) {
   const [pending, startTransition] = useTransition();
+  // Disabled during selection mode so picking files for a playlist and
+  // reorganizing folders never compete for the same click-and-drag gesture.
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id, disabled: selectionMode });
 
   function handleDelete() {
     if (!window.confirm(`Delete "${item.name}"? This removes it from any screens or playlists using it.`)) return;
@@ -484,10 +587,14 @@ function FileRow({
 
   return (
     <tr
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       onClick={selectionMode ? onToggleSelect : undefined}
       className={cn(
         "border-b border-border last:border-0",
-        selectionMode && "cursor-pointer",
+        selectionMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+        isDragging && "opacity-40",
         selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
