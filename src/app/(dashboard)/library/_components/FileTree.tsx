@@ -145,8 +145,18 @@ export function FileTree({
 
     const mediaId = String(active.id);
     const overId = String(over.id);
-    if (!overId.startsWith("folder-")) return;
-    const targetFolderId = overId.slice("folder-".length);
+
+    // Dropping directly onto a folder row targets that folder; dropping
+    // onto a file row (root-level or nested) targets whichever folder that
+    // file itself lives in — this is what makes dropping among a folder's
+    // (or root's) own files work as a destination, not just its row.
+    let targetFolderId: string | null | undefined;
+    if (overId.startsWith("folder-")) {
+      targetFolderId = overId.slice("folder-".length);
+    } else if (overId.startsWith("file-")) {
+      targetFolderId = mediaById.get(overId.slice("file-".length))?.folder_id ?? null;
+    }
+    if (targetFolderId === undefined) return;
 
     const item = mediaById.get(mediaId);
     if (!item || item.folder_id === targetFolderId) return;
@@ -669,7 +679,15 @@ function FileRow({
   const [pending, startTransition] = useTransition();
   // Disabled during selection mode so picking files for a playlist and
   // reorganizing folders never compete for the same click-and-drag gesture.
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id, disabled: selectionMode });
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: item.id,
+    disabled: selectionMode,
+  });
+  // A file row is also a valid drop target, resolving to whichever folder
+  // (including root) the file itself lives in — otherwise dropping a
+  // dragged item onto another file (rather than precisely onto a folder
+  // row) had no droppable to land on at all, and it just snapped back.
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `file-${item.id}` });
 
   function handleDelete() {
     if (!window.confirm(`Delete "${item.name}"? This removes it from any screens or playlists using it.`)) return;
@@ -688,7 +706,10 @@ function FileRow({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => {
+        setDragRef(node);
+        setDropRef(node);
+      }}
       {...attributes}
       {...listeners}
       onClick={selectionMode ? onToggleSelect : undefined}
@@ -696,6 +717,7 @@ function FileRow({
         "flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0",
         selectionMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
+        isOver && "ring-2 ring-inset ring-accent",
         selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
