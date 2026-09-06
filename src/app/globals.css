@@ -117,18 +117,11 @@ body {
    env(safe-area-inset-bottom) above — it doesn't populate in this app's
    regular (non-standalone) Safari tab context, confirmed the same way:
    changing its coefficient produced no visible difference at all, which
-   only makes sense if the term itself is 0. pointer:coarse (touch
-   devices — phones/tablets, not a desktop mouse) stands in as the signal
-   for "this needs status-bar clearance" instead, with a measured fixed
-   height, the same kind of fix as the bottom inset. */
+   only makes sense if the term itself is 0. Turns out no extra clearance
+   was wanted here anyway — 0 looked best on device, i.e. plain 12px on
+   every device, touch or not. */
 .header-top-safe-area {
   padding-top: 12px;
-}
-
-@media (pointer: coarse) {
-  .header-top-safe-area {
-    padding-top: 50px;
-  }
 }
 
 /* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide
