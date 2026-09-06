@@ -103,16 +103,16 @@ export function PlaylistSection({
         // Not edge-to-edge — sits inside the page's normal left/right inset
         // rather than bleeding to the screen edges. Each row is its own
         // rounded, bordered card (see PlaylistRow) rather than this whole
-        // list being one bordered box. pt-2.5/playlists-bottom-inset
-        // (padding on this scrolling element itself, not on the <ul> it
-        // wraps — percentage heights on a child of an auto-overflow box are
-        // exactly the kind of thing Safari gets flexbox-inconsistent about)
-        // keep scroll-fade-y's fade off the first/last card and, at the
-        // bottom only since this is the last section on the page, reserve
-        // enough room to clear Safari's floating toolbar — all while the
+        // list being one bordered box. pt-5/playlists-bottom-inset (padding
+        // on this scrolling element itself, not on the <ul> it wraps —
+        // percentage heights on a child of an auto-overflow box are exactly
+        // the kind of thing Safari gets flexbox-inconsistent about) keep
+        // scroll-fade-y's fade off the first/last card and, at the bottom
+        // only since this is the last section on the page, reserve enough
+        // room to clear Safari's floating toolbar — all while the
         // container's own height (flex-1, reaching the screen edge) stays
         // untouched.
-        <div className="scroll-fade-y playlists-bottom-inset min-h-0 flex-1 overflow-y-auto pt-2.5">
+        <div className="scroll-fade-y playlists-bottom-inset min-h-0 flex-1 overflow-y-auto pt-5">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndPlaylists}>
             <SortableContext items={playlists.map((p) => p.id)} strategy={verticalListSortingStrategy}>
               <ul className="flex flex-col gap-3">
