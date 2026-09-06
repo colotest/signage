@@ -103,20 +103,18 @@ export function PlaylistSection({
         // -mx-5 bleeds this out of the page's own left/right inset to reach
         // the screen edges, matching the media list; scroll-fade-y stands
         // in for the frame a rounded/bordered box would otherwise give
-        // scrolled-past cards to fade into. pt-5 (matching the fade's own
-        // 20px) keeps that fade off the first/last card themselves, landing
-        // on blank padding instead — playlists-bottom-inset adds the extra
-        // reach-past-the-Safari-toolbar padding on top, at the bottom only,
-        // since this is the last section on the page. min-h-full on the
-        // list itself (not just this div) is what makes that bottom padding
-        // land right at this container's own bottom edge — which still
-        // reaches the screen edge exactly as before, unchanged — rather
-        // than floating above it with a stretch of unrelated empty
-        // container space beneath, on a short list that doesn't fill it.
-        <div className="scroll-fade-y -mx-5 min-h-0 flex-1 overflow-y-auto">
+        // scrolled-past cards to fade into. pt-5/playlists-bottom-inset
+        // (padding on this scrolling element itself, not on the <ul> it
+        // wraps — percentage heights on a child of an auto-overflow box are
+        // exactly the kind of thing Safari gets flexbox-inconsistent about)
+        // keep that fade off the first/last card and, at the bottom only
+        // since this is the last section on the page, reserve enough room
+        // to clear Safari's floating toolbar — all while the container's
+        // own height (flex-1, reaching the screen edge) stays untouched.
+        <div className="scroll-fade-y playlists-bottom-inset -mx-5 min-h-0 flex-1 overflow-y-auto pt-5">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndPlaylists}>
             <SortableContext items={playlists.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-              <ul className="playlists-bottom-inset flex min-h-full flex-col gap-3 pt-5">
+              <ul className="flex flex-col gap-3">
                 {playlists.map((playlist) => (
                   <PlaylistRow
                     key={playlist.id}
