@@ -117,11 +117,17 @@ body {
    env(safe-area-inset-bottom) above — it doesn't populate in this app's
    regular (non-standalone) Safari tab context, confirmed the same way:
    changing its coefficient produced no visible difference at all, which
-   only makes sense if the term itself is 0. Turns out no extra clearance
-   was wanted here anyway — 0 looked best on device, i.e. plain 12px on
-   every device, touch or not. */
+   only makes sense if the term itself is 0. On mobile, no extra clearance
+   is wanted at all — padding-top: 0 looked best on device. Desktop keeps
+   the normal 12px. */
 .header-top-safe-area {
   padding-top: 12px;
+}
+
+@media (pointer: coarse) {
+  .header-top-safe-area {
+    padding-top: 0;
+  }
 }
 
 /* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide

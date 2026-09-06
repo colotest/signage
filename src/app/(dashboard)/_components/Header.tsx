@@ -22,8 +22,8 @@ export function Header() {
     // (root layout), which *does* work in a regular tab, only paints a
     // flat color — so the header matches that flatly instead of relying
     // on a blur effect the status bar area can't share. header-top-safe-area
-    // (globals.css) pushes the header's content down clear of the status
-    // bar's icons on touch devices.
+    // (globals.css) is the normal 12px on desktop, but 0 on touch devices —
+    // no extra clearance looked best there on device.
     <header className="header-top-safe-area sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[var(--surface)] px-5 pb-3">
       <nav className="flex items-center gap-5">
         <span className={`${brandFont.className} mt-[0.1em] text-[38px] uppercase tracking-tight`}>
