@@ -20,18 +20,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // svh (small viewport height), not dvh: dvh is *dynamic* — on iOS
-    // Safari it only settles to the correct value once the page has
-    // actually been scrolled, which this app's outer html/body never is
-    // (everything scrolls in nested regions instead, on purpose, to avoid
-    // a separate double-scroll bug). Left on dvh, that meant Safari kept
-    // treating the address bar as the size it'd be if hidden, leaving a
-    // gap of bare background where the (still-visible) toolbar actually
-    // sits. svh is static — always the viewport height with the toolbar
-    // fully shown — so it's never wrong, just occasionally an underuse of
-    // space on the rare page where the toolbar does auto-hide.
-    <html lang="en" className="h-svh overflow-hidden">
-      <body className="h-svh overflow-hidden">{children}</body>
+    // lvh (large viewport height), not svh or dvh. The goal on iOS Safari
+    // isn't to stay above its floating toolbar — recent iOS versions let
+    // page content extend the full screen behind that (translucent)
+    // toolbar on purpose, which is what we want here so the lists reach
+    // the true bottom edge. svh explicitly excludes that area (it's
+    // defined as the viewport with the toolbar fully shown), so it never
+    // extends there regardless of viewport-fit=cover or any padding
+    // underneath — that's what was actually capping the page short, not
+    // anything about padding. lvh is the full screen, and unlike dvh it's
+    // static rather than dynamic, so it doesn't depend on Safari settling
+    // it via a scroll gesture this non-scrolling outer shell never gets.
+    <html lang="en" className="h-lvh overflow-hidden">
+      <body className="h-lvh overflow-hidden">{children}</body>
     </html>
   );
 }
