@@ -137,7 +137,10 @@ export function LibraryView({
           once, with only their own content scrolling internally, rather
           than the whole page growing past the viewport. */}
       <section className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center justify-between gap-3">
+        {/* relative z-10 keeps this above FileTree's own list, which now
+            overlaps up underneath it (see FileTree) so scrolled-past rows
+            fade away rather than popping in and out below this row. */}
+        <div className="relative z-10 flex items-center justify-between gap-3">
           <h1 className="text-[28px] font-semibold tracking-tight">Media</h1>
           <div className="flex items-center gap-3">
             <span className="text-[12px] text-muted">

@@ -233,8 +233,15 @@ export function FileTree({
     >
       {/* -mx-5 bleeds this whole section — header row included, so it stays
           aligned with the rows below it — out of the page's own left/right
-          inset to reach the screen edges for more row width. */}
-      <div className={cn("-mx-5 flex min-h-0 flex-col", className)}>
+          inset to reach the screen edges for more row width. -mt-10 pulls
+          the whole thing up 40px, overlapping the "Media" title row above
+          (LibraryView, which needs its own relative z-10 to stay on top) —
+          on mobile, where the sort bar below is hidden, this is what lets
+          scrolled-past rows fade away underneath that title instead of
+          popping in and out below it. sm:pt-10 cancels that shift back out
+          once the sort bar becomes visible, so its own position on desktop
+          is unaffected. */}
+      <div className={cn("-mx-5 -mt-10 flex min-h-0 flex-col sm:pt-10", className)}>
         {/* Hidden on mobile — the mobile equivalent is the round "⋯" sort
             button next to the Upload pill (LibraryView), which gives this
             same row's real estate back to the file list instead. */}
@@ -255,12 +262,12 @@ export function FileTree({
             never needs to scroll sideways to reach them. Sharp corners:
             edge-to-edge leaves no room for rounding to actually read.
             scroll-fade-y stands in for the frame a rounded/bordered box
-            would otherwise give scrolled content to fade into — pt-5/pb-5
-            (matching the fade's own 20px) keep that fade off the first and
+            would otherwise give scrolled content to fade into — pt-10/pb-10
+            (matching the fade's own 40px) keep that fade off the first and
             last row themselves, landing on blank padding instead. */}
         <div
           style={{ WebkitTouchCallout: "none" }}
-          className="scroll-fade-y min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto pt-5 pb-5"
+          className="scroll-fade-y min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
         >
           <div>
             <TreeLevel
