@@ -19,7 +19,6 @@ import { formatDuration } from "@/lib/utils/format";
 import {
   createPlaylist,
   deletePlaylist,
-  removePlaylistEntry,
   renamePlaylist,
   updatePlaylistEntryDuration,
 } from "@/lib/actions/playlists";
@@ -57,6 +56,7 @@ export function PlaylistSection({
   onCancelSelection,
   onConfirmAdd,
   onReorderEntries,
+  onRemoveEntry,
   dropTargetPlaylistId,
 }: {
   className?: string;
@@ -67,6 +67,7 @@ export function PlaylistSection({
   onCancelSelection: () => void;
   onConfirmAdd: (playlistId: string) => void;
   onReorderEntries: (playlistId: string, nextEntries: PlaylistEntryWithMedia[]) => void;
+  onRemoveEntry: (playlistId: string, entryId: string) => void;
   // A file being dragged in from the Media list (DndContext lives in
   // LibraryView, a shared ancestor of both lists) resolves to a playlist id
   // when it's hovering this one — drives PlaylistRow's own highlight.
@@ -197,6 +198,7 @@ export function PlaylistSection({
                 onCancelSelection={onCancelSelection}
                 onConfirmAdd={() => onConfirmAdd(playlist.id)}
                 onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
+                onRemoveEntry={(entryId) => onRemoveEntry(playlist.id, entryId)}
                 isDropTarget={dropTargetPlaylistId === playlist.id}
               />
             ))}
@@ -236,6 +238,7 @@ function PlaylistRow({
   onCancelSelection,
   onConfirmAdd,
   onReorderEntries,
+  onRemoveEntry,
   isDropTarget,
 }: {
   playlist: PlaylistWithEntries;
@@ -249,6 +252,7 @@ function PlaylistRow({
   onCancelSelection: () => void;
   onConfirmAdd: () => void;
   onReorderEntries: (nextEntries: PlaylistEntryWithMedia[]) => void;
+  onRemoveEntry: (entryId: string) => void;
   isDropTarget: boolean;
 }) {
   const router = useRouter();
@@ -276,10 +280,7 @@ function PlaylistRow({
     // Still resolving from an optimistic add — router.refresh() will settle
     // it with a real id shortly; nothing to remove server-side yet.
     if (entryId.startsWith("optimistic-")) return;
-    startTransition(async () => {
-      await removePlaylistEntry(entryId);
-      router.refresh();
-    });
+    onRemoveEntry(entryId);
   }
 
   function handleDurationChange(entryId: string, seconds: number) {

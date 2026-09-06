@@ -13,13 +13,16 @@ import {
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type DropAnimation,
 } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { MediaThumb } from "@/components/MediaThumb";
 import type { Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
 import { createUploadUrl, finalizeMediaUpload, moveMediaItem } from "@/lib/actions/media";
 import {
   addMediaToPlaylist,
   getPlaylistEntryIds,
+  removePlaylistEntry,
   reorderPlaylistEntries,
 } from "@/lib/actions/playlists";
 import { inspectFile } from "@/lib/media/inspectFile";
@@ -36,6 +39,23 @@ import { UploadDropzone } from "./UploadDropzone";
 // a single onDragEnd handle both without the two cases fighting over the
 // same `over.id` string.
 type DropTarget = { type: "folder"; folderId: string | null } | { type: "playlist"; playlistId: string };
+
+// dnd-kit's default drop animation eases the overlay back to wherever the
+// *original* draggable element currently sits — sensible for reordering,
+// where that's the item's new resting spot, but wrong here: the dragged
+// file's own row never moves (it's just been added somewhere else), so the
+// default would visibly fly the overlay back across the screen to the Media
+// list right as it's supposed to be landing in a playlist. Keeping both
+// keyframes at the overlay's current (drop) transform and only animating
+// opacity makes it fade away right where it was dropped instead.
+const dropAnimation: DropAnimation = {
+  duration: 200,
+  easing: "ease-out",
+  keyframes: ({ transform }) => [
+    { transform: CSS.Transform.toString(transform.initial), opacity: 1 },
+    { transform: CSS.Transform.toString(transform.initial), opacity: 0 },
+  ],
+};
 
 export function LibraryView({
   folders,
@@ -274,6 +294,43 @@ export function LibraryView({
     router.refresh();
   }
 
+  // Removed immediately, client-side, rather than waiting on the round trip
+  // to removePlaylistEntry — that used to be the only thing that made the
+  // row disappear, which meant a good half-second of nothing happening
+  // before the UI caught up. The removed entry (and its position) is kept
+  // around so a failed request can put it right back where it was, instead
+  // of just silently losing the "it's gone" state on error.
+  async function removeEntryLocal(playlistId: string, entryId: string) {
+    let removedEntry: PlaylistEntryWithMedia | undefined;
+    let removedIndex = -1;
+    setLocalPlaylists((current) =>
+      current.map((playlist) => {
+        if (playlist.id !== playlistId) return playlist;
+        removedIndex = playlist.entries.findIndex((e) => e.id === entryId);
+        removedEntry = playlist.entries[removedIndex];
+        return { ...playlist, entries: playlist.entries.filter((e) => e.id !== entryId) };
+      }),
+    );
+
+    try {
+      await removePlaylistEntry(entryId);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to remove playlist entry", err);
+      if (!removedEntry) return;
+      const restoredEntry = removedEntry;
+      const restoreAt = removedIndex;
+      setLocalPlaylists((current) =>
+        current.map((playlist) => {
+          if (playlist.id !== playlistId) return playlist;
+          const entries = [...playlist.entries];
+          entries.splice(restoreAt, 0, restoredEntry);
+          return { ...playlist, entries };
+        }),
+      );
+    }
+  }
+
   async function confirmAdd(playlistId: string) {
     if (selectedMediaIds.size === 0) return;
     const ids = Array.from(selectedMediaIds);
@@ -386,12 +443,13 @@ export function LibraryView({
             onCancelSelection={cancelSelection}
             onConfirmAdd={confirmAdd}
             onReorderEntries={reorderEntriesLocal}
+            onRemoveEntry={removeEntryLocal}
             dropTargetPlaylistId={dropTargetPlaylistId}
           />
         </section>
       </div>
 
-      <DragOverlay>
+      <DragOverlay dropAnimation={dropAnimation}>
         {draggingItem && (
           <div className="drag-pickup flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 shadow-[var(--shadow-card)]">
             <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
