@@ -6,6 +6,7 @@ import {
   DndContext,
   PointerSensor,
   closestCenter,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -56,6 +57,7 @@ export function PlaylistSection({
   onCancelSelection,
   onConfirmAdd,
   onReorderEntries,
+  dropTargetPlaylistId,
 }: {
   className?: string;
   playlists: PlaylistWithEntries[];
@@ -65,6 +67,10 @@ export function PlaylistSection({
   onCancelSelection: () => void;
   onConfirmAdd: (playlistId: string) => void;
   onReorderEntries: (playlistId: string, nextEntries: PlaylistEntryWithMedia[]) => void;
+  // A file being dragged in from the Media list (DndContext lives in
+  // LibraryView, a shared ancestor of both lists) resolves to a playlist id
+  // when it's hovering this one — drives PlaylistRow's own highlight.
+  dropTargetPlaylistId: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -89,6 +95,14 @@ export function PlaylistSection({
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === "asc" ? cmp : -cmp;
     });
+    // The playlist currently armed for adding files jumps to the front,
+    // regardless of the active sort — it's what you're actively working
+    // with, so it shouldn't be buried wherever alphabetical/date order
+    // happens to put it.
+    if (activePlaylistId) {
+      const index = copy.findIndex((p) => p.id === activePlaylistId);
+      if (index > 0) copy.unshift(...copy.splice(index, 1));
+    }
     return copy;
   }
 
@@ -100,6 +114,13 @@ export function PlaylistSection({
       return next;
     });
   }
+
+  // Armed for selection means the user is actively picking files for it —
+  // expand it automatically so the playlist's existing content is visible
+  // right alongside whatever's being added.
+  useEffect(() => {
+    if (activePlaylistId) setExpanded((current) => new Set(current).add(activePlaylistId));
+  }, [activePlaylistId]);
 
   function handleCreate() {
     startTransition(async () => {
@@ -176,6 +197,7 @@ export function PlaylistSection({
                 onCancelSelection={onCancelSelection}
                 onConfirmAdd={() => onConfirmAdd(playlist.id)}
                 onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
+                isDropTarget={dropTargetPlaylistId === playlist.id}
               />
             ))}
           </ul>
@@ -214,6 +236,7 @@ function PlaylistRow({
   onCancelSelection,
   onConfirmAdd,
   onReorderEntries,
+  isDropTarget,
 }: {
   playlist: PlaylistWithEntries;
   isExpanded: boolean;
@@ -226,11 +249,17 @@ function PlaylistRow({
   onCancelSelection: () => void;
   onConfirmAdd: () => void;
   onReorderEntries: (nextEntries: PlaylistEntryWithMedia[]) => void;
+  isDropTarget: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // Registers this card as a place a file dragged out of the Media list can
+  // be dropped — the shared DndContext lives in LibraryView, which resolves
+  // `playlist-${playlist.id}` back to this exact playlist and adds the file
+  // to it at the first position.
+  const { setNodeRef: setPlaylistDropRef } = useDroppable({ id: `playlist-${playlist.id}` });
 
   const totalSeconds = playlist.entries.reduce((sum, e) => sum + e.duration_seconds, 0);
   const fileCount = playlist.entries.length;
@@ -269,7 +298,13 @@ function PlaylistRow({
   }
 
   return (
-    <li className="rounded-[var(--radius-md)] border border-border bg-surface p-3">
+    <li
+      ref={setPlaylistDropRef}
+      className={cn(
+        "rounded-[var(--radius-md)] border bg-surface p-3",
+        isDropTarget ? "border-accent ring-2 ring-inset ring-accent" : "border-border",
+      )}
+    >
       <div className="flex items-center gap-3">
         <button type="button" onClick={onToggleExpanded} className="text-muted">
           <Chevron open={isExpanded} />
@@ -300,7 +335,7 @@ function PlaylistRow({
             onClick={isActive ? onConfirmAdd : onArmSelection}
             disabled={isActive && selectedCount === 0}
             title={isActive ? "Add selected files" : "Add files"}
-            className="rounded-full bg-accent px-3 py-1 text-[13px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
           >
             {isActive && selectedCount > 0 ? `+${selectedCount}` : "+"}
           </button>
@@ -310,7 +345,7 @@ function PlaylistRow({
               onClick={onCancelSelection}
               title="Cancel selection"
               aria-label="Cancel selection"
-              className="rounded-full bg-danger px-2 py-1 text-[13px] font-medium text-white hover:opacity-90"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90"
             >
               ✕
             </button>

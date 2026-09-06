@@ -74,6 +74,22 @@ export async function removePlaylistEntry(entryId: string) {
   revalidatePath("/library");
 }
 
+// add_media_to_playlist always appends and doesn't hand back the new row's
+// id, so inserting at the front (see LibraryView's cross-list drag-and-drop)
+// means adding normally, then reading the entry ids back to find it and
+// reorder it to the front — this is what that second step reads.
+export async function getPlaylistEntryIds(playlistId: string): Promise<string[]> {
+  await requireSession();
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("playlist_entries")
+    .select("id")
+    .eq("playlist_id", playlistId)
+    .order("position", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => row.id as string);
+}
+
 export async function reorderPlaylistEntries(playlistId: string, orderedEntryIds: string[]) {
   await requireSession();
   const admin = createAdminClient();

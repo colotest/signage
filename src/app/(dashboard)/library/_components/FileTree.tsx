@@ -2,20 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  DndContext,
-  DragOverlay,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { MediaThumb } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
@@ -98,6 +85,8 @@ export function FileTree({
   onToggleSort,
   creatingIn,
   onCreatingChange,
+  onUploadFiles,
+  dropTargetFolderId,
 }: {
   className?: string;
   folders: Folder[];
@@ -113,72 +102,53 @@ export function FileTree({
   onToggleSort: (key: SortKey) => void;
   creatingIn: string | null | undefined;
   onCreatingChange: (id: string | null | undefined) => void;
+  onUploadFiles: (files: FileList) => void;
+  // Owned by LibraryView now — a single DndContext up there is what lets a
+  // file be dragged out of this tree and dropped onto a playlist, which a
+  // DndContext scoped to this component alone could never see.
+  dropTargetFolderId: string | null | undefined;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  // Mouse picks up on a small drag (immediate, like any desktop drag); touch
-  // instead waits out a held press before engaging — a plain touchstart (as
-  // opposed to one that's about to become a scroll) doesn't move much within
-  // that window, so this is what stops a scroll's initial touch from being
-  // misread as a pickup.
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 5 } }),
-  );
 
-  // Optimistic mirror of `media` — dragging a file onto a folder moves it in
-  // the tree immediately, rather than waiting for router.refresh() to bring
-  // the new folder_id back down as a prop.
-  const [localMedia, setLocalMedia] = useState(media);
-  useEffect(() => {
-    setLocalMedia(media);
-  }, [media]);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  // The *resolved* drop target — a folder id, or null for root — rather
-  // than which specific row/file is under the pointer. Drives a border
-  // around the whole folder (row + its expanded files) or, for root, around
-  // its files as a group, instead of just the one row being hovered.
-  const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null | undefined>(undefined);
+  // OS-level file drag (from the desktop, a Finder window, etc.) — entirely
+  // separate machinery from the dnd-kit drag above (native DragEvents vs.
+  // synthetic pointer tracking), so the two can't interfere with each
+  // other. dragCounterRef, not the boolean alone, is what survives
+  // dragenter/dragleave firing on every child element as the pointer moves
+  // across nested rows — only going back to 0 means the pointer actually
+  // left the whole list, not just one row for another.
+  const [isDraggingOsFile, setIsDraggingOsFile] = useState(false);
+  const dragCounterRef = useRef(0);
+  const uploadTargetFolderName = folders.find((f) => f.id === uploadTargetId)?.name ?? "Root";
 
-  const { roots, rootFiles } = useMemo(() => buildTree(folders, localMedia), [folders, localMedia]);
-  const mediaById = useMemo(() => new Map(localMedia.map((m) => [m.id, m])), [localMedia]);
-  const draggingItem = draggingId ? (mediaById.get(draggingId) ?? null) : null;
-
-  // Dropping directly onto a folder row targets that folder; dropping onto
-  // a file row (root-level or nested) targets whichever folder that file
-  // itself lives in — this is what makes dropping among a folder's (or
-  // root's) own files work as a destination, not just its row.
-  function resolveDropTargetFolderId(overId: string): string | null | undefined {
-    if (overId.startsWith("folder-")) return overId.slice("folder-".length);
-    if (overId.startsWith("file-")) return mediaById.get(overId.slice("file-".length))?.folder_id ?? null;
-    return undefined;
+  function handleNativeDragEnter(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDraggingOsFile(true);
   }
 
-  function handleDragStart(event: DragStartEvent) {
-    setDraggingId(String(event.active.id));
+  function handleNativeDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
   }
 
-  function handleDragOver(event: DragOverEvent) {
-    setDropTargetFolderId(event.over ? resolveDropTargetFolderId(String(event.over.id)) : undefined);
+  function handleNativeDragLeave(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    dragCounterRef.current = Math.max(dragCounterRef.current - 1, 0);
+    if (dragCounterRef.current === 0) setIsDraggingOsFile(false);
   }
 
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    setDraggingId(null);
-    setDropTargetFolderId(undefined);
-    if (!over) return;
-
-    const mediaId = String(active.id);
-    const targetFolderId = resolveDropTargetFolderId(String(over.id));
-    if (targetFolderId === undefined) return;
-
-    const item = mediaById.get(mediaId);
-    if (!item || item.folder_id === targetFolderId) return;
-
-    setLocalMedia((current) => current.map((m) => (m.id === mediaId ? { ...m, folder_id: targetFolderId } : m)));
-    moveMediaItem(mediaId, targetFolderId);
-    router.refresh();
+  function handleNativeDrop(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDraggingOsFile(false);
+    if (e.dataTransfer.files.length > 0) onUploadFiles(e.dataTransfer.files);
   }
+
+  const { roots, rootFiles } = useMemo(() => buildTree(folders, media), [folders, media]);
 
   function sortFiles(items: MediaItem[]) {
     const copy = [...items];
@@ -223,29 +193,24 @@ export function FileTree({
   if (roots.length === 0 && rootFiles.length === 0) {
     return (
       <div
+        onDragEnter={handleNativeDragEnter}
+        onDragOver={handleNativeDragOver}
+        onDragLeave={handleNativeDragLeave}
+        onDrop={handleNativeDrop}
         className={cn(
-          "flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border py-16 text-center",
+          "relative flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border py-16 text-center",
           className,
         )}
       >
         <p className="text-[17px] font-medium">No files here</p>
         <p className="text-sm text-muted">Upload images, videos, or PDFs, or create a folder to get started.</p>
+        {isDraggingOsFile && <UploadDropOverlay folderName={uploadTargetFolderName} />}
       </div>
     );
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-      onDragCancel={() => {
-        setDraggingId(null);
-        setDropTargetFolderId(undefined);
-      }}
-    >
+    <>
       {/* -mx-5 bleeds this whole section — header row included, so it stays
           aligned with the rows below it — out of the page's own left/right
           inset to reach the screen edges for more row width. -mt-10 pulls
@@ -259,7 +224,13 @@ export function FileTree({
           20px, not needing any sm: compensation since nothing else sits
           below this to protect) so the bottom fade gets a little more room
           too, for proportion against the top. */}
-      <div className={cn("-mx-5 -mt-10 -mb-5 flex min-h-0 flex-col sm:pt-10", className)}>
+      <div
+        onDragEnter={handleNativeDragEnter}
+        onDragOver={handleNativeDragOver}
+        onDragLeave={handleNativeDragLeave}
+        onDrop={handleNativeDrop}
+        className={cn("relative -mx-5 -mt-10 -mb-5 flex min-h-0 flex-col sm:pt-10", className)}
+      >
         {/* overflow-x-hidden (not scroll) is the point — file details and
             row actions live behind the "⋯" menu precisely so a narrow row
             never needs to scroll sideways to reach them. Sharp corners:
@@ -387,18 +358,9 @@ export function FileTree({
             />
           </div>
         </div>
+        {isDraggingOsFile && <UploadDropOverlay folderName={uploadTargetFolderName} />}
       </div>
-      <DragOverlay>
-        {draggingItem && (
-          <div className="drag-pickup flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 shadow-[var(--shadow-card)]">
-            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
-              <MediaThumb item={draggingItem} />
-            </div>
-            <span className="max-w-[220px] truncate text-[13px] font-medium">{draggingItem.name}</span>
-          </div>
-        )}
-      </DragOverlay>
-    </DndContext>
+    </>
   );
 }
 
@@ -523,6 +485,21 @@ function TreeLevel({
         fileRows
       )}
     </>
+  );
+}
+
+// z-30 puts this above everything else in the list — the title (z-10), the
+// desktop sort bar (z-10), and the blur (z-5) — since it needs to read as
+// the frontmost thing happening the instant an OS file drag enters.
+// pointer-events-none so the browser's drag hit-testing falls through to
+// whatever's underneath (where the actual handlers live) rather than this.
+function UploadDropOverlay({ folderName }: { folderName: string }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-[var(--radius-lg)] border-2 border-accent bg-accent/15">
+      <p className="rounded-full bg-surface px-4 py-2 text-[15px] font-medium text-accent shadow-[var(--shadow-card)]">
+        Drop here to upload to: {folderName}
+      </p>
+    </div>
   );
 }
 
