@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -10,8 +10,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { InlineRename } from "@/components/InlineRename";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
@@ -24,9 +23,25 @@ import {
   updatePlaylistEntryDuration,
 } from "@/lib/actions/playlists";
 import type { Playlist, PlaylistEntryWithMedia } from "@/types/domain";
+import { ThreeDotIcon, type SortDir } from "./FileTree";
 import { PlaylistEntryRow } from "./PlaylistEntryRow";
 
 export type PlaylistWithEntries = Playlist & { entries: PlaylistEntryWithMedia[] };
+
+// Manual drag-reordering is gone (see PlaylistSortMenuButton) — playlists are
+// always shown in a deterministic order instead, so a newly-created playlist
+// automatically lands in the right spot under whichever criterion is active
+// rather than needing to be dragged there.
+type PlaylistSortKey = "name" | "date";
+
+function playlistSortValue(playlist: PlaylistWithEntries, key: PlaylistSortKey): string | number {
+  switch (key) {
+    case "name":
+      return playlist.name.toLowerCase();
+    case "date":
+      return new Date(playlist.created_at).getTime();
+  }
+}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -40,7 +55,6 @@ export function PlaylistSection({
   onArmSelection,
   onCancelSelection,
   onConfirmAdd,
-  onReorderPlaylists,
   onReorderEntries,
 }: {
   className?: string;
@@ -50,14 +64,33 @@ export function PlaylistSection({
   onArmSelection: (playlistId: string) => void;
   onCancelSelection: () => void;
   onConfirmAdd: (playlistId: string) => void;
-  onReorderPlaylists: (next: PlaylistWithEntries[]) => void;
   onReorderEntries: (playlistId: string, nextEntries: PlaylistEntryWithMedia[]) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creatingId, setCreatingId] = useState<string | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const [sortKey, setSortKey] = useState<PlaylistSortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function toggleSort(key: PlaylistSortKey) {
+    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function sortPlaylists(items: PlaylistWithEntries[]) {
+    const copy = [...items];
+    copy.sort((a, b) => {
+      const av = playlistSortValue(a, sortKey);
+      const bv = playlistSortValue(b, sortKey);
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return copy;
+  }
 
   function toggleExpanded(id: string) {
     setExpanded((current) => {
@@ -77,14 +110,6 @@ export function PlaylistSection({
     });
   }
 
-  function handleDragEndPlaylists(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = playlists.findIndex((p) => p.id === active.id);
-    const newIndex = playlists.findIndex((p) => p.id === over.id);
-    onReorderPlaylists(arrayMove(playlists, oldIndex, newIndex));
-  }
-
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
       {/* relative z-10 keeps this above the list below, which overlaps up
@@ -92,9 +117,12 @@ export function PlaylistSection({
           cards fade away rather than popping in and out below this row. */}
       <div className="relative z-10 flex items-center justify-between">
         <h2 className="text-[28px] font-semibold tracking-tight">Playlists</h2>
-        <Button onClick={handleCreate} disabled={pending}>
-          + Create
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button onClick={handleCreate} disabled={pending}>
+            + Create
+          </Button>
+          <PlaylistSortMenuButton sortKey={sortKey} sortDir={sortDir} onToggleSort={toggleSort} />
+        </div>
       </div>
 
       {playlists.length === 0 ? (
@@ -119,28 +147,24 @@ export function PlaylistSection({
         // to clear Safari's floating toolbar — all while the container's
         // own height (flex-1, reaching the screen edge) stays untouched.
         <div className="scroll-fade-y playlists-bottom-inset -mt-10 mx-[-10px] min-h-0 flex-1 overflow-y-auto pt-10">
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndPlaylists}>
-            <SortableContext items={playlists.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-              <ul className="flex flex-col gap-3">
-                {playlists.map((playlist) => (
-                  <PlaylistRow
-                    key={playlist.id}
-                    playlist={playlist}
-                    isExpanded={expanded.has(playlist.id)}
-                    onToggleExpanded={() => toggleExpanded(playlist.id)}
-                    startInRename={creatingId === playlist.id}
-                    onDoneRenaming={() => setCreatingId(null)}
-                    isActive={activePlaylistId === playlist.id}
-                    selectedCount={selectedCount}
-                    onArmSelection={() => onArmSelection(playlist.id)}
-                    onCancelSelection={onCancelSelection}
-                    onConfirmAdd={() => onConfirmAdd(playlist.id)}
-                    onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
+          <ul className="flex flex-col gap-3">
+            {sortPlaylists(playlists).map((playlist) => (
+              <PlaylistRow
+                key={playlist.id}
+                playlist={playlist}
+                isExpanded={expanded.has(playlist.id)}
+                onToggleExpanded={() => toggleExpanded(playlist.id)}
+                startInRename={creatingId === playlist.id}
+                onDoneRenaming={() => setCreatingId(null)}
+                isActive={activePlaylistId === playlist.id}
+                selectedCount={selectedCount}
+                onArmSelection={() => onArmSelection(playlist.id)}
+                onCancelSelection={onCancelSelection}
+                onConfirmAdd={() => onConfirmAdd(playlist.id)}
+                onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
+              />
+            ))}
+          </ul>
         </div>
       )}
     </div>
@@ -176,9 +200,6 @@ function PlaylistRow({
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: playlist.id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
 
   const totalSeconds = playlist.entries.reduce((sum, e) => sum + e.duration_seconds, 0);
   const fileCount = playlist.entries.length;
@@ -217,22 +238,8 @@ function PlaylistRow({
   }
 
   return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className="rounded-[var(--radius-md)] border border-border bg-surface p-3"
-    >
+    <li className="rounded-[var(--radius-md)] border border-border bg-surface p-3">
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          className="cursor-grab touch-none px-1 text-muted active:cursor-grabbing"
-          aria-label="Drag to reorder"
-        >
-          ≡
-        </button>
-
         <button type="button" onClick={onToggleExpanded} className="text-muted">
           <Chevron open={isExpanded} />
         </button>
@@ -336,5 +343,89 @@ function Chevron({ open }: { open: boolean }) {
     >
       <polyline points="9 6 15 12 9 18" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+// Unlike FileTree's mobile-only version of this button, this one shows on
+// every viewport — playlists have no separate desktop sort bar to fall back
+// on, so this is the only way to control their order. Stays open after
+// picking an option, same as FileTree's menu.
+function PlaylistSortMenuButton({
+  sortKey,
+  sortDir,
+  onToggleSort,
+}: {
+  sortKey: PlaylistSortKey;
+  sortDir: SortDir;
+  onToggleSort: (key: PlaylistSortKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Playlist sort options"
+        aria-expanded={open}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+      >
+        <ThreeDotIcon className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]">
+          <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
+          <PlaylistSortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+          <PlaylistSortMenuItem label="Date Created" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlaylistSortMenuItem({
+  label,
+  sortKey,
+  active,
+  dir,
+  onClick,
+}: {
+  label: string;
+  sortKey: PlaylistSortKey;
+  active: PlaylistSortKey;
+  dir: SortDir;
+  onClick: (key: PlaylistSortKey) => void;
+}) {
+  const isActive = active === sortKey;
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(sortKey)}
+      className={cn(
+        "flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+        isActive ? "font-medium text-foreground" : "text-muted",
+      )}
+    >
+      {label}
+      {isActive && <span className="text-[10px]">{dir === "asc" ? "▲" : "▼"}</span>}
+    </button>
   );
 }

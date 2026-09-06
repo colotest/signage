@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
-import { addMediaToPlaylist, reorderPlaylistEntries, reorderPlaylists } from "@/lib/actions/playlists";
+import { addMediaToPlaylist, reorderPlaylistEntries } from "@/lib/actions/playlists";
 import { cn } from "@/lib/utils/cn";
 import { FileTree, MENU_ITEM_CLASS, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
@@ -73,12 +73,6 @@ export function LibraryView({
     setSelectedMediaIds(new Set());
   }
 
-  function reorderPlaylistsLocal(next: PlaylistWithEntries[]) {
-    setLocalPlaylists(next);
-    reorderPlaylists(next.map((p) => p.id));
-    router.refresh();
-  }
-
   function reorderEntriesLocal(playlistId: string, nextEntries: PlaylistEntryWithMedia[]) {
     setLocalPlaylists((current) =>
       current.map((p) => (p.id === playlistId ? { ...p, entries: nextEntries } : p)),
@@ -132,11 +126,12 @@ export function LibraryView({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
-      {/* Two fixed halves, each exactly half of the available height — the
-          file tree and the playlists below it are always both in view at
-          once, with only their own content scrolling internally, rather
-          than the whole page growing past the viewport. */}
-      <section className="flex min-h-0 flex-1 flex-col">
+      {/* Two fixed sections, both always in view at once, with only their
+          own content scrolling internally rather than the whole page
+          growing past the viewport. On mobile the split is 3:4 (Media
+          smaller, Playlists larger) rather than an even half each — sm:
+          resets that back to equal halves on desktop. */}
+      <section className="flex min-h-0 flex-[3] flex-col sm:flex-1">
         {/* relative z-10 keeps this above FileTree's own list, which now
             overlaps up underneath it (see FileTree) so scrolled-past rows
             fade away rather than popping in and out below this row. */}
@@ -174,7 +169,7 @@ export function LibraryView({
         />
       </section>
 
-      <section className="flex min-h-0 flex-1 flex-col">
+      <section className="flex min-h-0 flex-[4] flex-col sm:flex-1">
         <PlaylistSection
           className="min-h-0 flex-1"
           playlists={localPlaylists}
@@ -183,7 +178,6 @@ export function LibraryView({
           onArmSelection={armSelection}
           onCancelSelection={cancelSelection}
           onConfirmAdd={confirmAdd}
-          onReorderPlaylists={reorderPlaylistsLocal}
           onReorderEntries={reorderEntriesLocal}
         />
       </section>
