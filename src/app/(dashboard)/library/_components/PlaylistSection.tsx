@@ -124,19 +124,22 @@ export function PlaylistSection({
           rather than bleeding to the screen edges, just a little wider via
           the -10px side margin. Each row is its own rounded, bordered card
           (see PlaylistRow) rather than this whole list being one bordered
-          box. -mt-10 pulls the list up 40px, overlapping the title row
-          above (which needs its own relative z-10 to stay on top) so
-          scrolled-past cards fade away underneath it instead of popping in
-          and out below it. pt-10/playlists-bottom-inset (padding on this
-          scrolling element itself, not on the <ul> it wraps — percentage
-          heights on a child of an auto-overflow box are exactly the kind of
-          thing Safari gets flexbox-inconsistent about) keep scroll-fade-y's
-          (now 40px) fade off the first/last card and, at the bottom only
-          since this is the last section on the page, reserve enough room
-          to clear Safari's floating toolbar — all while the container's
-          own height (flex-1, reaching the screen edge) stays untouched.
-          no-scrollbar: the native scrollbar looked odd crossing the
-          blurred/faded edges.
+          box. -mt-10/-mb-5 pull the list up 40px and down 20px past its own
+          normal top/bottom edges, overlapping the title row above (which
+          needs its own relative z-10 to stay on top) and the space below —
+          asymmetric on purpose, matching what reads well against the
+          smaller bottom fade. This is what lets scrolled-past cards fade
+          away underneath the title, top and bottom, instead of popping in
+          and out at a hard edge. pt-10/safari-toolbar-inset (padding on
+          this scrolling element itself, not on the <ul> it wraps —
+          percentage heights on a child of an auto-overflow box are exactly
+          the kind of thing Safari gets flexbox-inconsistent about) keep
+          scroll-fade-y's (now 40px) fade off the first/last card and, at
+          the bottom only since this is the last section on the page,
+          reserve enough room to clear Safari's floating toolbar — all
+          while the container's own height (flex-1, reaching the screen
+          edge) stays untouched. no-scrollbar: the native scrollbar looked
+          odd crossing the blurred/faded edges.
 
           ProgressiveBlurEdge is a SIBLING of the scrolling div, not a child
           of it — a position:absolute descendant still scrolls along with
@@ -146,8 +149,8 @@ export function PlaylistSection({
           div the relative anchor instead, with the scrolling div sized via
           inset-0, is what keeps the blur pinned in place while content
           scrolls underneath it. */}
-      <div className="relative -mt-10 mx-[-10px] min-h-0 flex-1">
-        <div className="scroll-fade-y no-scrollbar playlists-bottom-inset absolute inset-0 overflow-y-auto pt-10">
+      <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
+        <div className="scroll-fade-y no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto pt-10">
           <ul className="flex flex-col gap-3">
             {/* The "+ Create" trigger lives as the list's own first entry —
                 not a header button — so it scrolls out of view with the

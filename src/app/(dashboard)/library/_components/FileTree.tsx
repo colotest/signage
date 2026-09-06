@@ -241,8 +241,11 @@ export function FileTree({
           scrolled-past rows fade away underneath that title instead of
           popping in and out below it. sm:pt-10 cancels that shift back out
           once the sort bar becomes visible, so its own position on desktop
-          is unaffected. */}
-      <div className={cn("-mx-5 -mt-10 flex min-h-0 flex-col sm:pt-10", className)}>
+          is unaffected. -mb-5 does the same at the bottom edge (a smaller
+          20px, not needing any sm: compensation since nothing else sits
+          below this to protect) so the bottom fade gets a little more room
+          too, for proportion against the top. */}
+      <div className={cn("-mx-5 -mt-10 -mb-5 flex min-h-0 flex-col sm:pt-10", className)}>
         {/* overflow-x-hidden (not scroll) is the point — file details and
             row actions live behind the "⋯" menu precisely so a narrow row
             never needs to scroll sideways to reach them. Sharp corners:

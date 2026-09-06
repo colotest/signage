@@ -183,14 +183,14 @@ body {
 }
 
 /* The app shell now genuinely extends behind iOS Safari's floating
-   toolbar (see app-shell-height above), so the playlists list — the last
-   thing on the page, immediately followed by that toolbar — needs more
-   bottom clearance than scroll-fade-y's own 20px alone, so its last card
-   sits comfortably above the toolbar rather than right at its edge. A
-   plain fixed size — not env(safe-area-inset-bottom), which doesn't
-   populate in this app's regular (non-standalone) Safari tab context —
-   measured on device (90px). */
-.playlists-bottom-inset {
+   toolbar (see app-shell-height above), so content that can end up last
+   on a page — the playlists list, or the screens grid's own bottom row —
+   needs more bottom clearance than scroll-fade-y's own 20px alone, so it
+   sits comfortably above the toolbar rather than right at (or under) its
+   edge. A plain fixed size — not env(safe-area-inset-bottom), which
+   doesn't populate in this app's regular (non-standalone) Safari tab
+   context — measured on device (90px). */
+.safari-toolbar-inset {
   padding-bottom: 90px;
 }
 

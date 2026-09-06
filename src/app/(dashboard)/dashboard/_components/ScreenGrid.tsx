@@ -8,7 +8,11 @@ type ScreenWithPlaylist = Screen & { playlist: PlaylistItemWithMedia[] };
 
 export function ScreenGrid({ screens }: { screens: ScreenWithPlaylist[] }) {
   return (
-    <div className="flex flex-col gap-5">
+    // safari-toolbar-inset: this page scrolls via the shared dashboard
+    // <main>, not an internal fixed-height scroll area like Media/
+    // Playlists — without this, the bottom row's info card ends up behind
+    // iOS Safari's floating toolbar with no way to scroll it clear.
+    <div className="safari-toolbar-inset flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <h1 className="text-[28px] font-semibold tracking-tight">Screens</h1>
         <AddScreenButton />
