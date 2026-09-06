@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
 import { addMediaToPlaylist, reorderPlaylistEntries, reorderPlaylists } from "@/lib/actions/playlists";
 import { cn } from "@/lib/utils/cn";
-import { FileTree, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
+import { FileTree, MENU_ITEM_CLASS, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
 import { UploadDropzone } from "./UploadDropzone";
 
@@ -24,6 +24,7 @@ export function LibraryView({
   const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -135,7 +136,7 @@ export function LibraryView({
           file tree and the playlists below it are always both in view at
           once, with only their own content scrolling internally, rather
           than the whole page growing past the viewport. */}
-      <section className="flex min-h-0 flex-1 flex-col gap-4">
+      <section className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-[28px] font-semibold tracking-tight">Media</h1>
           <div className="flex items-center gap-3">
@@ -143,7 +144,12 @@ export function LibraryView({
               Uploading to: <span className="text-foreground">{uploadTargetFolder ? uploadTargetFolder.name : "Root"}</span>
             </span>
             <UploadDropzone folderId={uploadTargetId} />
-            <SortMenuButton sortKey={sortKey} sortDir={sortDir} onToggleSort={toggleSort} />
+            <MobileFileMenuButton
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onToggleSort={toggleSort}
+              onNewFolder={() => setCreatingIn(null)}
+            />
           </div>
         </div>
 
@@ -160,6 +166,8 @@ export function LibraryView({
           sortKey={sortKey}
           sortDir={sortDir}
           onToggleSort={toggleSort}
+          creatingIn={creatingIn}
+          onCreatingChange={setCreatingIn}
         />
       </section>
 
@@ -180,18 +188,22 @@ export function LibraryView({
   );
 }
 
-// Mobile-only stand-in for FileTree's own sort bar (hidden below the sm
-// breakpoint — see FileTree) — same Name/Date Added options, just tucked
-// behind a "⋯" popup next to Upload instead of a dedicated row, so the
-// file list gets that row's height back on a small screen.
-function SortMenuButton({
+// Mobile-only stand-in for FileTree's own sort bar and its "+ New Folder"
+// trigger (both hidden below the sm breakpoint — see FileTree) — tucked
+// behind a "⋯" popup next to Upload instead, so the file list gets that
+// space back on a small screen. Stays open after picking an option (the
+// user may want to flip a sort direction more than once, or glance at the
+// list after starting a new folder) — only an outside tap/Escape closes it.
+function MobileFileMenuButton({
   sortKey,
   sortDir,
   onToggleSort,
+  onNewFolder,
 }: {
   sortKey: SortKey;
   sortDir: SortDir;
   onToggleSort: (key: SortKey) => void;
+  onNewFolder: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -217,7 +229,7 @@ function SortMenuButton({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        aria-label="Sort options"
+        aria-label="File options"
         aria-expanded={open}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
@@ -225,12 +237,14 @@ function SortMenuButton({
       </button>
 
       {open && (
-        <div
-          onClick={() => setOpen(false)}
-          className="absolute right-0 top-full z-20 mt-1 w-40 rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
-        >
+        <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]">
+          <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
           <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
           <SortMenuItem label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+          <div className="my-1 border-t border-border" />
+          <button type="button" onClick={onNewFolder} className={MENU_ITEM_CLASS}>
+            + New Folder
+          </button>
         </div>
       )}
     </div>

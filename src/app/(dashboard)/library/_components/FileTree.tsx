@@ -94,6 +94,8 @@ export function FileTree({
   sortKey,
   sortDir,
   onToggleSort,
+  creatingIn,
+  onCreatingChange,
 }: {
   className?: string;
   folders: Folder[];
@@ -107,10 +109,11 @@ export function FileTree({
   sortKey: SortKey;
   sortDir: SortDir;
   onToggleSort: (key: SortKey) => void;
+  creatingIn: string | null | undefined;
+  onCreatingChange: (id: string | null | undefined) => void;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
   // Mouse picks up on a small drag (immediate, like any desktop drag); touch
   // instead waits out a held press before engaging — a plain touchstart (as
   // opposed to one that's about to become a scroll) doesn't move much within
@@ -190,6 +193,13 @@ export function FileTree({
     });
   }
 
+  // Creating a subfolder expands its parent so the new inline input is
+  // actually visible where it lands.
+  function startCreatingIn(id: string | null) {
+    onCreatingChange(id);
+    if (id) setExpanded((c) => new Set(c).add(id));
+  }
+
   // Expanding a folder makes it the upload target — collapsing one hands
   // that back to its parent (or Root) rather than leaving a now-collapsed,
   // no-longer-visible folder as the target.
@@ -245,12 +255,12 @@ export function FileTree({
             never needs to scroll sideways to reach them. Sharp corners:
             edge-to-edge leaves no room for rounding to actually read.
             scroll-fade-y stands in for the frame a rounded/bordered box
-            would otherwise give scrolled content to fade into — pt-5/pb-5
-            (matching the fade's own 20px) keep that fade off the first and
-            last row themselves, landing on blank padding instead. */}
+            would otherwise give scrolled content to fade into — pt-2.5/
+            pb-2.5 (matching the fade's own 10px) keep that fade off the
+            first and last row themselves, landing on blank padding instead. */}
         <div
           style={{ WebkitTouchCallout: "none" }}
-          className="scroll-fade-y min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto pt-5 pb-5"
+          className="scroll-fade-y min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto pt-2.5 pb-2.5"
         >
           <div>
             <TreeLevel
@@ -260,11 +270,8 @@ export function FileTree({
               expanded={expanded}
               onFolderRowClick={handleFolderRowClick}
               creatingIn={creatingIn}
-              onStartCreating={(id) => {
-                setCreatingIn(id);
-                if (id) setExpanded((c) => new Set(c).add(id));
-              }}
-              onDoneCreating={() => setCreatingIn(undefined)}
+              onStartCreating={startCreatingIn}
+              onDoneCreating={() => onCreatingChange(undefined)}
               selectionMode={selectionMode}
               selectedIds={selectedIds}
               onToggleMedia={onToggleMedia}
@@ -275,10 +282,16 @@ export function FileTree({
               router={router}
             />
             {creatingIn === null ? (
-              <NewFolderRow depth={0} parentId={null} onDone={() => setCreatingIn(undefined)} router={router} />
+              <NewFolderRow depth={0} parentId={null} onDone={() => onCreatingChange(undefined)} router={router} />
             ) : (
-              <div className="px-4 py-2">
-                <button type="button" onClick={() => setCreatingIn(null)} className="text-[13px] font-medium text-accent">
+              // Hidden on mobile — the mobile trigger for this now lives in
+              // the "⋯" menu next to Upload (LibraryView), alongside Sort by.
+              <div className="hidden px-4 py-2 sm:block">
+                <button
+                  type="button"
+                  onClick={() => startCreatingIn(null)}
+                  className="text-[13px] font-medium text-accent"
+                >
                   + New Folder
                 </button>
               </div>
@@ -550,7 +563,7 @@ function MenuItem({
   );
 }
 
-const MENU_ITEM_CLASS =
+export const MENU_ITEM_CLASS =
   "block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]";
 
 function FolderRow({
