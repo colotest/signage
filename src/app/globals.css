@@ -103,14 +103,19 @@ body {
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
 }
 
-/* viewport-fit=cover (see root layout) is what lets the app shell extend
-   this far down in the first place — into the strip iOS Safari's floating
-   bottom toolbar sits over, unreachable by touch even though it's part of
-   the page. Only the playlists list's bottom edge actually reaches there,
-   so only it needs padding that size (env(safe-area-inset-bottom)) on top
-   of the ordinary scroll-fade-y inset, so its last card scrolls clear of
-   the toolbar instead of stopping underneath it. */
+/* svh (see root layout) already stops exactly at the top of iOS Safari's
+   floating toolbar — the app shell doesn't extend behind it, so there's no
+   reserved-but-covered strip to account for here, just the ordinary
+   "don't end flush against the next thing" instinct: the playlists list is
+   the last thing on the page, immediately followed by that toolbar, so its
+   last card needs more clearance below it than a fixed value like
+   scroll-fade-y's 20px alone would give, to sit comfortably above it
+   rather than right at the edge. A plain fixed size — not
+   env(safe-area-inset-bottom) — on purpose: that env() value plus this
+   nested scroll/mask context was the actual cause of a real regression
+   (the whole section stopped short of the screen edge in Safari) when
+   tried here before. */
 .playlists-bottom-inset {
-  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  padding-bottom: 56px;
 }
 
