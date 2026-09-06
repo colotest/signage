@@ -143,14 +143,19 @@ export function PlaylistSection({
 
           ProgressiveBlurEdge is a SIBLING of the scrolling div, not a child
           of it — a position:absolute descendant still scrolls along with
-          the rest of a scroll container's content (only mask-image on the
-          scrolling box itself is exempt from that, which is why
-          scroll-fade-y works applied directly to it). Making this outer
-          div the relative anchor instead, with the scrolling div sized via
-          inset-0, is what keeps the blur pinned in place while content
-          scrolls underneath it. */}
-      <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
-        <div className="scroll-fade-y no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto pt-10">
+          the rest of a scroll container's content (only mask-image is
+          exempt from that). scroll-fade-y lives on this outer div, the
+          shared parent of both the scrolling div and the blur, rather than
+          on the scrolling div alone — masking only the scrolling div left
+          the blur unmasked, so it stayed at full strength (the strongest
+          layers sit nearest the true edge) right up to the edge even where
+          the color fade had already faded the content itself to invisible.
+          One shared mask over both means the blur fades away in lockstep
+          with the content instead of outliving it. The scrolling div is
+          sized via inset-0 against this same div, which is also what keeps
+          the blur pinned in place while content scrolls underneath it. */}
+      <div className="scroll-fade-y relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
+        <div className="no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto pt-10">
           <ul className="flex flex-col gap-3">
             {/* The "+ Create" trigger lives as the list's own first entry —
                 not a header button — so it scrolls out of view with the

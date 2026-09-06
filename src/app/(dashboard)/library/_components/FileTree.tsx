@@ -13,6 +13,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { MediaThumb } from "@/components/MediaThumb";
@@ -133,33 +134,42 @@ export function FileTree({
     setLocalMedia(media);
   }, [media]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // The *resolved* drop target — a folder id, or null for root — rather
+  // than which specific row/file is under the pointer. Drives a border
+  // around the whole folder (row + its expanded files) or, for root, around
+  // its files as a group, instead of just the one row being hovered.
+  const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null | undefined>(undefined);
 
   const { roots, rootFiles } = useMemo(() => buildTree(folders, localMedia), [folders, localMedia]);
   const mediaById = useMemo(() => new Map(localMedia.map((m) => [m.id, m])), [localMedia]);
   const draggingItem = draggingId ? (mediaById.get(draggingId) ?? null) : null;
 
+  // Dropping directly onto a folder row targets that folder; dropping onto
+  // a file row (root-level or nested) targets whichever folder that file
+  // itself lives in — this is what makes dropping among a folder's (or
+  // root's) own files work as a destination, not just its row.
+  function resolveDropTargetFolderId(overId: string): string | null | undefined {
+    if (overId.startsWith("folder-")) return overId.slice("folder-".length);
+    if (overId.startsWith("file-")) return mediaById.get(overId.slice("file-".length))?.folder_id ?? null;
+    return undefined;
+  }
+
   function handleDragStart(event: DragStartEvent) {
     setDraggingId(String(event.active.id));
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    setDropTargetFolderId(event.over ? resolveDropTargetFolderId(String(event.over.id)) : undefined);
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setDraggingId(null);
+    setDropTargetFolderId(undefined);
     if (!over) return;
 
     const mediaId = String(active.id);
-    const overId = String(over.id);
-
-    // Dropping directly onto a folder row targets that folder; dropping
-    // onto a file row (root-level or nested) targets whichever folder that
-    // file itself lives in — this is what makes dropping among a folder's
-    // (or root's) own files work as a destination, not just its row.
-    let targetFolderId: string | null | undefined;
-    if (overId.startsWith("folder-")) {
-      targetFolderId = overId.slice("folder-".length);
-    } else if (overId.startsWith("file-")) {
-      targetFolderId = mediaById.get(overId.slice("file-".length))?.folder_id ?? null;
-    }
+    const targetFolderId = resolveDropTargetFolderId(String(over.id));
     if (targetFolderId === undefined) return;
 
     const item = mediaById.get(mediaId);
@@ -229,8 +239,12 @@ export function FileTree({
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setDraggingId(null)}
+      onDragCancel={() => {
+        setDraggingId(null);
+        setDropTargetFolderId(undefined);
+      }}
     >
       {/* -mx-5 bleeds this whole section — header row included, so it stays
           aligned with the rows below it — out of the page's own left/right
@@ -250,10 +264,8 @@ export function FileTree({
             row actions live behind the "⋯" menu precisely so a narrow row
             never needs to scroll sideways to reach them. Sharp corners:
             edge-to-edge leaves no room for rounding to actually read.
-            scroll-fade-y stands in for the frame a rounded/bordered box
-            would otherwise give scrolled content to fade into — pt-10/pb-10
-            (matching the fade's own 40px) keep that fade off the first and
-            last row themselves, landing on blank padding instead.
+            pt-10/pb-10 (matching the fade's own 40px) keep the fade off the
+            first and last row themselves, landing on blank padding instead.
             no-scrollbar: the native scrollbar track/thumb looked odd
             crossing the blurred/faded edges, and this list is easily
             scrollable by touch/trackpad without it.
@@ -261,54 +273,68 @@ export function FileTree({
             ProgressiveBlurEdge is a SIBLING of the scrolling div, not a
             child of it — a position:absolute descendant still scrolls along
             with the rest of a scroll container's content (only mask-image
-            on the scrolling box itself is exempt from that, which is why
-            scroll-fade-y works applied directly to it). Making this wrapper
-            the relative anchor instead, with the scrolling div sized via
-            inset-0, is what keeps the blur pinned in place while content
-            scrolls underneath it. */}
+            on the scrolling box itself is exempt from that). Making this
+            wrapper the relative anchor instead, with the scrolling div
+            sized via inset-0, is what keeps the blur pinned in place while
+            content scrolls underneath it.
+
+            scroll-fade-y itself lives one level further out, on the div
+            wrapping BOTH the scrolling content and the blur — masking only
+            the scrolling div left the blur unmasked, so it stayed at full
+            strength (the strongest layers are the ones nearest the true
+            edge) right up to the edge even where the color fade had
+            already faded the content itself to invisible. Sharing one mask
+            over both means the blur fades away in lockstep with the
+            content instead of outliving it. The sort bar stays *outside*
+            this masked div (siblings only share it if they're inside it) so
+            it stays fully opaque regardless. */}
         <div className="relative min-h-0 flex-1">
-          <div
-            style={{ WebkitTouchCallout: "none" }}
-            className="scroll-fade-y no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
-          >
-            <div>
-              <TreeLevel
-                folders={sortFolders(roots)}
-                files={sortFiles(rootFiles)}
-                depth={0}
-                expanded={expanded}
-                onFolderRowClick={handleFolderRowClick}
-                creatingIn={creatingIn}
-                onStartCreating={startCreatingIn}
-                onDoneCreating={() => onCreatingChange(undefined)}
-                selectionMode={selectionMode}
-                selectedIds={selectedIds}
-                onToggleMedia={onToggleMedia}
-                onToggleFolderIds={onToggleFolderIds}
-                uploadTargetId={uploadTargetId}
-                sortFiles={sortFiles}
-                sortFolders={sortFolders}
-                router={router}
-              />
-              {creatingIn === null ? (
-                <NewFolderRow depth={0} parentId={null} onDone={() => onCreatingChange(undefined)} router={router} />
-              ) : (
-                // Hidden on mobile — the mobile trigger for this now lives in
-                // the "⋯" menu next to Upload (LibraryView), alongside Sort by.
-                <div className="hidden px-4 py-2 sm:block">
-                  <button
-                    type="button"
-                    onClick={() => startCreatingIn(null)}
-                    className="text-[13px] font-medium text-accent"
-                  >
-                    + New Folder
-                  </button>
-                </div>
-              )}
+          <div className="scroll-fade-y absolute inset-0">
+            <div
+              style={{ WebkitTouchCallout: "none" }}
+              className="no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
+            >
+              <div>
+                <TreeLevel
+                  folders={sortFolders(roots)}
+                  files={sortFiles(rootFiles)}
+                  depth={0}
+                  isRoot
+                  expanded={expanded}
+                  onFolderRowClick={handleFolderRowClick}
+                  creatingIn={creatingIn}
+                  onStartCreating={startCreatingIn}
+                  onDoneCreating={() => onCreatingChange(undefined)}
+                  selectionMode={selectionMode}
+                  selectedIds={selectedIds}
+                  onToggleMedia={onToggleMedia}
+                  onToggleFolderIds={onToggleFolderIds}
+                  uploadTargetId={uploadTargetId}
+                  sortFiles={sortFiles}
+                  sortFolders={sortFolders}
+                  dropTargetFolderId={dropTargetFolderId}
+                  router={router}
+                />
+                {creatingIn === null ? (
+                  <NewFolderRow depth={0} parentId={null} onDone={() => onCreatingChange(undefined)} router={router} />
+                ) : (
+                  // Hidden on mobile — the mobile trigger for this now lives in
+                  // the "⋯" menu next to Upload (LibraryView), alongside Sort by.
+                  <div className="hidden px-4 py-2 sm:block">
+                    <button
+                      type="button"
+                      onClick={() => startCreatingIn(null)}
+                      className="text-[13px] font-medium text-accent"
+                    >
+                      + New Folder
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
+            <ProgressiveBlurEdge side="top" />
+            <ProgressiveBlurEdge side="bottom" />
           </div>
-          <ProgressiveBlurEdge side="top" />
-          <ProgressiveBlurEdge side="bottom" />
           {/* Desktop-only sort bar — absolutely positioned so it overlays
               the blur/fade zone instead of taking its own row above it,
               which used to leave a visible gap (its own height, plus the
@@ -380,6 +406,7 @@ function TreeLevel({
   folders,
   files,
   depth,
+  isRoot,
   expanded,
   onFolderRowClick,
   creatingIn,
@@ -392,11 +419,13 @@ function TreeLevel({
   uploadTargetId,
   sortFiles,
   sortFolders,
+  dropTargetFolderId,
   router,
 }: {
   folders: FolderNode[];
   files: MediaItem[];
   depth: number;
+  isRoot?: boolean;
   expanded: Set<string>;
   onFolderRowClick: (folder: FolderNode) => void;
   creatingIn: string | null | undefined;
@@ -409,8 +438,21 @@ function TreeLevel({
   uploadTargetId: string | null;
   sortFiles: (items: MediaItem[]) => MediaItem[];
   sortFolders: (nodes: FolderNode[]) => FolderNode[];
+  dropTargetFolderId: string | null | undefined;
   router: Router;
 }) {
+  const fileRows = files.map((item) => (
+    <FileRow
+      key={item.id}
+      item={item}
+      depth={depth}
+      selectionMode={selectionMode}
+      selected={selectedIds.has(item.id)}
+      onToggleSelect={() => onToggleMedia(item.id)}
+      router={router}
+    />
+  ));
+
   return (
     <>
       {folders.map((folder) => {
@@ -425,7 +467,13 @@ function TreeLevel({
               : "some";
 
         return (
-          <div key={folder.id}>
+          // The drop-target highlight wraps the folder's row *and* its
+          // expanded contents as one group, rather than whichever single
+          // row happens to be under the pointer — see dropTargetFolderId.
+          <div
+            key={folder.id}
+            className={cn(dropTargetFolderId === folder.id && "rounded-[var(--radius-md)] ring-2 ring-inset ring-accent")}
+          >
             <FolderRow
               folder={folder}
               depth={depth}
@@ -455,6 +503,7 @@ function TreeLevel({
                 uploadTargetId={uploadTargetId}
                 sortFiles={sortFiles}
                 sortFolders={sortFolders}
+                dropTargetFolderId={dropTargetFolderId}
                 router={router}
               />
             )}
@@ -465,17 +514,14 @@ function TreeLevel({
         );
       })}
 
-      {files.map((item) => (
-        <FileRow
-          key={item.id}
-          item={item}
-          depth={depth}
-          selectionMode={selectionMode}
-          selected={selectedIds.has(item.id)}
-          onToggleSelect={() => onToggleMedia(item.id)}
-          router={router}
-        />
-      ))}
+      {/* Root has no row of its own to anchor a highlight to, so when it's
+          the drop target, its files get wrapped as a group instead — the
+          equivalent of a folder's row + its own files getting one border. */}
+      {isRoot && dropTargetFolderId === null ? (
+        <div className="rounded-[var(--radius-md)] ring-2 ring-inset ring-accent">{fileRows}</div>
+      ) : (
+        fileRows
+      )}
     </>
   );
 }
@@ -660,7 +706,11 @@ function FolderRow({
   router: Router;
 }) {
   const [pending, startTransition] = useTransition();
-  const { setNodeRef, isOver } = useDroppable({ id: `folder-${folder.id}` });
+  // isOver drives no styling of its own anymore — the wrapping div in
+  // TreeLevel highlights the whole folder group instead of just this row —
+  // but the droppable registration itself still needs to live here for hit
+  // testing.
+  const { setNodeRef } = useDroppable({ id: `folder-${folder.id}` });
 
   function handleDelete() {
     if (!window.confirm(`Delete folder "${folder.name}"? Subfolders are removed too; files inside move to Unsorted.`)) return;
@@ -693,11 +743,7 @@ function FolderRow({
       onClick={handleRowClick}
       className={cn(
         "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
-        isOver
-          ? "bg-accent/25"
-          : isHighlighted
-            ? "bg-accent/10 dark:bg-accent/15"
-            : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
+        isHighlighted ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
       {selectionMode && (
@@ -778,7 +824,9 @@ function FileRow({
   // (including root) the file itself lives in — otherwise dropping a
   // dragged item onto another file (rather than precisely onto a folder
   // row) had no droppable to land on at all, and it just snapped back.
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `file-${item.id}` });
+  // isOver itself drives no styling here anymore — the group wrapper in
+  // TreeLevel highlights the whole folder (or root) a file belongs to.
+  const { setNodeRef: setDropRef } = useDroppable({ id: `file-${item.id}` });
 
   function handleDelete() {
     if (!window.confirm(`Delete "${item.name}"? This removes it from any screens or playlists using it.`)) return;
@@ -808,7 +856,6 @@ function FileRow({
         "flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0",
         selectionMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
-        isOver && "ring-2 ring-inset ring-accent",
         selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
