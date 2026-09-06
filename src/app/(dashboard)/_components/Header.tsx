@@ -15,7 +15,17 @@ export function Header() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[var(--surface-elevated)] px-5 py-3 backdrop-blur-xl">
+    // The header's own background already reaches the true top edge, under
+    // the status bar (viewport-fit=cover + the app shell's lvh-based
+    // height) — it's already translucent + blurred, so that's the status
+    // bar area's "translucent" look for free, with no theme-color needed
+    // to force a flat tint over it. pt-[max(env(safe-area-inset-top),12px)]
+    // just pushes the header's own *content* down far enough to clear the
+    // status bar's icons instead of colliding with them, using that
+    // reserved space as the header's top spacing rather than adding more
+    // on top of it. Falls back to the original 12px anywhere the inset is
+    // 0 (desktop), so nothing changes there.
+    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[var(--surface-elevated)] px-5 pb-3 pt-[max(env(safe-area-inset-top),12px)] backdrop-blur-xl">
       <nav className="flex items-center gap-5">
         <span className={`${brandFont.className} mt-[0.1em] text-[38px] uppercase tracking-tight`}>
           Colo Cloud
