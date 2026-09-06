@@ -130,6 +130,18 @@ body {
   }
 }
 
+/* A visible scrollbar track/thumb crossing a blurred, faded edge looks like
+   a stray hard-edged rectangle cutting through it — these lists are easily
+   scrollable by touch/trackpad without one, so it's hidden entirely rather
+   than just styled. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide
    scrolled-past content popping in and out at the top/bottom — this fades
    it instead. Static (not scroll-position-aware): simpler, and the fade

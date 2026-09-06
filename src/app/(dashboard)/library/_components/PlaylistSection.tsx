@@ -115,80 +115,82 @@ export function PlaylistSection({
       {/* relative z-10 keeps this above the list below, which overlaps up
           underneath it (see the scrolling div's own -mt-10) so scrolled-past
           cards fade away rather than popping in and out below this row. */}
-      <div className="relative z-10 flex items-start justify-between">
-        <div>
-          <h2 className="text-[28px] font-semibold tracking-tight">Playlists</h2>
-          {/* Plain text, not a colored pill — a subtitle-weight action
-              rather than competing with +Upload/+New Folder for attention.
-              text-[15px] matches PlaylistRow's own title size. */}
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={pending}
-            className="text-[15px] font-medium text-accent hover:opacity-70 disabled:opacity-40"
-          >
-            + Create
-          </button>
-        </div>
+      <div className="relative z-10 flex items-center justify-between">
+        <h2 className="text-[28px] font-semibold tracking-tight">Playlists</h2>
         <PlaylistSortMenuButton sortKey={sortKey} sortDir={sortDir} onToggleSort={toggleSort} />
       </div>
 
-      {playlists.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-1 rounded-[var(--radius-lg)] border border-dashed border-border py-10 text-center">
-          <p className="text-[15px] font-medium">No playlists yet</p>
-          <p className="text-sm text-muted">Create one to start grouping frequently-used content.</p>
+      {/* Not edge-to-edge — sits inside the page's normal left/right inset
+          rather than bleeding to the screen edges, just a little wider via
+          the -10px side margin. Each row is its own rounded, bordered card
+          (see PlaylistRow) rather than this whole list being one bordered
+          box. -mt-10 pulls the list up 40px, overlapping the title row
+          above (which needs its own relative z-10 to stay on top) so
+          scrolled-past cards fade away underneath it instead of popping in
+          and out below it. pt-10/playlists-bottom-inset (padding on this
+          scrolling element itself, not on the <ul> it wraps — percentage
+          heights on a child of an auto-overflow box are exactly the kind of
+          thing Safari gets flexbox-inconsistent about) keep scroll-fade-y's
+          (now 40px) fade off the first/last card and, at the bottom only
+          since this is the last section on the page, reserve enough room
+          to clear Safari's floating toolbar — all while the container's
+          own height (flex-1, reaching the screen edge) stays untouched.
+          no-scrollbar: the native scrollbar looked odd crossing the
+          blurred/faded edges.
+
+          ProgressiveBlurEdge is a SIBLING of the scrolling div, not a child
+          of it — a position:absolute descendant still scrolls along with
+          the rest of a scroll container's content (only mask-image on the
+          scrolling box itself is exempt from that, which is why
+          scroll-fade-y works applied directly to it). Making this outer
+          div the relative anchor instead, with the scrolling div sized via
+          inset-0, is what keeps the blur pinned in place while content
+          scrolls underneath it. */}
+      <div className="relative -mt-10 mx-[-10px] min-h-0 flex-1">
+        <div className="scroll-fade-y no-scrollbar playlists-bottom-inset absolute inset-0 overflow-y-auto pt-10">
+          <ul className="flex flex-col gap-3">
+            {/* The "+ Create" trigger lives as the list's own first entry —
+                not a header button — so it scrolls out of view with the
+                rest of the list, and its spacing (same card padding as
+                PlaylistRow) matches the playlist it's about to create. */}
+            <CreatePlaylistRow onCreate={handleCreate} pending={pending} />
+            {sortPlaylists(playlists).map((playlist) => (
+              <PlaylistRow
+                key={playlist.id}
+                playlist={playlist}
+                isExpanded={expanded.has(playlist.id)}
+                onToggleExpanded={() => toggleExpanded(playlist.id)}
+                startInRename={creatingId === playlist.id}
+                onDoneRenaming={() => setCreatingId(null)}
+                isActive={activePlaylistId === playlist.id}
+                selectedCount={selectedCount}
+                onArmSelection={() => onArmSelection(playlist.id)}
+                onCancelSelection={onCancelSelection}
+                onConfirmAdd={() => onConfirmAdd(playlist.id)}
+                onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
+              />
+            ))}
+          </ul>
         </div>
-      ) : (
-        // Not edge-to-edge — sits inside the page's normal left/right inset
-        // rather than bleeding to the screen edges, just a little wider via
-        // the -10px side margin. Each row is its own rounded, bordered card
-        // (see PlaylistRow) rather than this whole list being one bordered
-        // box. -mt-10 pulls the list up 40px, overlapping the title row
-        // above (which needs its own relative z-10 to stay on top) so
-        // scrolled-past cards fade away underneath it instead of popping in
-        // and out below it. pt-10/playlists-bottom-inset (padding on this
-        // scrolling element itself, not on the <ul> it wraps — percentage
-        // heights on a child of an auto-overflow box are exactly the kind of
-        // thing Safari gets flexbox-inconsistent about) keep scroll-fade-y's
-        // (now 40px) fade off the first/last card and, at the bottom only
-        // since this is the last section on the page, reserve enough room
-        // to clear Safari's floating toolbar — all while the container's
-        // own height (flex-1, reaching the screen edge) stays untouched.
-        //
-        // ProgressiveBlurEdge is a SIBLING of the scrolling div, not a child
-        // of it — a position:absolute descendant still scrolls along with
-        // the rest of a scroll container's content (only mask-image on the
-        // scrolling box itself is exempt from that, which is why
-        // scroll-fade-y works applied directly to it). Making this outer
-        // div the relative anchor instead, with the scrolling div sized via
-        // inset-0, is what keeps the blur pinned in place while content
-        // scrolls underneath it.
-        <div className="relative -mt-10 mx-[-10px] min-h-0 flex-1">
-          <div className="scroll-fade-y playlists-bottom-inset absolute inset-0 overflow-y-auto pt-10">
-            <ul className="flex flex-col gap-3">
-              {sortPlaylists(playlists).map((playlist) => (
-                <PlaylistRow
-                  key={playlist.id}
-                  playlist={playlist}
-                  isExpanded={expanded.has(playlist.id)}
-                  onToggleExpanded={() => toggleExpanded(playlist.id)}
-                  startInRename={creatingId === playlist.id}
-                  onDoneRenaming={() => setCreatingId(null)}
-                  isActive={activePlaylistId === playlist.id}
-                  selectedCount={selectedCount}
-                  onArmSelection={() => onArmSelection(playlist.id)}
-                  onCancelSelection={onCancelSelection}
-                  onConfirmAdd={() => onConfirmAdd(playlist.id)}
-                  onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
-                />
-              ))}
-            </ul>
-          </div>
-          <ProgressiveBlurEdge side="top" />
-          <ProgressiveBlurEdge side="bottom" />
-        </div>
-      )}
+        <ProgressiveBlurEdge side="top" />
+        <ProgressiveBlurEdge side="bottom" />
+      </div>
     </div>
+  );
+}
+
+function CreatePlaylistRow({ onCreate, pending }: { onCreate: () => void; pending: boolean }) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onCreate}
+        disabled={pending}
+        className="flex w-full items-center justify-center rounded-[var(--radius-md)] border border-dashed border-border p-3 text-[15px] font-medium text-accent hover:bg-black/[.02] disabled:opacity-40 dark:hover:bg-white/[.03]"
+      >
+        + Create
+      </button>
+    </li>
   );
 }
 

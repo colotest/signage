@@ -243,21 +243,6 @@ export function FileTree({
           once the sort bar becomes visible, so its own position on desktop
           is unaffected. */}
       <div className={cn("-mx-5 -mt-10 flex min-h-0 flex-col sm:pt-10", className)}>
-        {/* Hidden on mobile — the mobile equivalent is the round "⋯" sort
-            button next to the Upload pill (LibraryView), which gives this
-            same row's real estate back to the file list instead. */}
-        <div className="hidden items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
-          <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-          <SortButton
-            label="Date Added"
-            sortKey="date"
-            active={sortKey}
-            dir={sortDir}
-            onClick={onToggleSort}
-            className="ml-auto mr-9"
-          />
-        </div>
-
         {/* overflow-x-hidden (not scroll) is the point — file details and
             row actions live behind the "⋯" menu precisely so a narrow row
             never needs to scroll sideways to reach them. Sharp corners:
@@ -266,6 +251,9 @@ export function FileTree({
             would otherwise give scrolled content to fade into — pt-10/pb-10
             (matching the fade's own 40px) keep that fade off the first and
             last row themselves, landing on blank padding instead.
+            no-scrollbar: the native scrollbar track/thumb looked odd
+            crossing the blurred/faded edges, and this list is easily
+            scrollable by touch/trackpad without it.
 
             ProgressiveBlurEdge is a SIBLING of the scrolling div, not a
             child of it — a position:absolute descendant still scrolls along
@@ -278,7 +266,7 @@ export function FileTree({
         <div className="relative min-h-0 flex-1">
           <div
             style={{ WebkitTouchCallout: "none" }}
-            className="scroll-fade-y absolute inset-0 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
+            className="scroll-fade-y no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
           >
             <div>
               <TreeLevel
@@ -318,6 +306,25 @@ export function FileTree({
           </div>
           <ProgressiveBlurEdge side="top" />
           <ProgressiveBlurEdge side="bottom" />
+          {/* Desktop-only sort bar — absolutely positioned so it overlays
+              the blur/fade zone instead of taking its own row above it,
+              which used to leave a visible gap (its own height, plus the
+              list's separate pt-10 fade reservation below that) between it
+              and the first real row. It already has an opaque/blurred
+              background, so sitting on top of the fade zone reads fine.
+              Hidden on mobile — the mobile equivalent is the round "⋯" sort
+              button next to the Upload pill (LibraryView). */}
+          <div className="hidden absolute inset-x-0 top-0 z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
+            <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+            <SortButton
+              label="Date Added"
+              sortKey="date"
+              active={sortKey}
+              dir={sortDir}
+              onClick={onToggleSort}
+              className="ml-auto mr-9"
+            />
+          </div>
         </div>
       </div>
       <DragOverlay>
