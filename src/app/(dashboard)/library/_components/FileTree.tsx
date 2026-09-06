@@ -265,50 +265,59 @@ export function FileTree({
             scroll-fade-y stands in for the frame a rounded/bordered box
             would otherwise give scrolled content to fade into — pt-10/pb-10
             (matching the fade's own 40px) keep that fade off the first and
-            last row themselves, landing on blank padding instead. relative
-            is what anchors ProgressiveBlurEdge to this box's own edges
-            rather than some more distant positioned ancestor. */}
-        <div
-          style={{ WebkitTouchCallout: "none" }}
-          className="scroll-fade-y relative min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
-        >
+            last row themselves, landing on blank padding instead.
+
+            ProgressiveBlurEdge is a SIBLING of the scrolling div, not a
+            child of it — a position:absolute descendant still scrolls along
+            with the rest of a scroll container's content (only mask-image
+            on the scrolling box itself is exempt from that, which is why
+            scroll-fade-y works applied directly to it). Making this wrapper
+            the relative anchor instead, with the scrolling div sized via
+            inset-0, is what keeps the blur pinned in place while content
+            scrolls underneath it. */}
+        <div className="relative min-h-0 flex-1">
+          <div
+            style={{ WebkitTouchCallout: "none" }}
+            className="scroll-fade-y absolute inset-0 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
+          >
+            <div>
+              <TreeLevel
+                folders={sortFolders(roots)}
+                files={sortFiles(rootFiles)}
+                depth={0}
+                expanded={expanded}
+                onFolderRowClick={handleFolderRowClick}
+                creatingIn={creatingIn}
+                onStartCreating={startCreatingIn}
+                onDoneCreating={() => onCreatingChange(undefined)}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                onToggleMedia={onToggleMedia}
+                onToggleFolderIds={onToggleFolderIds}
+                uploadTargetId={uploadTargetId}
+                sortFiles={sortFiles}
+                sortFolders={sortFolders}
+                router={router}
+              />
+              {creatingIn === null ? (
+                <NewFolderRow depth={0} parentId={null} onDone={() => onCreatingChange(undefined)} router={router} />
+              ) : (
+                // Hidden on mobile — the mobile trigger for this now lives in
+                // the "⋯" menu next to Upload (LibraryView), alongside Sort by.
+                <div className="hidden px-4 py-2 sm:block">
+                  <button
+                    type="button"
+                    onClick={() => startCreatingIn(null)}
+                    className="text-[13px] font-medium text-accent"
+                  >
+                    + New Folder
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
           <ProgressiveBlurEdge side="top" />
           <ProgressiveBlurEdge side="bottom" />
-          <div>
-            <TreeLevel
-              folders={sortFolders(roots)}
-              files={sortFiles(rootFiles)}
-              depth={0}
-              expanded={expanded}
-              onFolderRowClick={handleFolderRowClick}
-              creatingIn={creatingIn}
-              onStartCreating={startCreatingIn}
-              onDoneCreating={() => onCreatingChange(undefined)}
-              selectionMode={selectionMode}
-              selectedIds={selectedIds}
-              onToggleMedia={onToggleMedia}
-              onToggleFolderIds={onToggleFolderIds}
-              uploadTargetId={uploadTargetId}
-              sortFiles={sortFiles}
-              sortFolders={sortFolders}
-              router={router}
-            />
-            {creatingIn === null ? (
-              <NewFolderRow depth={0} parentId={null} onDone={() => onCreatingChange(undefined)} router={router} />
-            ) : (
-              // Hidden on mobile — the mobile trigger for this now lives in
-              // the "⋯" menu next to Upload (LibraryView), alongside Sort by.
-              <div className="hidden px-4 py-2 sm:block">
-                <button
-                  type="button"
-                  onClick={() => startCreatingIn(null)}
-                  className="text-[13px] font-medium text-accent"
-                >
-                  + New Folder
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </div>
       <DragOverlay>

@@ -147,28 +147,38 @@ export function PlaylistSection({
         // since this is the last section on the page, reserve enough room
         // to clear Safari's floating toolbar — all while the container's
         // own height (flex-1, reaching the screen edge) stays untouched.
-        // relative anchors ProgressiveBlurEdge to this box's own edges.
-        <div className="scroll-fade-y playlists-bottom-inset relative -mt-10 mx-[-10px] min-h-0 flex-1 overflow-y-auto pt-10">
+        //
+        // ProgressiveBlurEdge is a SIBLING of the scrolling div, not a child
+        // of it — a position:absolute descendant still scrolls along with
+        // the rest of a scroll container's content (only mask-image on the
+        // scrolling box itself is exempt from that, which is why
+        // scroll-fade-y works applied directly to it). Making this outer
+        // div the relative anchor instead, with the scrolling div sized via
+        // inset-0, is what keeps the blur pinned in place while content
+        // scrolls underneath it.
+        <div className="relative -mt-10 mx-[-10px] min-h-0 flex-1">
+          <div className="scroll-fade-y playlists-bottom-inset absolute inset-0 overflow-y-auto pt-10">
+            <ul className="flex flex-col gap-3">
+              {sortPlaylists(playlists).map((playlist) => (
+                <PlaylistRow
+                  key={playlist.id}
+                  playlist={playlist}
+                  isExpanded={expanded.has(playlist.id)}
+                  onToggleExpanded={() => toggleExpanded(playlist.id)}
+                  startInRename={creatingId === playlist.id}
+                  onDoneRenaming={() => setCreatingId(null)}
+                  isActive={activePlaylistId === playlist.id}
+                  selectedCount={selectedCount}
+                  onArmSelection={() => onArmSelection(playlist.id)}
+                  onCancelSelection={onCancelSelection}
+                  onConfirmAdd={() => onConfirmAdd(playlist.id)}
+                  onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
+                />
+              ))}
+            </ul>
+          </div>
           <ProgressiveBlurEdge side="top" />
           <ProgressiveBlurEdge side="bottom" />
-          <ul className="flex flex-col gap-3">
-            {sortPlaylists(playlists).map((playlist) => (
-              <PlaylistRow
-                key={playlist.id}
-                playlist={playlist}
-                isExpanded={expanded.has(playlist.id)}
-                onToggleExpanded={() => toggleExpanded(playlist.id)}
-                startInRename={creatingId === playlist.id}
-                onDoneRenaming={() => setCreatingId(null)}
-                isActive={activePlaylistId === playlist.id}
-                selectedCount={selectedCount}
-                onArmSelection={() => onArmSelection(playlist.id)}
-                onCancelSelection={onCancelSelection}
-                onConfirmAdd={() => onConfirmAdd(playlist.id)}
-                onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
-              />
-            ))}
-          </ul>
         </div>
       )}
     </div>
