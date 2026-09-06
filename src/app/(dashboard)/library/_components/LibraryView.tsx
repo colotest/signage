@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
 import { addMediaToPlaylist, reorderPlaylistEntries, reorderPlaylists } from "@/lib/actions/playlists";
-import { FileTree } from "./FileTree";
+import { cn } from "@/lib/utils/cn";
+import { FileTree, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
 import { UploadDropzone } from "./UploadDropzone";
 
@@ -21,6 +22,16 @@ export function LibraryView({
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   // An optimistic mirror of the server-provided playlists, mutated
   // immediately on reorder/add so the UI reflects what the user just did
@@ -132,6 +143,7 @@ export function LibraryView({
               Uploading to: <span className="text-foreground">{uploadTargetFolder ? uploadTargetFolder.name : "Root"}</span>
             </span>
             <UploadDropzone folderId={uploadTargetId} />
+            <SortMenuButton sortKey={sortKey} sortDir={sortDir} onToggleSort={toggleSort} />
           </div>
         </div>
 
@@ -145,6 +157,9 @@ export function LibraryView({
           onToggleFolderIds={toggleFolderIds}
           uploadTargetId={uploadTargetId}
           onActivateFolder={setUploadTargetId}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onToggleSort={toggleSort}
         />
       </section>
 
@@ -162,5 +177,91 @@ export function LibraryView({
         />
       </section>
     </div>
+  );
+}
+
+// Mobile-only stand-in for FileTree's own sort bar (hidden below the sm
+// breakpoint — see FileTree) — same Name/Date Added options, just tucked
+// behind a "⋯" popup next to Upload instead of a dedicated row, so the
+// file list gets that row's height back on a small screen.
+function SortMenuButton({
+  sortKey,
+  sortDir,
+  onToggleSort,
+}: {
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onToggleSort: (key: SortKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative shrink-0 sm:hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Sort options"
+        aria-expanded={open}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+      >
+        <ThreeDotIcon className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          className="absolute right-0 top-full z-20 mt-1 w-40 rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
+        >
+          <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+          <SortMenuItem label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SortMenuItem({
+  label,
+  sortKey,
+  active,
+  dir,
+  onClick,
+}: {
+  label: string;
+  sortKey: SortKey;
+  active: SortKey;
+  dir: SortDir;
+  onClick: (key: SortKey) => void;
+}) {
+  const isActive = active === sortKey;
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(sortKey)}
+      className={cn(
+        "flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+        isActive ? "font-medium text-foreground" : "text-muted",
+      )}
+    >
+      {label}
+      {isActive && <span className="text-[10px]">{dir === "asc" ? "▲" : "▼"}</span>}
+    </button>
   );
 }

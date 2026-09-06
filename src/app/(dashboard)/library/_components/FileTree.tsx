@@ -51,8 +51,8 @@ function collectMediaIds(node: FolderNode): string[] {
   return [...node.files.map((f) => f.id), ...node.children.flatMap(collectMediaIds)];
 }
 
-type SortKey = "name" | "kind" | "resolution" | "duration" | "size" | "date";
-type SortDir = "asc" | "desc";
+export type SortKey = "name" | "kind" | "resolution" | "duration" | "size" | "date";
+export type SortDir = "asc" | "desc";
 
 function sortValue(item: MediaItem, key: SortKey): string | number {
   switch (key) {
@@ -91,6 +91,9 @@ export function FileTree({
   onToggleFolderIds,
   uploadTargetId,
   onActivateFolder,
+  sortKey,
+  sortDir,
+  onToggleSort,
 }: {
   className?: string;
   folders: Folder[];
@@ -101,12 +104,13 @@ export function FileTree({
   onToggleFolderIds: (ids: string[], select: boolean) => void;
   uploadTargetId: string | null;
   onActivateFolder: (id: string | null) => void;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onToggleSort: (key: SortKey) => void;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
-  const [sortKey, setSortKey] = useState<SortKey>("date");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
   // Mouse picks up on a small drag (immediate, like any desktop drag); touch
   // instead waits out a held press before engaging — a plain touchstart (as
   // opposed to one that's about to become a scroll) doesn't move much within
@@ -150,14 +154,6 @@ export function FileTree({
     setLocalMedia((current) => current.map((m) => (m.id === mediaId ? { ...m, folder_id: targetFolderId } : m)));
     moveMediaItem(mediaId, targetFolderId);
     router.refresh();
-  }
-
-  function toggleSort(key: SortKey) {
-    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
   }
 
   function sortFiles(items: MediaItem[]) {
@@ -219,14 +215,17 @@ export function FileTree({
           aligned with the rows below it — out of the page's own left/right
           inset to reach the screen edges for more row width. */}
       <div className={cn("-mx-5 flex min-h-0 flex-col", className)}>
-        <div className="flex items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl">
-          <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} />
+        {/* Hidden on mobile — the mobile equivalent is the round "⋯" sort
+            button next to the Upload pill (LibraryView), which gives this
+            same row's real estate back to the file list instead. */}
+        <div className="hidden items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
+          <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
           <SortButton
             label="Date Added"
             sortKey="date"
             active={sortKey}
             dir={sortDir}
-            onClick={toggleSort}
+            onClick={onToggleSort}
             className="ml-auto mr-9"
           />
         </div>
@@ -425,7 +424,7 @@ function RowInfo({ title, date }: { title: React.ReactNode; date: string }) {
   );
 }
 
-function ThreeDotIcon({ className }: { className?: string }) {
+export function ThreeDotIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
       <circle cx="5" cy="12" r="2" />
