@@ -4,6 +4,17 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Colo Cloud",
   description: "Digital signage control for event venue screens",
+  // The standards-based way to ask iOS Safari for a translucent status
+  // bar — traditionally scoped to standalone/home-screen mode, but
+  // harmless to declare regardless, and worth having in case the newer
+  // "content extends behind the toolbar" behavior extends its reach to
+  // this too. Lets the header's own translucent, blurred background (see
+  // Header.tsx) be what's visible through the status bar, rather than a
+  // flat color painted behind it.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {

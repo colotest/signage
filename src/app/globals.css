@@ -94,13 +94,23 @@ body {
   animation: drag-pickup 180ms var(--ease-spring) forwards;
 }
 
-/* lvh alone (see root layout) still measures only up to the safe-area
-   boundary — it accounts for Safari's toolbar collapsing, but not the
-   home-indicator inset at the very bottom of the screen. Adding that back
-   was the idea, but on device a single inset only closed half that
-   remaining gap — doubling it is what actually reaches the true edge. */
+/* lvh alone (see root layout) still stops short of the true screen edge
+   by roughly Safari's own floating bottom toolbar height. That's *browser
+   chrome*, not a device safe area, so it was never going to show up in
+   env(safe-area-inset-bottom) — confirmed on device: multiplying that
+   term by 0, 2, or 5 all produced the exact same computed height, which
+   only makes sense if it's already 0 in this context (env(safe-area-*)
+   is a standalone/home-screen-app concept; a regular Safari tab appears
+   not to populate it the same way). There's no CSS-exposed value for
+   Safari's own toolbar height to fall back on either, so this is a
+   measured constant instead: 109lvh is what closed the gap on device
+   (107lvh got close but not quite all the way). Being lvh-relative
+   rather than a fixed px keeps it proportionally correct across screen
+   sizes, even though the exact extra 9% was fitted to one device — if a
+   future device leaves a visible sliver either way, adjust this number,
+   not the mechanism. */
 .app-shell-height {
-  height: calc(100lvh + (env(safe-area-inset-bottom) * 2));
+  height: 109lvh;
 }
 
 /* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide
