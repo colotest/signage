@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/core";
 import { MediaThumb } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
+import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
@@ -264,11 +265,15 @@ export function FileTree({
             scroll-fade-y stands in for the frame a rounded/bordered box
             would otherwise give scrolled content to fade into — pt-10/pb-10
             (matching the fade's own 40px) keep that fade off the first and
-            last row themselves, landing on blank padding instead. */}
+            last row themselves, landing on blank padding instead. relative
+            is what anchors ProgressiveBlurEdge to this box's own edges
+            rather than some more distant positioned ancestor. */}
         <div
           style={{ WebkitTouchCallout: "none" }}
-          className="scroll-fade-y min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
+          className="scroll-fade-y relative min-h-0 flex-1 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
         >
+          <ProgressiveBlurEdge side="top" />
+          <ProgressiveBlurEdge side="bottom" />
           <div>
             <TreeLevel
               folders={sortFolders(roots)}

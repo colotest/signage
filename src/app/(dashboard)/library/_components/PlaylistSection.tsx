@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { InlineRename } from "@/components/InlineRename";
+import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import { formatDuration } from "@/lib/utils/format";
@@ -146,7 +147,10 @@ export function PlaylistSection({
         // since this is the last section on the page, reserve enough room
         // to clear Safari's floating toolbar — all while the container's
         // own height (flex-1, reaching the screen edge) stays untouched.
-        <div className="scroll-fade-y playlists-bottom-inset -mt-10 mx-[-10px] min-h-0 flex-1 overflow-y-auto pt-10">
+        // relative anchors ProgressiveBlurEdge to this box's own edges.
+        <div className="scroll-fade-y playlists-bottom-inset relative -mt-10 mx-[-10px] min-h-0 flex-1 overflow-y-auto pt-10">
+          <ProgressiveBlurEdge side="top" />
+          <ProgressiveBlurEdge side="bottom" />
           <ul className="flex flex-col gap-3">
             {sortPlaylists(playlists).map((playlist) => (
               <PlaylistRow
