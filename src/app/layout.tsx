@@ -12,13 +12,16 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  // Tints Safari's status bar to match the header's own surface color
-  // (light/dark aware, same breakpoint the CSS itself keys off), so the
-  // header can incorporate it — appearing to be one contiguous surface —
-  // instead of the header needing its own visually-separate top edge.
+  // Tints Safari's status bar to match the header's actual rendered color
+  // (light/dark aware, same breakpoint the CSS itself keys off) — not the
+  // opaque --surface color, but --surface-elevated (what the header's
+  // background really is: translucent + blurred) composited over
+  // --background, since that's the flat color it visually reads as. Using
+  // plain --surface here was a visible shade off, undermining the header
+  // incorporating the status bar as one contiguous surface.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#1c1c1e" },
+    { media: "(prefers-color-scheme: light)", color: "#fbfbfd" },
+    { media: "(prefers-color-scheme: dark)", color: "#141416" },
   ],
 };
 
