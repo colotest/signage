@@ -4,17 +4,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Colo Cloud",
   description: "Digital signage control for event venue screens",
-  // The standards-based way to ask iOS Safari for a translucent status
-  // bar — traditionally scoped to standalone/home-screen mode, but
-  // harmless to declare regardless, and worth having in case the newer
-  // "content extends behind the toolbar" behavior extends its reach to
-  // this too. Lets the header's own translucent, blurred background (see
-  // Header.tsx) be what's visible through the status bar, rather than a
-  // flat color painted behind it.
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-  },
 };
 
 export const viewport: Viewport = {
@@ -23,6 +12,19 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
+  // apple-mobile-web-app-status-bar-style (which would make the status
+  // bar translucent) is standalone/home-screen-app only — it does
+  // nothing in a regular Safari tab, which is what this app runs in, so
+  // there's no way to make the status bar itself translucent here.
+  // theme-color is the one status-bar-adjacent lever that *does* work in
+  // a regular tab: it tints Safari's own chrome to match, so the header
+  // going solid (see Header.tsx) and this matching it flatly is the
+  // closest thing to "the header and status bar are the same color"
+  // actually available in this context.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#1c1c1e" },
+  ],
 };
 
 export default function RootLayout({
@@ -31,20 +33,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // app-shell-height (100lvh + env(safe-area-inset-bottom) * 2), not
-    // plain lvh/svh/dvh. The goal on iOS Safari isn't to stay above its
-    // floating toolbar — recent iOS versions let page content extend the
-    // full screen behind that (translucent) toolbar on purpose, which is
-    // what we want here so the lists reach the true bottom edge. svh
-    // explicitly excludes that area (it's defined as the viewport with the
-    // toolbar fully shown), so it never extends there regardless of
-    // viewport-fit=cover or any padding underneath. lvh alone gets partway
-    // there — it accounts for the toolbar collapsing — but still stops at
-    // the safe-area boundary, short of the true edge by the home-indicator
-    // inset; a single inset back on top only closed half that remaining
-    // gap on device, so it's doubled. Static rather than dynamic (unlike
-    // dvh), so it doesn't depend on Safari settling it via a scroll
-    // gesture this non-scrolling outer shell never gets.
+    // app-shell-height (109lvh — see globals.css for why), not plain
+    // lvh/svh/dvh. The goal on iOS Safari isn't to stay above its floating
+    // toolbar — recent iOS versions let page content extend the full
+    // screen behind that (translucent) toolbar on purpose, which is what
+    // we want here so the lists reach the true bottom edge.
     <html lang="en" className="app-shell-height overflow-hidden">
       <body className="app-shell-height overflow-hidden">{children}</body>
     </html>
