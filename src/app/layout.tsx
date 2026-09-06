@@ -12,14 +12,6 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  // Tints Safari's status bar to match the header's own surface color
-  // (light/dark aware, same breakpoint the CSS itself keys off), so the
-  // header can incorporate it — appearing to be one contiguous surface —
-  // instead of the header needing its own visually-separate top edge.
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#1c1c1e" },
-  ],
 };
 
 export default function RootLayout({
