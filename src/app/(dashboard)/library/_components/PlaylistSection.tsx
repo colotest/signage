@@ -107,11 +107,16 @@ export function PlaylistSection({
         // 20px) keeps that fade off the first/last card themselves, landing
         // on blank padding instead — playlists-bottom-inset adds the extra
         // reach-past-the-Safari-toolbar padding on top, at the bottom only,
-        // since this is the last section on the page.
+        // since this is the last section on the page. min-h-full on the
+        // list itself (not just this div) is what makes that bottom padding
+        // land right at this container's own bottom edge — which still
+        // reaches the screen edge exactly as before, unchanged — rather
+        // than floating above it with a stretch of unrelated empty
+        // container space beneath, on a short list that doesn't fill it.
         <div className="scroll-fade-y -mx-5 min-h-0 flex-1 overflow-y-auto">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndPlaylists}>
             <SortableContext items={playlists.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-              <ul className="playlists-bottom-inset flex flex-col gap-3 pt-5">
+              <ul className="playlists-bottom-inset flex min-h-full flex-col gap-3 pt-5">
                 {playlists.map((playlist) => (
                   <PlaylistRow
                     key={playlist.id}
