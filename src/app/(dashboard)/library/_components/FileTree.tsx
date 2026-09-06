@@ -318,14 +318,46 @@ export function FileTree({
               Hidden on mobile — the mobile equivalent is the round "⋯" sort
               button next to the Upload pill (LibraryView). */}
           <div className="hidden absolute inset-x-0 top-0 z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
-            <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+            <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} className="flex-1" />
+            <SortButton
+              label="Kind"
+              sortKey="kind"
+              active={sortKey}
+              dir={sortDir}
+              onClick={onToggleSort}
+              className="w-28 shrink-0"
+            />
+            <SortButton
+              label="Resolution"
+              sortKey="resolution"
+              active={sortKey}
+              dir={sortDir}
+              onClick={onToggleSort}
+              className="w-24 shrink-0"
+            />
+            <SortButton
+              label="Duration"
+              sortKey="duration"
+              active={sortKey}
+              dir={sortDir}
+              onClick={onToggleSort}
+              className="w-16 shrink-0"
+            />
+            <SortButton
+              label="Size"
+              sortKey="size"
+              active={sortKey}
+              dir={sortDir}
+              onClick={onToggleSort}
+              className="w-20 shrink-0"
+            />
             <SortButton
               label="Date Added"
               sortKey="date"
               active={sortKey}
               dir={sortDir}
               onClick={onToggleSort}
-              className="ml-auto mr-9"
+              className="w-40 shrink-0 mr-9"
             />
           </div>
         </div>
@@ -462,20 +494,27 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
   );
 }
 
-// Title above, date below in a smaller font — always, for every row. With
-// everything else already tucked behind the "⋯" menu, a row only ever
-// holds these two lines, so there's no side-by-side layout worth keeping
-// around: stacking unconditionally gives the title the full row width
-// (rather than half of it next to a date) and keeps every row's rhythm
-// consistent while scrolling instead of some rows flipping layout and
-// others not.
+// Title above, date below in a smaller font, on mobile — there's no room
+// for separate columns there, and everything besides title/date is already
+// tucked behind the "⋯" menu. Desktop has the width to spare, so it gets a
+// real Kind/Resolution/Duration/Size/Date Added row instead (see RowColumn
+// below) and this stacked date is redundant with that Date Added column.
 function RowInfo({ title, date }: { title: React.ReactNode; date: string }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       {title}
-      <span className="truncate text-[10px] text-muted">{date}</span>
+      <span className="truncate text-[10px] text-muted sm:hidden">{date}</span>
     </div>
   );
+}
+
+// Desktop-only file-browser columns (Kind/Resolution/Duration/Size/Date
+// Added) — hidden on mobile, where RowInfo's stacked date covers it and
+// there's no room for the rest anyway. Widths here must match the
+// corresponding SortButton's width in the sort bar for the header labels to
+// land above their actual columns.
+function RowColumn({ width, children }: { width: string; children: React.ReactNode }) {
+  return <span className={cn("hidden shrink-0 truncate text-[12px] text-muted sm:block", width)}>{children}</span>;
 }
 
 export function ThreeDotIcon({ className }: { className?: string }) {
@@ -691,6 +730,14 @@ function FolderRow({
         date={formatDate(folder.created_at)}
       />
 
+      <RowColumn width="w-28">Folder</RowColumn>
+      <RowColumn width="w-24">—</RowColumn>
+      <RowColumn width="w-16">—</RowColumn>
+      <RowColumn width="w-20">
+        {itemCount} item{itemCount === 1 ? "" : "s"}
+      </RowColumn>
+      <RowColumn width="w-40">{formatDate(folder.created_at)}</RowColumn>
+
       <RowMenu label={`${folder.name} actions`}>
         <MenuInfo>
           {itemCount} item{itemCount === 1 ? "" : "s"}
@@ -781,6 +828,12 @@ function FileRow({
         }
         date={formatDate(item.created_at)}
       />
+
+      <RowColumn width="w-28">{kindLabel(item)}</RowColumn>
+      <RowColumn width="w-24">{formatResolution(item.width, item.height)}</RowColumn>
+      <RowColumn width="w-16">{item.media_type === "video" ? formatDuration(item.duration_seconds) : "—"}</RowColumn>
+      <RowColumn width="w-20">{formatBytes(item.size_bytes)}</RowColumn>
+      <RowColumn width="w-40">{formatDate(item.created_at)}</RowColumn>
 
       <RowMenu label={`${item.name} actions`}>
         <MenuInfo>
