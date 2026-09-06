@@ -94,6 +94,14 @@ body {
   animation: drag-pickup 180ms var(--ease-spring) forwards;
 }
 
+/* lvh alone (see root layout) still measures only up to the safe-area
+   boundary — it accounts for Safari's toolbar collapsing, but not the
+   home-indicator inset at the very bottom of the screen. Adding that back
+   is what actually reaches the true screen edge. */
+.app-shell-height {
+  height: calc(100lvh + env(safe-area-inset-bottom));
+}
+
 /* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide
    scrolled-past content popping in and out at the top/bottom — this fades
    it instead. Static (not scroll-position-aware): simpler, and the fade
@@ -103,18 +111,15 @@ body {
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
 }
 
-/* svh (see root layout) already stops exactly at the top of iOS Safari's
-   floating toolbar — the app shell doesn't extend behind it, so there's no
-   reserved-but-covered strip to account for here, just the ordinary
-   "don't end flush against the next thing" instinct: the playlists list is
-   the last thing on the page, immediately followed by that toolbar, so its
-   last card needs more clearance below it than a fixed value like
-   scroll-fade-y's 20px alone would give, to sit comfortably above it
-   rather than right at the edge. A plain fixed size — not
-   env(safe-area-inset-bottom) — on purpose: that env() value plus this
-   nested scroll/mask context was the actual cause of a real regression
-   (the whole section stopped short of the screen edge in Safari) when
-   tried here before. */
+/* The app shell now genuinely extends behind iOS Safari's floating
+   toolbar (see app-shell-height above), so the playlists list — the last
+   thing on the page, immediately followed by that toolbar — needs more
+   bottom clearance than scroll-fade-y's own 20px alone, so its last card
+   sits comfortably above the toolbar rather than right at its edge. A
+   plain fixed size for now rather than folding env(safe-area-inset-bottom)
+   in here too — that's already accounted for once, at the shell level;
+   worth revisiting if this particular amount turns out to not be enough
+   once the shell fix lands. */
 .playlists-bottom-inset {
   padding-bottom: 56px;
 }
