@@ -13,7 +13,6 @@ import {
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
-import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import { formatDuration } from "@/lib/utils/format";
 import {
@@ -116,14 +115,22 @@ export function PlaylistSection({
       {/* relative z-10 keeps this above the list below, which overlaps up
           underneath it (see the scrolling div's own -mt-10) so scrolled-past
           cards fade away rather than popping in and out below this row. */}
-      <div className="relative z-10 flex items-center justify-between">
-        <h2 className="text-[28px] font-semibold tracking-tight">Playlists</h2>
-        <div className="flex items-center gap-3">
-          <Button onClick={handleCreate} disabled={pending}>
+      <div className="relative z-10 flex items-start justify-between">
+        <div>
+          <h2 className="text-[28px] font-semibold tracking-tight">Playlists</h2>
+          {/* Plain text, not a colored pill — a subtitle-weight action
+              rather than competing with +Upload/+New Folder for attention.
+              text-[15px] matches PlaylistRow's own title size. */}
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={pending}
+            className="text-[15px] font-medium text-accent hover:opacity-70 disabled:opacity-40"
+          >
             + Create
-          </Button>
-          <PlaylistSortMenuButton sortKey={sortKey} sortDir={sortDir} onToggleSort={toggleSort} />
+          </button>
         </div>
+        <PlaylistSortMenuButton sortKey={sortKey} sortDir={sortDir} onToggleSort={toggleSort} />
       </div>
 
       {playlists.length === 0 ? (

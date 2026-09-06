@@ -5,20 +5,27 @@ import { cn } from "@/lib/utils/cn";
 // layers, each covering more of the fade zone with progressively less blur,
 // each masked with a soft feather at its own edge. Near the outer edge
 // (under a title, or near the bottom toolbar) every layer overlaps and their
-// blur compounds; further in, only the widest/weakest layers still reach,
-// thinning out to fully sharp right where scroll-fade-y's own color fade
-// finishes settling into opaque. Position:absolute (not sticky) inside a
-// position:relative scroll container is what keeps this pinned to the
-// container's own edge rather than scrolling away with its content — same
-// as how scroll-fade-y's mask-image is static/not scroll-position-aware.
+// blur compounds; further in, only the widest/weakest layers still reach.
+//
+// BLUR_EXTENT is deliberately shorter than scroll-fade-y's own 40px fade —
+// the blur needs to fully resolve to zero well *before* the color fade
+// finishes ramping to opaque (which happens gradually, not linearly: still
+// only ~50% opaque at 20px, ~84% at 30px). Ending the blur at the same 40px
+// boundary left a faint residual blur sitting on top of already-mostly-
+// opaque, meant-to-be-sharp content — reading as its own layer floating
+// above the fade rather than a part of it. Cutting it off earlier keeps the
+// blur confined to the portion of the zone the color fade has already
+// substantially hidden, so by the time content is meant to look sharp, it
+// actually is.
+const BLUR_EXTENT = 24;
 const LAYERS = [
-  { stop: 8, blur: 16 },
-  { stop: 16, blur: 8 },
-  { stop: 24, blur: 4 },
-  { stop: 32, blur: 2 },
-  { stop: 40, blur: 1 },
-];
-const FEATHER = 6;
+  { stop: 0.2, blur: 16 },
+  { stop: 0.4, blur: 8 },
+  { stop: 0.65, blur: 4 },
+  { stop: 0.8, blur: 2 },
+  { stop: 1, blur: 1 },
+].map(({ stop, blur }) => ({ stop: Math.round(stop * BLUR_EXTENT), blur }));
+const FEATHER = 4;
 
 export function ProgressiveBlurEdge({ side }: { side: "top" | "bottom" }) {
   return (
