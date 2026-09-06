@@ -97,10 +97,9 @@ body {
 /* lvh alone (see root layout) still measures only up to the safe-area
    boundary — it accounts for Safari's toolbar collapsing, but not the
    home-indicator inset at the very bottom of the screen. Adding that back
-   was the idea, but on device a single inset only closed half that
-   remaining gap — doubling it is what actually reaches the true edge. */
+   is what actually reaches the true screen edge. */
 .app-shell-height {
-  height: calc(100lvh + (env(safe-area-inset-bottom) * 2));
+  height: calc(100lvh + env(safe-area-inset-bottom));
 }
 
 /* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide
