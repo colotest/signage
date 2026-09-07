@@ -581,6 +581,56 @@ ${log.join("\n")}`}
   );
 }
 
+// A ?debug=1 run confirmed the video element can report a fully healthy
+// playback state — readyState=4, no error, fully buffered, currentTime
+// advancing through multiple loop cycles — while the decoded frame never
+// actually reaches the screen (still visibly white). No DOM/media API
+// exposes "is this frame actually on screen", so this checks the only way
+// possible: draw the live frame to a tiny offscreen canvas and look at the
+// actual pixels. A sustained run of blank/near-white samples despite the
+// element insisting it's playing is treated as the same stuck condition
+// the `playing`-based watchdog above was meant to catch (and silently
+// couldn't, since `playing` fires normally in this failure mode).
+const BLANK_CHECK_INTERVAL_MS = 1000;
+const BLANK_CONSECUTIVE_THRESHOLD = 3;
+
+function useBlankFrameWatchdog(video: HTMLVideoElement | null, onBlank: () => void) {
+  useEffect(() => {
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 8;
+    canvas.height = 8;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    let consecutiveBlank = 0;
+
+    function check() {
+      if (video!.paused || video!.readyState < 2) return;
+      try {
+        ctx!.drawImage(video!, 0, 0, 8, 8);
+        const { data } = ctx!.getImageData(0, 0, 8, 8);
+        let blank = true;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i] < 250 || data[i + 1] < 250 || data[i + 2] < 250) {
+            blank = false;
+            break;
+          }
+        }
+        consecutiveBlank = blank ? consecutiveBlank + 1 : 0;
+        if (consecutiveBlank >= BLANK_CONSECUTIVE_THRESHOLD) onBlank();
+      } catch {
+        // A tainted canvas (CORS not actually in effect despite appearances)
+        // makes this check unusable — fail open rather than ever falsely
+        // report "stuck" off of a read that didn't work.
+      }
+    }
+
+    const interval = setInterval(check, BLANK_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [video, onBlank]);
+}
+
 function VideoSlide({
   url,
   fitClass,
@@ -610,6 +660,7 @@ function VideoSlide({
   // at render time and reactively updates once the <video> actually mounts.
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const debugLog = useVideoDebugLog(videoEl, debug);
+  useBlankFrameWatchdog(videoEl, onStuck);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -657,6 +708,13 @@ function VideoSlide({
           setVideoEl(el);
         }}
         src={url}
+        // Required for the blank-frame canvas check above to be able to
+        // read pixels back at all — without it, drawImage still succeeds
+        // but taints the canvas and getImageData throws on every call.
+        // Supabase Storage's public bucket already sends permissive CORS
+        // (the SW's plain-GET prefetch already depends on that to work),
+        // so this doesn't change what can load, just what JS can read back.
+        crossOrigin="anonymous"
         autoPlay
         muted
         loop={loop}
