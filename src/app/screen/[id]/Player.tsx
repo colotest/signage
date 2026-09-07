@@ -687,6 +687,9 @@ function VideoSlide({
         loop={loop}
         playsInline
         preload="auto"
+        // The kiosk display has no user to click it, so the browser's own
+        // cast-to-TV affordance (the icon in the corner) is pure noise here.
+        disableRemotePlayback
         onEnded={onVideoEnded}
         className={`h-full w-full ${fitClass}`}
         // A rotated screen puts a CSS transform on this element's ancestor
