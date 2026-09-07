@@ -54,6 +54,25 @@ export function Player({
 
   const current = playlist.length > 0 ? playlist[currentIndex % playlist.length] : null;
 
+  // The auto-refresh/overlay mechanism further below is scoped to only
+  // this one item — whichever plays first after a cold load — rather than
+  // every item, so a run of glitchy items doesn't chop up playback with
+  // repeated QR-code breaks. Captured once and never changed after: the
+  // lazy initializer covers the common case (content already assigned at
+  // mount), and the guarded setState below covers a screen that starts out
+  // empty and only gets a playlist assigned later.
+  const [firstItemId, setFirstItemId] = useState<PlaylistItemWithMedia["id"] | null>(
+    () => initialPlaylist[0]?.id ?? null,
+  );
+  // Setting state directly during render, guarded so it only ever fires
+  // once (the condition is false on every render after) — React's own
+  // documented pattern for "derive this from what render sees, the first
+  // time render sees it", cheaper than a useEffect for the same job and
+  // without one more round trip through a committed frame first.
+  if (firstItemId === null && current) {
+    setFirstItemId(current.id);
+  }
+
   // The playback loop reads the playlist/index through refs and reschedules
   // itself directly (see scheduleTick below) rather than through a
   // useEffect keyed on currentIndex. That's deliberate: when a playlist has
@@ -208,14 +227,12 @@ export function Player({
   // screen is actually white, so there's no in-page signal left to trust.
   // Rather than keep chasing a detector, just do unconditionally what
   // fixing it by hand does: force a fresh <video> element a few seconds
-  // into every video's first play, every time, regardless of whether
-  // anything looks wrong. One attempt isn't always enough in practice (a
-  // second item in a playlist needed a second swap before it took), and
-  // since we still have no way to detect whether a given attempt actually
-  // worked, allow a few tries per item rather than exactly one before
-  // giving up and just showing whatever's there. Tracked per playlist item
-  // (not per mount), so replays once the playlist loops back around don't
-  // restart the count.
+  // into that first item's play, regardless of whether anything looks
+  // wrong. One attempt isn't always enough in practice, so allow a few
+  // tries before giving up and just showing whatever's there — but only
+  // for firstItemId (see above): a run of glitchy items each getting this
+  // treatment would chop up playback with repeated QR-code breaks, so
+  // every item after the first is left alone, whatever it does.
   const autoRefreshCountsRef = useRef<Map<PlaylistItemWithMedia["id"], number>>(new Map());
   // A render-time-readable mirror of the ref above — reading a ref during
   // render is unreliable (and the lint rules here correctly forbid it), so
@@ -225,7 +242,8 @@ export function Player({
   // happens inside an event handler, not during render.
   const [autoRefreshCounts, setAutoRefreshCounts] = useState<Map<PlaylistItemWithMedia["id"], number>>(() => new Map());
 
-  // Stable identity (empty deps, reading state through refs like
+  // Stable identity (empty deps aside from firstItemId, which changes at
+  // most once, reading everything else through refs like
   // advanceNow/retreatNow above) is load-bearing here, not just tidiness:
   // this is handed to VideoSlide as a prop its timer effect depends on, so
   // a new function reference on every Player render — which a plain
@@ -236,14 +254,14 @@ export function Player({
     const items = playlistRef.current;
     if (items.length === 0) return;
     const item = items[indexRef.current % items.length];
-    if (!item) return;
+    if (!item || item.id !== firstItemId) return;
     const attempts = autoRefreshCountsRef.current.get(item.id) ?? 0;
     if (attempts >= MAX_AUTO_REFRESH_ATTEMPTS) return;
     const next = attempts + 1;
     autoRefreshCountsRef.current.set(item.id, next);
     setAutoRefreshCounts((prev) => new Map(prev).set(item.id, next));
     setReloadToken((t) => t + 1);
-  }, []);
+  }, [firstItemId]);
 
   function skipNext() {
     advanceNow();
@@ -445,7 +463,9 @@ export function Player({
             loop={playlist.length === 1}
             onVideoEnded={handleVideoEnded}
             onVideoAutoRefresh={handleAutoRefresh}
-            showAutoRefreshOverlay={(autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS}
+            showAutoRefreshOverlay={
+              current.id === firstItemId && (autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS
+            }
           />
         )}
       </div>
