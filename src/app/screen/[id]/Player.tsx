@@ -509,6 +509,78 @@ function Slide({
 // see onStuck (handleVideoStuck in Player) for what happens next.
 const STUCK_WATCHDOG_MS = 8000;
 
+// We've fixed several real bugs on the theory that this is a buffering
+// stall, but never actually confirmed that against the device itself —
+// including whether the video element ever fires an `error` at all, and
+// whether it's the WebView's video-hardware.decode pipeline that's stuck
+// versus, say, decode succeeding while the decoded frame never reaches the
+// screen (in which case `playing`/`timeupdate` still fire normally and this
+// file's whole stuck-detection strategy would be watching the wrong
+// signal). Gated behind a URL flag so it costs nothing in normal operation
+// — append ?debug=1 to a screen's URL to show it.
+const MEDIA_EVENTS = [
+  "loadstart",
+  "loadedmetadata",
+  "loadeddata",
+  "canplay",
+  "canplaythrough",
+  "playing",
+  "waiting",
+  "stalled",
+  "suspend",
+  "abort",
+  "emptied",
+  "error",
+] as const;
+
+function isDebugMode() {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1";
+}
+
+function useVideoDebugLog(video: HTMLVideoElement | null, enabled: boolean) {
+  const [log, setLog] = useState<string[]>([]);
+  const [, forceTick] = useState(0);
+  const startRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled || !video) return;
+    startRef.current = Date.now();
+
+    function record(e: Event) {
+      const t = ((Date.now() - startRef.current) / 1000).toFixed(1);
+      const err = video!.error;
+      const extra = e.type === "error" && err ? ` (code=${err.code} "${err.message}")` : "";
+      setLog((prev) => [...prev.slice(-19), `${t}s ${e.type}${extra}`]);
+    }
+
+    for (const ev of MEDIA_EVENTS) video.addEventListener(ev, record);
+    const interval = setInterval(() => forceTick((t) => t + 1), 500); // keeps the live readout (currentTime/buffered) fresh
+    return () => {
+      for (const ev of MEDIA_EVENTS) video.removeEventListener(ev, record);
+      clearInterval(interval);
+    };
+  }, [video, enabled]);
+
+  return log;
+}
+
+function VideoDebugOverlay({ video, log }: { video: HTMLVideoElement; log: string[] }) {
+  const buffered =
+    Array.from({ length: video.buffered.length }, (_, i) => `${video.buffered.start(i).toFixed(1)}-${video.buffered.end(i).toFixed(1)}`).join(
+      ", ",
+    ) || "none";
+
+  return (
+    <pre className="pointer-events-none absolute left-0 top-0 z-50 m-2 max-w-[90vw] whitespace-pre-wrap break-all bg-black/80 p-2 text-[11px] leading-tight text-lime-300">
+      {`readyState=${video.readyState} networkState=${video.networkState} paused=${video.paused} ended=${video.ended}
+currentTime=${video.currentTime.toFixed(1)} buffered=${buffered}
+error=${video.error ? `code=${video.error.code} ${video.error.message}` : "none"}
+events:
+${log.join("\n")}`}
+    </pre>
+  );
+}
+
 function VideoSlide({
   url,
   fitClass,
@@ -531,6 +603,13 @@ function VideoSlide({
   onStuck: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [debug] = useState(isDebugMode);
+  // A plain useRef read during render can't be relied on to reflect the
+  // mounted element (and the lint rules here correctly forbid it) — this
+  // callback ref also lands the element in state, which is safe to read
+  // at render time and reactively updates once the <video> actually mounts.
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  const debugLog = useVideoDebugLog(videoEl, debug);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -571,24 +650,30 @@ function VideoSlide({
   }, [paused, onStuck]);
 
   return (
-    <video
-      ref={videoRef}
-      src={url}
-      autoPlay
-      muted
-      loop={loop}
-      playsInline
-      preload="auto"
-      onEnded={onVideoEnded}
-      className={`h-full w-full ${fitClass}`}
-      // A rotated screen puts a CSS transform on this element's ancestor
-      // (see rotationWrapperStyle above), which on its own tends to knock
-      // hardware video decode off its fast overlay path and onto a much
-      // more expensive CPU-side composite — exactly the kind of thing a
-      // weak set-top box's SoC struggles with. Promoting the video itself
-      // onto its own GPU layer keeps the decoded frames on a hardware
-      // surface that the compositor can still just rotate wholesale.
-      style={{ transform: "translateZ(0)", willChange: "transform" }}
-    />
+    <>
+      <video
+        ref={(el) => {
+          videoRef.current = el;
+          setVideoEl(el);
+        }}
+        src={url}
+        autoPlay
+        muted
+        loop={loop}
+        playsInline
+        preload="auto"
+        onEnded={onVideoEnded}
+        className={`h-full w-full ${fitClass}`}
+        // A rotated screen puts a CSS transform on this element's ancestor
+        // (see rotationWrapperStyle above), which on its own tends to knock
+        // hardware video decode off its fast overlay path and onto a much
+        // more expensive CPU-side composite — exactly the kind of thing a
+        // weak set-top box's SoC struggles with. Promoting the video itself
+        // onto its own GPU layer keeps the decoded frames on a hardware
+        // surface that the compositor can still just rotate wholesale.
+        style={{ transform: "translateZ(0)", willChange: "transform" }}
+      />
+      {debug && videoEl && <VideoDebugOverlay video={videoEl} log={debugLog} />}
+    </>
   );
 }
