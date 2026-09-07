@@ -541,16 +541,22 @@ function useVideoDebugLog(video: HTMLVideoElement | null, enabled: boolean) {
   const [log, setLog] = useState<string[]>([]);
   const [, forceTick] = useState(0);
   const startRef = useRef(0);
+  const appendRef = useRef<(msg: string) => void>(() => {});
 
   useEffect(() => {
     if (!enabled || !video) return;
     startRef.current = Date.now();
 
-    function record(e: Event) {
+    function append(msg: string) {
       const t = ((Date.now() - startRef.current) / 1000).toFixed(1);
+      setLog((prev) => [...prev.slice(-19), `${t}s ${msg}`]);
+    }
+    appendRef.current = append;
+
+    function record(e: Event) {
       const err = video!.error;
       const extra = e.type === "error" && err ? ` (code=${err.code} "${err.message}")` : "";
-      setLog((prev) => [...prev.slice(-19), `${t}s ${e.type}${extra}`]);
+      append(`${e.type}${extra}`);
     }
 
     for (const ev of MEDIA_EVENTS) video.addEventListener(ev, record);
@@ -558,10 +564,16 @@ function useVideoDebugLog(video: HTMLVideoElement | null, enabled: boolean) {
     return () => {
       for (const ev of MEDIA_EVENTS) video.removeEventListener(ev, record);
       clearInterval(interval);
+      appendRef.current = () => {};
     };
   }, [video, enabled]);
 
-  return log;
+  // A stable wrapper so callers (the blank-frame watchdog) can hold onto
+  // one function identity across renders instead of re-subscribing every
+  // time the underlying logger's own effect re-runs.
+  const append = useCallback((msg: string) => appendRef.current(msg), []);
+
+  return { log, append };
 }
 
 function VideoDebugOverlay({ video, log }: { video: HTMLVideoElement; log: string[] }) {
@@ -594,7 +606,7 @@ ${log.join("\n")}`}
 const BLANK_CHECK_INTERVAL_MS = 1000;
 const BLANK_CONSECUTIVE_THRESHOLD = 3;
 
-function useBlankFrameWatchdog(video: HTMLVideoElement | null, onBlank: () => void) {
+function useBlankFrameWatchdog(video: HTMLVideoElement | null, onBlank: () => void, onSample?: (msg: string) => void) {
   useEffect(() => {
     if (!video) return;
     const canvas = document.createElement("canvas");
@@ -604,6 +616,7 @@ function useBlankFrameWatchdog(video: HTMLVideoElement | null, onBlank: () => vo
     if (!ctx) return;
 
     let consecutiveBlank = 0;
+    let lastLoggedState: string | null = null;
 
     function check() {
       if (video!.paused || video!.readyState < 2) return;
@@ -618,17 +631,29 @@ function useBlankFrameWatchdog(video: HTMLVideoElement | null, onBlank: () => vo
           }
         }
         consecutiveBlank = blank ? consecutiveBlank + 1 : 0;
+        // Logged only on change, not every sample, so this doesn't crowd
+        // out the media-event log above it.
+        const state = `blankcheck blank=${blank} rgb=${data[0]},${data[1]},${data[2]} consecutive=${consecutiveBlank}`;
+        if (state !== lastLoggedState) {
+          onSample?.(state);
+          lastLoggedState = state;
+        }
         if (consecutiveBlank >= BLANK_CONSECUTIVE_THRESHOLD) onBlank();
-      } catch {
+      } catch (err) {
         // A tainted canvas (CORS not actually in effect despite appearances)
         // makes this check unusable — fail open rather than ever falsely
         // report "stuck" off of a read that didn't work.
+        const message = `blankcheck failed: ${err instanceof Error ? err.message : String(err)}`;
+        if (message !== lastLoggedState) {
+          onSample?.(message);
+          lastLoggedState = message;
+        }
       }
     }
 
     const interval = setInterval(check, BLANK_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [video, onBlank]);
+  }, [video, onBlank, onSample]);
 }
 
 function VideoSlide({
@@ -659,8 +684,8 @@ function VideoSlide({
   // callback ref also lands the element in state, which is safe to read
   // at render time and reactively updates once the <video> actually mounts.
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
-  const debugLog = useVideoDebugLog(videoEl, debug);
-  useBlankFrameWatchdog(videoEl, onStuck);
+  const { log: debugLog, append: appendDebugLog } = useVideoDebugLog(videoEl, debug);
+  useBlankFrameWatchdog(videoEl, onStuck, debug ? appendDebugLog : undefined);
 
   useEffect(() => {
     const video = videoRef.current;
