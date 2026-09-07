@@ -177,7 +177,7 @@ export function PlaylistSection({
           sized via inset-0 against this same div, which is also what keeps
           the blur pinned in place while content scrolls underneath it. */}
       <div className="scroll-fade-y relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
-        <div className="no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto pt-10">
+        <div className="no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-10">
           <ul className="flex flex-col gap-3">
             {/* The "+ Create" trigger lives as the list's own first entry —
                 not a header button — so it scrolls out of view with the

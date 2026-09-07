@@ -39,6 +39,24 @@ export default function RootLayout({
     // screen behind that (translucent) toolbar on purpose, which is what
     // we want here so the lists reach the true bottom edge.
     <html lang="en" className="app-shell-height overflow-hidden">
+      <head>
+        {/* Safety net for the "page shifted upward, header clipped" iOS
+            Safari bug: html/body are overflow:hidden and meant to never
+            scroll themselves (overscroll-behavior in globals.css stops the
+            usual trigger, momentum chaining from the inner lists). But if
+            Safari ever does record a nonzero scroll offset for html/body,
+            its default scroll-restoration replays that offset on every
+            reload of the tab — which is exactly why a reload alone didn't
+            clear the bug and only a fresh tab did. Forcing manual
+            restoration and zeroing the scroll position on every load/
+            pageshow (pageshow also covers the bfcache-restore case, which
+            "load" misses) means a reload now genuinely resets it. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){function reset(){if("scrollRestoration" in history){history.scrollRestoration="manual";}window.scrollTo(0,0);document.documentElement.scrollTop=0;if(document.body){document.body.scrollTop=0;}}reset();window.addEventListener("pageshow",reset);})();`,
+          }}
+        />
+      </head>
       <body className="app-shell-height overflow-hidden">{children}</body>
     </html>
   );

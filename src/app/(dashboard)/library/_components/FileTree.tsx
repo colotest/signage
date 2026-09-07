@@ -263,7 +263,7 @@ export function FileTree({
           <div className="scroll-fade-y absolute inset-0">
             <div
               style={{ WebkitTouchCallout: "none" }}
-              className="no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto pt-10 pb-10"
+              className="no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-10 pb-10"
             >
               <div>
                 <TreeLevel

@@ -65,6 +65,16 @@
 
 html {
   height: 100%;
+  /* The shell (see .app-shell-height below) is deliberately taller than
+     the visible viewport with overflow hidden, so html/body themselves
+     must never actually scroll — if they did, there'd be up to ~9% of
+     viewport height of travel for them to shift by. iOS Safari's rubber-
+     band momentum can chain from an inner overflow-y-auto list (FileTree/
+     PlaylistSection, or the dashboard <main>) up to html/body at the
+     scroll bounds even though overflow is hidden here; overscroll-behavior
+     blocks that chaining at the source. This is the fix for the page
+     shifting upward and the header getting clipped on iOS. */
+  overscroll-behavior: none;
 }
 
 body {
@@ -73,6 +83,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-system);
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
 }
 
 ::selection {
