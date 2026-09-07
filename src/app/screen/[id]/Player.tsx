@@ -17,6 +17,10 @@ const PdfSlide = dynamic(() => import("./PdfSlide"), { ssr: false });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
+// How many times a single playlist item is allowed to force itself a fresh
+// <video> element before giving up — see handleAutoRefresh below.
+const MAX_AUTO_REFRESH_ATTEMPTS = 3;
+
 // Any value other than 0/90/180/270 (e.g. undefined, before the migration
 // adding this column has run) falls through to the plain, unrotated case —
 // same defensive default as the rest of this app's orientation handling.
@@ -203,19 +207,23 @@ export function Player({
   // currentTime advancing through several loop cycles) the entire time the
   // screen is actually white, so there's no in-page signal left to trust.
   // Rather than keep chasing a detector, just do unconditionally what
-  // fixing it by hand does: force one fresh <video> element a few seconds
+  // fixing it by hand does: force a fresh <video> element a few seconds
   // into every video's first play, every time, regardless of whether
-  // anything looks wrong. Tracked per playlist item (not per mount) so the
-  // forced remount itself — and any later replay once the playlist loops
-  // back around — doesn't trigger a second one.
-  const autoRefreshedItemIdsRef = useRef<Set<PlaylistItemWithMedia["id"]>>(new Set());
+  // anything looks wrong. One attempt isn't always enough in practice (a
+  // second item in a playlist needed a second swap before it took), and
+  // since we still have no way to detect whether a given attempt actually
+  // worked, allow a few tries per item rather than exactly one before
+  // giving up and just showing whatever's there. Tracked per playlist item
+  // (not per mount), so replays once the playlist loops back around don't
+  // restart the count.
+  const autoRefreshCountsRef = useRef<Map<PlaylistItemWithMedia["id"], number>>(new Map());
   // A render-time-readable mirror of the ref above — reading a ref during
   // render is unreliable (and the lint rules here correctly forbid it), so
-  // this is what Slide's "should I cover the video with the branding
+  // this is what Slide's "should I still cover the video with the branding
   // overlay" decision below actually reads. The ref stays the source of
-  // truth for the callback's own one-shot guard, since that check happens
-  // inside an event handler, not during render.
-  const [autoRefreshedItemIds, setAutoRefreshedItemIds] = useState<Set<PlaylistItemWithMedia["id"]>>(() => new Set());
+  // truth for the callback's own attempt-counting guard, since that check
+  // happens inside an event handler, not during render.
+  const [autoRefreshCounts, setAutoRefreshCounts] = useState<Map<PlaylistItemWithMedia["id"], number>>(() => new Map());
 
   // Stable identity (empty deps, reading state through refs like
   // advanceNow/retreatNow above) is load-bearing here, not just tidiness:
@@ -228,9 +236,12 @@ export function Player({
     const items = playlistRef.current;
     if (items.length === 0) return;
     const item = items[indexRef.current % items.length];
-    if (!item || autoRefreshedItemIdsRef.current.has(item.id)) return;
-    autoRefreshedItemIdsRef.current.add(item.id);
-    setAutoRefreshedItemIds((prev) => new Set(prev).add(item.id));
+    if (!item) return;
+    const attempts = autoRefreshCountsRef.current.get(item.id) ?? 0;
+    if (attempts >= MAX_AUTO_REFRESH_ATTEMPTS) return;
+    const next = attempts + 1;
+    autoRefreshCountsRef.current.set(item.id, next);
+    setAutoRefreshCounts((prev) => new Map(prev).set(item.id, next));
     setReloadToken((t) => t + 1);
   }, []);
 
@@ -434,7 +445,7 @@ export function Player({
             loop={playlist.length === 1}
             onVideoEnded={handleVideoEnded}
             onVideoAutoRefresh={handleAutoRefresh}
-            showAutoRefreshOverlay={!autoRefreshedItemIds.has(current.id)}
+            showAutoRefreshOverlay={(autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS}
           />
         )}
       </div>
@@ -609,12 +620,12 @@ function VideoSlide({
   loop: boolean;
   onVideoEnded: () => void;
   onAutoRefresh: () => void;
-  // False from the second mount onward (once this item has already had its
-  // one-time auto-refresh) — that instance is already known-good, so there's
-  // nothing to cover. True only covers this component's own lifetime up to
-  // the forced remount, which happens at exactly the same AUTO_REFRESH_DELAY_MS
-  // mark that would otherwise end this overlay anyway — so there's no
-  // separate timer here, the covering component's unmount *is* the reveal.
+  // True as long as this item has attempts left, meaning this mount will
+  // itself end in another forced remount — so the overlay just needs to
+  // cover this component's own lifetime, no separate hide timer required,
+  // since the remount's unmount *is* the reveal. Only false on the mount
+  // that follows the final allowed attempt, which is presumed (not
+  // confirmed — we still have no way to check) to finally be a good one.
   showInitialOverlay: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
