@@ -196,36 +196,33 @@ export function Player({
   // Some Android WebView video loads (observed on Fire TV Stick) get stuck
   // indefinitely on their very first buffering attempt — a blank/white
   // element that never progresses — while a brand-new <video> element
-  // pointed at the exact same URL loads normally right away. Forcing a
-  // remount (same mechanism as the offline-recovery reloadToken above) is
-  // the fix empirically found by hand: duplicate the stuck playlist item
-  // and remove the original, which promotes a fresh element in its place.
-  // This watchdog automates that. Capped per item so a video that's
-  // genuinely, persistently broken doesn't reload forever.
-  const stuckRetriesRef = useRef(0);
-  const stuckItemIdRef = useRef<PlaylistItemWithMedia["id"] | null>(null);
-  const MAX_STUCK_RETRIES = 3;
+  // pointed at the exact same URL loads normally right away. We tried
+  // detecting this from inside the page (a "playing"-event watchdog, then a
+  // canvas pixel-sampling one) and both came up empty on the real device —
+  // the element reports fully healthy playback (readyState=4, no error,
+  // currentTime advancing through several loop cycles) the entire time the
+  // screen is actually white, so there's no in-page signal left to trust.
+  // Rather than keep chasing a detector, just do unconditionally what
+  // fixing it by hand does: force one fresh <video> element a few seconds
+  // into every video's first play, every time, regardless of whether
+  // anything looks wrong. Tracked per playlist item (not per mount) so the
+  // forced remount itself — and any later replay once the playlist loops
+  // back around — doesn't trigger a second one.
+  const autoRefreshedItemIdsRef = useRef<Set<PlaylistItemWithMedia["id"]>>(new Set());
 
   // Stable identity (empty deps, reading state through refs like
   // advanceNow/retreatNow above) is load-bearing here, not just tidiness:
-  // this is handed to VideoSlide as a prop its watchdog effect depends on,
-  // so a new function reference on every Player render — which a plain
-  // function declaration would produce — tears down and re-arms that
-  // effect's setTimeout on every single re-render. In practice that meant
-  // the countdown kept getting reset by ordinary re-renders (a realtime
-  // message, any state update) before it ever got a chance to fire, so the
-  // watchdog silently never triggered at all.
-  const handleVideoStuck = useCallback(() => {
+  // this is handed to VideoSlide as a prop its timer effect depends on, so
+  // a new function reference on every Player render — which a plain
+  // function declaration would produce — would tear down and re-arm that
+  // effect's setTimeout on every single re-render, and a re-render is not
+  // guaranteed to leave enough of a gap for the timer to ever fire.
+  const handleAutoRefresh = useCallback(() => {
     const items = playlistRef.current;
     if (items.length === 0) return;
     const item = items[indexRef.current % items.length];
-    if (!item) return;
-    if (stuckItemIdRef.current !== item.id) {
-      stuckItemIdRef.current = item.id;
-      stuckRetriesRef.current = 0;
-    }
-    if (stuckRetriesRef.current >= MAX_STUCK_RETRIES) return;
-    stuckRetriesRef.current += 1;
+    if (!item || autoRefreshedItemIdsRef.current.has(item.id)) return;
+    autoRefreshedItemIdsRef.current.add(item.id);
     setReloadToken((t) => t + 1);
   }, []);
 
@@ -428,7 +425,7 @@ export function Player({
             paused={paused}
             loop={playlist.length === 1}
             onVideoEnded={handleVideoEnded}
-            onVideoStuck={handleVideoStuck}
+            onVideoAutoRefresh={handleAutoRefresh}
           />
         )}
       </div>
@@ -461,14 +458,14 @@ function Slide({
   paused,
   loop,
   onVideoEnded,
-  onVideoStuck,
+  onVideoAutoRefresh,
 }: {
   item: PlaylistItemWithMedia;
   fitMode: FitMode;
   paused: boolean;
   loop: boolean;
   onVideoEnded: () => void;
-  onVideoStuck: () => void;
+  onVideoAutoRefresh: () => void;
 }) {
   const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
   const fitClass = fitMode === "cover" ? "object-cover" : "object-contain";
@@ -481,7 +478,7 @@ function Slide({
         paused={paused}
         loop={loop}
         onVideoEnded={onVideoEnded}
-        onStuck={onVideoStuck}
+        onAutoRefresh={onVideoAutoRefresh}
       />
     );
   }
@@ -501,23 +498,13 @@ function Slide({
 // below only takes over for pause/resume *after* that initial start, and
 // re-syncs on visibilitychange as a safety net in case the kiosk browser
 // window briefly loses focus (screensaver, OS switch, display wake).
-// Fire TV Stick's WebView has been observed getting a freshly-mounted
-// <video> element stuck indefinitely in its initial buffering (blank/white,
-// never progresses) even though the exact same URL loads instantly in a
-// second, separately-mounted element. If `playing` hasn't fired this long
-// after asking the element to play, treat it as stuck rather than wait —
-// see onStuck (handleVideoStuck in Player) for what happens next.
-const STUCK_WATCHDOG_MS = 8000;
 
-// We've fixed several real bugs on the theory that this is a buffering
-// stall, but never actually confirmed that against the device itself —
-// including whether the video element ever fires an `error` at all, and
-// whether it's the WebView's video-hardware.decode pipeline that's stuck
-// versus, say, decode succeeding while the decoded frame never reaches the
-// screen (in which case `playing`/`timeupdate` still fire normally and this
-// file's whole stuck-detection strategy would be watching the wrong
-// signal). Gated behind a URL flag so it costs nothing in normal operation
-// — append ?debug=1 to a screen's URL to show it.
+// A ?debug=1 run showed the video element reporting a fully healthy
+// playback state (readyState=4, no error, fully buffered, currentTime
+// advancing through several loop cycles) for the entire time the screen
+// was still visibly white — so there's no in-page signal that reliably
+// indicates this failure. Gated behind a URL flag so it costs nothing in
+// normal operation — append ?debug=1 to a screen's URL to show it.
 const MEDIA_EVENTS = [
   "loadstart",
   "loadedmetadata",
@@ -541,22 +528,16 @@ function useVideoDebugLog(video: HTMLVideoElement | null, enabled: boolean) {
   const [log, setLog] = useState<string[]>([]);
   const [, forceTick] = useState(0);
   const startRef = useRef(0);
-  const appendRef = useRef<(msg: string) => void>(() => {});
 
   useEffect(() => {
     if (!enabled || !video) return;
     startRef.current = Date.now();
 
-    function append(msg: string) {
-      const t = ((Date.now() - startRef.current) / 1000).toFixed(1);
-      setLog((prev) => [...prev.slice(-19), `${t}s ${msg}`]);
-    }
-    appendRef.current = append;
-
     function record(e: Event) {
+      const t = ((Date.now() - startRef.current) / 1000).toFixed(1);
       const err = video!.error;
       const extra = e.type === "error" && err ? ` (code=${err.code} "${err.message}")` : "";
-      append(`${e.type}${extra}`);
+      setLog((prev) => [...prev.slice(-19), `${t}s ${e.type}${extra}`]);
     }
 
     for (const ev of MEDIA_EVENTS) video.addEventListener(ev, record);
@@ -564,16 +545,10 @@ function useVideoDebugLog(video: HTMLVideoElement | null, enabled: boolean) {
     return () => {
       for (const ev of MEDIA_EVENTS) video.removeEventListener(ev, record);
       clearInterval(interval);
-      appendRef.current = () => {};
     };
   }, [video, enabled]);
 
-  // A stable wrapper so callers (the blank-frame watchdog) can hold onto
-  // one function identity across renders instead of re-subscribing every
-  // time the underlying logger's own effect re-runs.
-  const append = useCallback((msg: string) => appendRef.current(msg), []);
-
-  return { log, append };
+  return log;
 }
 
 function VideoDebugOverlay({ video, log }: { video: HTMLVideoElement; log: string[] }) {
@@ -593,68 +568,13 @@ ${log.join("\n")}`}
   );
 }
 
-// A ?debug=1 run confirmed the video element can report a fully healthy
-// playback state — readyState=4, no error, fully buffered, currentTime
-// advancing through multiple loop cycles — while the decoded frame never
-// actually reaches the screen (still visibly white). No DOM/media API
-// exposes "is this frame actually on screen", so this checks the only way
-// possible: draw the live frame to a tiny offscreen canvas and look at the
-// actual pixels. A sustained run of blank/near-white samples despite the
-// element insisting it's playing is treated as the same stuck condition
-// the `playing`-based watchdog above was meant to catch (and silently
-// couldn't, since `playing` fires normally in this failure mode).
-const BLANK_CHECK_INTERVAL_MS = 1000;
-const BLANK_CONSECUTIVE_THRESHOLD = 3;
-
-function useBlankFrameWatchdog(video: HTMLVideoElement | null, onBlank: () => void, onSample?: (msg: string) => void) {
-  useEffect(() => {
-    if (!video) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = 8;
-    canvas.height = 8;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
-
-    let consecutiveBlank = 0;
-    let lastLoggedState: string | null = null;
-
-    function check() {
-      if (video!.paused || video!.readyState < 2) return;
-      try {
-        ctx!.drawImage(video!, 0, 0, 8, 8);
-        const { data } = ctx!.getImageData(0, 0, 8, 8);
-        let blank = true;
-        for (let i = 0; i < data.length; i += 4) {
-          if (data[i] < 250 || data[i + 1] < 250 || data[i + 2] < 250) {
-            blank = false;
-            break;
-          }
-        }
-        consecutiveBlank = blank ? consecutiveBlank + 1 : 0;
-        // Logged only on change, not every sample, so this doesn't crowd
-        // out the media-event log above it.
-        const state = `blankcheck blank=${blank} rgb=${data[0]},${data[1]},${data[2]} consecutive=${consecutiveBlank}`;
-        if (state !== lastLoggedState) {
-          onSample?.(state);
-          lastLoggedState = state;
-        }
-        if (consecutiveBlank >= BLANK_CONSECUTIVE_THRESHOLD) onBlank();
-      } catch (err) {
-        // A tainted canvas (CORS not actually in effect despite appearances)
-        // makes this check unusable — fail open rather than ever falsely
-        // report "stuck" off of a read that didn't work.
-        const message = `blankcheck failed: ${err instanceof Error ? err.message : String(err)}`;
-        if (message !== lastLoggedState) {
-          onSample?.(message);
-          lastLoggedState = message;
-        }
-      }
-    }
-
-    const interval = setInterval(check, BLANK_CHECK_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [video, onBlank, onSample]);
-}
+// Mirrors the manual fix exactly and unconditionally: a few seconds into
+// every video's first play, force a fresh <video> element regardless of
+// whether anything looks wrong. "Within seconds" is what made the manual
+// version reliable, so this stays short — long enough to give a genuinely
+// healthy load a moment to get going first, short enough that a real stall
+// doesn't sit on screen for long before it's fixed either way.
+const AUTO_REFRESH_DELAY_MS = 4000;
 
 function VideoSlide({
   url,
@@ -662,7 +582,7 @@ function VideoSlide({
   paused,
   loop,
   onVideoEnded,
-  onStuck,
+  onAutoRefresh,
 }: {
   url: string;
   fitClass: string;
@@ -675,7 +595,7 @@ function VideoSlide({
   // drop), not something to reach for on every ordinary loop.
   loop: boolean;
   onVideoEnded: () => void;
-  onStuck: () => void;
+  onAutoRefresh: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [debug] = useState(isDebugMode);
@@ -684,46 +604,24 @@ function VideoSlide({
   // callback ref also lands the element in state, which is safe to read
   // at render time and reactively updates once the <video> actually mounts.
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
-  const { log: debugLog, append: appendDebugLog } = useVideoDebugLog(videoEl, debug);
-  useBlankFrameWatchdog(videoEl, onStuck, debug ? appendDebugLog : undefined);
+  const debugLog = useVideoDebugLog(videoEl, debug);
+
+  useEffect(() => {
+    const timer = setTimeout(onAutoRefresh, AUTO_REFRESH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [onAutoRefresh]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
-    let stuckTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function clearStuckWatchdog() {
-      if (stuckTimer) {
-        clearTimeout(stuckTimer);
-        stuckTimer = null;
-      }
-    }
-
-    function armStuckWatchdog() {
-      clearStuckWatchdog();
-      stuckTimer = setTimeout(onStuck, STUCK_WATCHDOG_MS);
-    }
-
     function sync() {
-      if (paused) {
-        clearStuckWatchdog();
-        video!.pause();
-      } else {
-        armStuckWatchdog();
-        video!.play().catch(() => {});
-      }
+      if (paused) video!.pause();
+      else video!.play().catch(() => {});
     }
-
-    video.addEventListener("playing", clearStuckWatchdog);
     sync();
     document.addEventListener("visibilitychange", sync);
-    return () => {
-      clearStuckWatchdog();
-      video.removeEventListener("playing", clearStuckWatchdog);
-      document.removeEventListener("visibilitychange", sync);
-    };
-  }, [paused, onStuck]);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, [paused]);
 
   return (
     <>
@@ -733,13 +631,6 @@ function VideoSlide({
           setVideoEl(el);
         }}
         src={url}
-        // Required for the blank-frame canvas check above to be able to
-        // read pixels back at all — without it, drawImage still succeeds
-        // but taints the canvas and getImageData throws on every call.
-        // Supabase Storage's public bucket already sends permissive CORS
-        // (the SW's plain-GET prefetch already depends on that to work),
-        // so this doesn't change what can load, just what JS can read back.
-        crossOrigin="anonymous"
         autoPlay
         muted
         loop={loop}
