@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
@@ -206,16 +206,28 @@ export function Player({
   const stuckItemIdRef = useRef<PlaylistItemWithMedia["id"] | null>(null);
   const MAX_STUCK_RETRIES = 3;
 
-  function handleVideoStuck() {
-    if (!current) return;
-    if (stuckItemIdRef.current !== current.id) {
-      stuckItemIdRef.current = current.id;
+  // Stable identity (empty deps, reading state through refs like
+  // advanceNow/retreatNow above) is load-bearing here, not just tidiness:
+  // this is handed to VideoSlide as a prop its watchdog effect depends on,
+  // so a new function reference on every Player render — which a plain
+  // function declaration would produce — tears down and re-arms that
+  // effect's setTimeout on every single re-render. In practice that meant
+  // the countdown kept getting reset by ordinary re-renders (a realtime
+  // message, any state update) before it ever got a chance to fire, so the
+  // watchdog silently never triggered at all.
+  const handleVideoStuck = useCallback(() => {
+    const items = playlistRef.current;
+    if (items.length === 0) return;
+    const item = items[indexRef.current % items.length];
+    if (!item) return;
+    if (stuckItemIdRef.current !== item.id) {
+      stuckItemIdRef.current = item.id;
       stuckRetriesRef.current = 0;
     }
     if (stuckRetriesRef.current >= MAX_STUCK_RETRIES) return;
     stuckRetriesRef.current += 1;
     setReloadToken((t) => t + 1);
-  }
+  }, []);
 
   function skipNext() {
     advanceNow();
