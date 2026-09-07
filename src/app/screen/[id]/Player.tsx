@@ -19,7 +19,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 // How many times a single playlist item is allowed to force itself a fresh
 // <video> element before giving up — see handleAutoRefresh below.
-const MAX_AUTO_REFRESH_ATTEMPTS = 3;
+const MAX_AUTO_REFRESH_ATTEMPTS = 1;
 
 // Any value other than 0/90/180/270 (e.g. undefined, before the migration
 // adding this column has run) falls through to the plain, unrotated case —
