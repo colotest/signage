@@ -193,6 +193,30 @@ export function Player({
     setPaused(next);
   }
 
+  // Some Android WebView video loads (observed on Fire TV Stick) get stuck
+  // indefinitely on their very first buffering attempt — a blank/white
+  // element that never progresses — while a brand-new <video> element
+  // pointed at the exact same URL loads normally right away. Forcing a
+  // remount (same mechanism as the offline-recovery reloadToken above) is
+  // the fix empirically found by hand: duplicate the stuck playlist item
+  // and remove the original, which promotes a fresh element in its place.
+  // This watchdog automates that. Capped per item so a video that's
+  // genuinely, persistently broken doesn't reload forever.
+  const stuckRetriesRef = useRef(0);
+  const stuckItemIdRef = useRef<PlaylistItemWithMedia["id"] | null>(null);
+  const MAX_STUCK_RETRIES = 3;
+
+  function handleVideoStuck() {
+    if (!current) return;
+    if (stuckItemIdRef.current !== current.id) {
+      stuckItemIdRef.current = current.id;
+      stuckRetriesRef.current = 0;
+    }
+    if (stuckRetriesRef.current >= MAX_STUCK_RETRIES) return;
+    stuckRetriesRef.current += 1;
+    setReloadToken((t) => t + 1);
+  }
+
   function skipNext() {
     advanceNow();
     scheduleTick();
@@ -357,6 +381,7 @@ export function Player({
             paused={paused}
             loop={playlist.length === 1}
             onVideoEnded={handleVideoEnded}
+            onVideoStuck={handleVideoStuck}
           />
         )}
       </div>
@@ -389,18 +414,29 @@ function Slide({
   paused,
   loop,
   onVideoEnded,
+  onVideoStuck,
 }: {
   item: PlaylistItemWithMedia;
   fitMode: FitMode;
   paused: boolean;
   loop: boolean;
   onVideoEnded: () => void;
+  onVideoStuck: () => void;
 }) {
   const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
   const fitClass = fitMode === "cover" ? "object-cover" : "object-contain";
 
   if (item.media_item.media_type === "video") {
-    return <VideoSlide url={url} fitClass={fitClass} paused={paused} loop={loop} onVideoEnded={onVideoEnded} />;
+    return (
+      <VideoSlide
+        url={url}
+        fitClass={fitClass}
+        paused={paused}
+        loop={loop}
+        onVideoEnded={onVideoEnded}
+        onStuck={onVideoStuck}
+      />
+    );
   }
 
   if (item.media_item.media_type === "pdf") {
@@ -418,12 +454,21 @@ function Slide({
 // below only takes over for pause/resume *after* that initial start, and
 // re-syncs on visibilitychange as a safety net in case the kiosk browser
 // window briefly loses focus (screensaver, OS switch, display wake).
+// Fire TV Stick's WebView has been observed getting a freshly-mounted
+// <video> element stuck indefinitely in its initial buffering (blank/white,
+// never progresses) even though the exact same URL loads instantly in a
+// second, separately-mounted element. If `playing` hasn't fired this long
+// after asking the element to play, treat it as stuck rather than wait —
+// see onStuck (handleVideoStuck in Player) for what happens next.
+const STUCK_WATCHDOG_MS = 8000;
+
 function VideoSlide({
   url,
   fitClass,
   paused,
   loop,
   onVideoEnded,
+  onStuck,
 }: {
   url: string;
   fitClass: string;
@@ -436,20 +481,47 @@ function VideoSlide({
   // drop), not something to reach for on every ordinary loop.
   loop: boolean;
   onVideoEnded: () => void;
+  onStuck: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    function sync() {
-      const video = videoRef.current;
-      if (!video) return;
-      if (paused) video.pause();
-      else video.play().catch(() => {});
+    const video = videoRef.current;
+    if (!video) return;
+
+    let stuckTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function clearStuckWatchdog() {
+      if (stuckTimer) {
+        clearTimeout(stuckTimer);
+        stuckTimer = null;
+      }
     }
+
+    function armStuckWatchdog() {
+      clearStuckWatchdog();
+      stuckTimer = setTimeout(onStuck, STUCK_WATCHDOG_MS);
+    }
+
+    function sync() {
+      if (paused) {
+        clearStuckWatchdog();
+        video!.pause();
+      } else {
+        armStuckWatchdog();
+        video!.play().catch(() => {});
+      }
+    }
+
+    video.addEventListener("playing", clearStuckWatchdog);
     sync();
     document.addEventListener("visibilitychange", sync);
-    return () => document.removeEventListener("visibilitychange", sync);
-  }, [paused]);
+    return () => {
+      clearStuckWatchdog();
+      video.removeEventListener("playing", clearStuckWatchdog);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [paused, onStuck]);
 
   return (
     <video
