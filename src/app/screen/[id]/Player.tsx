@@ -249,6 +249,41 @@ export function Player({
     }
   }, []);
 
+  // The <video> element only ever issues Range requests, which sw.js
+  // deliberately never caches (a cached partial response would get replayed
+  // for the wrong byte range later — see that file). So nothing about
+  // playing a video ever leaves a local copy behind, and every play is a
+  // live fetch against Supabase's origin over whatever the venue's
+  // connection happens to be that moment — on a slow link that reads as a
+  // long white screen while enough of the file trickles in. A plain GET
+  // (no Range header) is the one request shape the service worker *does*
+  // cache in full, so proactively firing one per video here — well before
+  // it's due to play — gives sw.js a complete local copy to slice Range
+  // requests out of instead of ever hitting the network live. Waits for
+  // the service worker to actually be controlling the page first, since a
+  // prefetch that lands before that would just be an ordinary uncached
+  // fetch.
+  const prefetchedUrlsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    let cancelled = false;
+    navigator.serviceWorker.ready.then(() => {
+      if (cancelled) return;
+      for (const item of playlist) {
+        if (item.media_item.media_type !== "video") continue;
+        const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
+        if (prefetchedUrlsRef.current.has(url)) continue;
+        prefetchedUrlsRef.current.add(url);
+        fetch(url).catch(() => {
+          prefetchedUrlsRef.current.delete(url); // let a failed attempt retry on the next playlist change
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [playlist]);
+
   // Multiple realtime events firing in quick succession (e.g. assigning an
   // item and then immediately editing its duration) each kick off their own
   // async refetch — network responses can resolve out of order, so an older

@@ -11,6 +11,30 @@
 const CACHE_NAME = "signage-player-v2";
 const MEDIA_PATH = "/storage/v1/object/public/";
 
+// Builds a 206 Partial Content response by slicing a *complete* cached
+// response — never a partial one, which is what the v2 bump above fixed.
+// The only thing that ever populates a plain (non-Range) cache entry for
+// media is Player.tsx's explicit whole-file prefetch, so finding one here
+// means the full file is already local. Returns null for anything that
+// doesn't parse or fit, so the caller can fall back to the network.
+async function sliceCachedResponse(cachedResponse, rangeHeader) {
+  const match = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader || "");
+  if (!match) return null;
+
+  const blob = await cachedResponse.blob();
+  const size = blob.size;
+  const start = Number(match[1]);
+  const end = match[2] ? Number(match[2]) : size - 1;
+  if (start >= size || end < start) return null;
+
+  const slice = blob.slice(start, end + 1, cachedResponse.headers.get("Content-Type") || undefined);
+  const headers = new Headers(cachedResponse.headers);
+  headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+  headers.set("Content-Length", String(slice.size));
+  headers.set("Accept-Ranges", "bytes");
+  return new Response(slice, { status: 206, statusText: "Partial Content", headers });
+}
+
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
@@ -43,7 +67,20 @@ self.addEventListener("fetch", (event) => {
     // far more aggressively during video playback than a desktop browser
     // does, which lines up with this only showing up there.
     if (request.headers.has("range")) {
-      event.respondWith(fetch(request));
+      event.respondWith(
+        caches.open(CACHE_NAME).then(async (cache) => {
+          // Look up by plain URL (no Range header) — this only ever finds
+          // an entry if Player.tsx's whole-file prefetch already landed
+          // one, in which case serve the requested slice straight out of
+          // it instead of going to the network at all.
+          const cachedFull = await cache.match(request.url);
+          if (cachedFull) {
+            const sliced = await sliceCachedResponse(cachedFull, request.headers.get("range"));
+            if (sliced) return sliced;
+          }
+          return fetch(request);
+        }),
+      );
       return;
     }
 
