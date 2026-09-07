@@ -209,6 +209,13 @@ export function Player({
   // forced remount itself — and any later replay once the playlist loops
   // back around — doesn't trigger a second one.
   const autoRefreshedItemIdsRef = useRef<Set<PlaylistItemWithMedia["id"]>>(new Set());
+  // A render-time-readable mirror of the ref above — reading a ref during
+  // render is unreliable (and the lint rules here correctly forbid it), so
+  // this is what Slide's "should I cover the video with the branding
+  // overlay" decision below actually reads. The ref stays the source of
+  // truth for the callback's own one-shot guard, since that check happens
+  // inside an event handler, not during render.
+  const [autoRefreshedItemIds, setAutoRefreshedItemIds] = useState<Set<PlaylistItemWithMedia["id"]>>(() => new Set());
 
   // Stable identity (empty deps, reading state through refs like
   // advanceNow/retreatNow above) is load-bearing here, not just tidiness:
@@ -223,6 +230,7 @@ export function Player({
     const item = items[indexRef.current % items.length];
     if (!item || autoRefreshedItemIdsRef.current.has(item.id)) return;
     autoRefreshedItemIdsRef.current.add(item.id);
+    setAutoRefreshedItemIds((prev) => new Set(prev).add(item.id));
     setReloadToken((t) => t + 1);
   }, []);
 
@@ -426,6 +434,7 @@ export function Player({
             loop={playlist.length === 1}
             onVideoEnded={handleVideoEnded}
             onVideoAutoRefresh={handleAutoRefresh}
+            showAutoRefreshOverlay={!autoRefreshedItemIds.has(current.id)}
           />
         )}
       </div>
@@ -459,6 +468,7 @@ function Slide({
   loop,
   onVideoEnded,
   onVideoAutoRefresh,
+  showAutoRefreshOverlay,
 }: {
   item: PlaylistItemWithMedia;
   fitMode: FitMode;
@@ -466,6 +476,7 @@ function Slide({
   loop: boolean;
   onVideoEnded: () => void;
   onVideoAutoRefresh: () => void;
+  showAutoRefreshOverlay: boolean;
 }) {
   const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
   const fitClass = fitMode === "cover" ? "object-cover" : "object-contain";
@@ -479,6 +490,7 @@ function Slide({
         loop={loop}
         onVideoEnded={onVideoEnded}
         onAutoRefresh={onVideoAutoRefresh}
+        showInitialOverlay={showAutoRefreshOverlay}
       />
     );
   }
@@ -583,6 +595,7 @@ function VideoSlide({
   loop,
   onVideoEnded,
   onAutoRefresh,
+  showInitialOverlay,
 }: {
   url: string;
   fitClass: string;
@@ -596,6 +609,13 @@ function VideoSlide({
   loop: boolean;
   onVideoEnded: () => void;
   onAutoRefresh: () => void;
+  // False from the second mount onward (once this item has already had its
+  // one-time auto-refresh) — that instance is already known-good, so there's
+  // nothing to cover. True only covers this component's own lifetime up to
+  // the forced remount, which happens at exactly the same AUTO_REFRESH_DELAY_MS
+  // mark that would otherwise end this overlay anyway — so there's no
+  // separate timer here, the covering component's unmount *is* the reveal.
+  showInitialOverlay: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [debug] = useState(isDebugMode);
@@ -647,6 +667,11 @@ function VideoSlide({
         // surface that the compositor can still just rotate wholesale.
         style={{ transform: "translateZ(0)", willChange: "transform" }}
       />
+      {showInitialOverlay && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black">
+          <NoContentPlaceholder />
+        </div>
+      )}
       {debug && videoEl && <VideoDebugOverlay video={videoEl} log={debugLog} />}
     </>
   );
