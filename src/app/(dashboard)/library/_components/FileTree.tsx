@@ -102,7 +102,10 @@ export function FileTree({
   onToggleSort: (key: SortKey) => void;
   creatingIn: string | null | undefined;
   onCreatingChange: (id: string | null | undefined) => void;
-  onUploadFiles: (files: FileList) => void;
+  // Left out where the tree is only ever a file picker (the dashboard's
+  // Playback Menu) — OS file drops are then ignored instead of showing an
+  // upload overlay that leads nowhere.
+  onUploadFiles?: (files: FileList) => void;
   // Owned by LibraryView now — a single DndContext up there is what lets a
   // file be dragged out of this tree and dropped onto a playlist, which a
   // DndContext scoped to this component alone could never see.
@@ -123,7 +126,7 @@ export function FileTree({
   const uploadTargetFolderName = folders.find((f) => f.id === uploadTargetId)?.name ?? "Root";
 
   function handleNativeDragEnter(e: React.DragEvent) {
-    if (!e.dataTransfer.types.includes("Files")) return;
+    if (!onUploadFiles || !e.dataTransfer.types.includes("Files")) return;
     e.preventDefault();
     dragCounterRef.current += 1;
     setIsDraggingOsFile(true);
@@ -145,7 +148,7 @@ export function FileTree({
     e.preventDefault();
     dragCounterRef.current = 0;
     setIsDraggingOsFile(false);
-    if (e.dataTransfer.files.length > 0) onUploadFiles(e.dataTransfer.files);
+    if (e.dataTransfer.files.length > 0) onUploadFiles?.(e.dataTransfer.files);
   }
 
   const { roots, rootFiles } = useMemo(() => buildTree(folders, media), [folders, media]);

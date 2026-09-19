@@ -14,19 +14,28 @@ const ROTATION_OPTIONS: { value: ScreenRotation; label: string }[] = [
   { value: 270, label: "270°" },
 ];
 
-// The player URL, screen rotation, and the delete action used to sit in
-// plain view on every tile; tucking them behind this button keeps the row
-// down to just the title, since none of it is something you touch day-to-day.
+// The player URL, renaming, screen rotation, and the delete action used to
+// sit in plain view on every tile; tucking them behind this button keeps the
+// row down to just the title, since none of it is something you touch
+// day-to-day.
+//
+// The button sits right up against the title rather than at the row's far
+// end, so its container is deliberately NOT the dropdown's positioning
+// anchor — the dropdown hangs off the nearest positioned ancestor instead
+// (ScreenTile's title row), left-aligned with the card, so it can't run off
+// the card's (or a phone screen's) edge however far along a title pushes it.
 export function ScreenSetupMenu({
   screenId,
   playerPath,
   rotation,
   onSelectRotation,
+  onRename,
 }: {
   screenId: number;
   playerPath: string;
   rotation: ScreenRotation;
   onSelectRotation: (rotation: ScreenRotation) => void;
+  onRename: () => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -63,7 +72,7 @@ export function ScreenSetupMenu({
   }
 
   return (
-    <div ref={containerRef} className="relative shrink-0">
+    <div ref={containerRef} className="shrink-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -76,7 +85,18 @@ export function ScreenSetupMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-10 mt-2 w-56 rounded-[var(--radius-md)] border border-border bg-surface p-3 shadow-[var(--shadow-card)]">
+        <div className="absolute left-0 top-full z-10 mt-2 w-56 rounded-[var(--radius-md)] border border-border bg-surface p-3 shadow-[var(--shadow-card)]">
+          <button
+            type="button"
+            onClick={() => {
+              close();
+              onRename();
+            }}
+            className="mb-2 block w-full rounded-[var(--radius-sm)] px-2 py-1 text-left text-[13px] font-medium text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+          >
+            Rename
+          </button>
+
           <a
             href={playerPath}
             target="_blank"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -47,31 +47,39 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+// The selection/drop props only matter on the Library page itself — the
+// dashboard's Playback Menu shows this same list, but swaps each row's
+// "+"/"✕"/"Delete" controls for its own via renderActions and has no
+// "+ Create" entry, so it leaves all of those out.
 export function PlaylistSection({
   className,
   playlists,
-  activePlaylistId,
-  selectedCount,
+  activePlaylistId = null,
+  selectedCount = 0,
   onArmSelection,
   onCancelSelection,
   onConfirmAdd,
   onReorderEntries,
   onRemoveEntry,
-  dropTargetPlaylistId,
+  dropTargetPlaylistId = null,
+  showCreate = true,
+  renderActions,
 }: {
   className?: string;
   playlists: PlaylistWithEntries[];
-  activePlaylistId: string | null;
-  selectedCount: number;
-  onArmSelection: (playlistId: string) => void;
-  onCancelSelection: () => void;
-  onConfirmAdd: (playlistId: string) => void;
+  activePlaylistId?: string | null;
+  selectedCount?: number;
+  onArmSelection?: (playlistId: string) => void;
+  onCancelSelection?: () => void;
+  onConfirmAdd?: (playlistId: string) => void;
   onReorderEntries: (playlistId: string, nextEntries: PlaylistEntryWithMedia[]) => void;
   onRemoveEntry: (playlistId: string, entryId: string) => void;
   // A file being dragged in from the Media list (DndContext lives in
   // LibraryView, a shared ancestor of both lists) resolves to a playlist id
   // when it's hovering this one — drives PlaylistRow's own highlight.
-  dropTargetPlaylistId: string | null;
+  dropTargetPlaylistId?: string | null;
+  showCreate?: boolean;
+  renderActions?: (playlist: PlaylistWithEntries) => ReactNode;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -183,7 +191,7 @@ export function PlaylistSection({
                 not a header button — so it scrolls out of view with the
                 rest of the list, and its spacing (same card padding as
                 PlaylistRow) matches the playlist it's about to create. */}
-            <CreatePlaylistRow onCreate={handleCreate} pending={pending} />
+            {showCreate && <CreatePlaylistRow onCreate={handleCreate} pending={pending} />}
             {sortPlaylists(playlists).map((playlist) => (
               <PlaylistRow
                 key={playlist.id}
@@ -194,12 +202,13 @@ export function PlaylistSection({
                 onDoneRenaming={() => setCreatingId(null)}
                 isActive={activePlaylistId === playlist.id}
                 selectedCount={selectedCount}
-                onArmSelection={() => onArmSelection(playlist.id)}
-                onCancelSelection={onCancelSelection}
-                onConfirmAdd={() => onConfirmAdd(playlist.id)}
+                onArmSelection={() => onArmSelection?.(playlist.id)}
+                onCancelSelection={() => onCancelSelection?.()}
+                onConfirmAdd={() => onConfirmAdd?.(playlist.id)}
                 onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
                 onRemoveEntry={(entryId) => onRemoveEntry(playlist.id, entryId)}
                 isDropTarget={dropTargetPlaylistId === playlist.id}
+                actions={renderActions?.(playlist)}
               />
             ))}
           </ul>
@@ -240,6 +249,7 @@ function PlaylistRow({
   onReorderEntries,
   onRemoveEntry,
   isDropTarget,
+  actions,
 }: {
   playlist: PlaylistWithEntries;
   isExpanded: boolean;
@@ -254,6 +264,8 @@ function PlaylistRow({
   onReorderEntries: (nextEntries: PlaylistEntryWithMedia[]) => void;
   onRemoveEntry: (entryId: string) => void;
   isDropTarget: boolean;
+  // Replaces the Library's own "+"/"✕"/"Delete" controls when given.
+  actions?: ReactNode;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -330,53 +342,59 @@ function PlaylistRow({
           {fileCount} file{fileCount === 1 ? "" : "s"}
         </span>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={isActive ? onConfirmAdd : onArmSelection}
-            disabled={isActive && selectedCount === 0}
-            title={isActive ? "Add selected files" : "Add files"}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
-          >
-            {isActive && selectedCount > 0 ? `+${selectedCount}` : "+"}
-          </button>
-          {isActive && (
-            <button
-              type="button"
-              onClick={onCancelSelection}
-              title="Cancel selection"
-              aria-label="Cancel selection"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90"
-            >
-              ✕
-            </button>
-          )}
-        </div>
+        {actions ?? (
+          <>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={isActive ? onConfirmAdd : onArmSelection}
+                disabled={isActive && selectedCount === 0}
+                title={isActive ? "Add selected files" : "Add files"}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
+              >
+                {isActive && selectedCount > 0 ? `+${selectedCount}` : "+"}
+              </button>
+              {isActive && (
+                <button
+                  type="button"
+                  onClick={onCancelSelection}
+                  title="Cancel selection"
+                  aria-label="Cancel selection"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-        {confirmingDelete ? (
-          <div className="flex shrink-0 items-center gap-2 text-[13px]">
-            <button type="button" disabled={pending} onClick={handleDelete} className="font-medium text-danger hover:opacity-70">
-              Confirm
-            </button>
-            <button type="button" onClick={() => setConfirmingDelete(false)} className="text-muted hover:opacity-70">
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmingDelete(true)}
-            className="shrink-0 text-[13px] text-muted hover:text-danger"
-          >
-            Delete
-          </button>
+            {confirmingDelete ? (
+              <div className="flex shrink-0 items-center gap-2 text-[13px]">
+                <button type="button" disabled={pending} onClick={handleDelete} className="font-medium text-danger hover:opacity-70">
+                  Confirm
+                </button>
+                <button type="button" onClick={() => setConfirmingDelete(false)} className="text-muted hover:opacity-70">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="shrink-0 text-[13px] text-muted hover:text-danger"
+              >
+                Delete
+              </button>
+            )}
+          </>
         )}
       </div>
 
       {isExpanded && (
         <div className="mt-3 border-t border-border pt-3">
           {playlist.entries.length === 0 ? (
-            <p className="text-[13px] text-muted">No files yet — press + and select some from above.</p>
+            <p className="text-[13px] text-muted">
+              {actions ? "No files yet." : "No files yet — press + and select some from above."}
+            </p>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndEntries}>
               <SortableContext items={playlist.entries.map((e) => e.id)} strategy={verticalListSortingStrategy}>

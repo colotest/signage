@@ -7,11 +7,11 @@ import { MediaThumb } from "@/components/MediaThumb";
 import { setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import type { PlaylistItemWithMedia, Screen, ScreenRotation } from "@/types/domain";
-import { PauseIcon } from "@/components/icons/PlaybackIcons";
-import { RenameScreenDialog } from "./RenameScreenDialog";
+import { PauseIcon, PlaylistPlayIcon } from "@/components/icons/PlaybackIcons";
+import { ScreenTitle } from "./ScreenTitle";
 import { FitModeToggle } from "./FitModeToggle";
 import { PlaybackControls } from "./PlaybackControls";
-import { MediaMenuSheet } from "./MediaMenuSheet";
+import { PlaybackMenu, type LibraryData } from "./PlaybackMenu";
 import { ScreenSetupMenu } from "./ScreenSetupMenu";
 
 // Preview "postage stamp" footprint — flipping just swaps these two, like
@@ -51,12 +51,15 @@ const FRAME_SHADOWS = [
 export function ScreenTile({
   screen,
   playlist,
+  library,
 }: {
   screen: Screen;
   playlist: PlaylistItemWithMedia[];
+  library: LibraryData;
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   // Purely local and optimistic — there's no reliable way to confirm a
   // screen actually received and applied a command (that used to come from
   // realtime presence, which proved unreliable enough to remove entirely),
@@ -243,31 +246,61 @@ export function ScreenTile({
         </div>
 
         {/* Info card — rounded corners, visually detached from the preview. */}
-        <Card className="flex flex-col gap-3 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <RenameScreenDialog screenId={screen.id} name={screen.name} />
+        <Card className="flex items-center gap-3 p-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            {/* The wrench sits right up against the title rather than at
+                the row's far end. relative: the anchor ScreenSetupMenu's
+                dropdown hangs off (see there). */}
+            <div className="relative flex min-w-0 items-center gap-1">
+              <ScreenTitle
+                screenId={screen.id}
+                name={screen.name}
+                editing={renaming}
+                onDoneEditing={() => setRenaming(false)}
+              />
+              {!renaming && (
+                <ScreenSetupMenu
+                  screenId={screen.id}
+                  playerPath={playerPath}
+                  rotation={(step * 90) as ScreenRotation}
+                  onSelectRotation={handleSelectRotation}
+                  onRename={() => setRenaming(true)}
+                />
+              )}
             </div>
-            <ScreenSetupMenu
-              screenId={screen.id}
-              playerPath={playerPath}
-              rotation={(step * 90) as ScreenRotation}
-              onSelectRotation={handleSelectRotation}
-            />
+
+            <div className="flex items-center gap-2">
+              <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
+              <PlaybackControls
+                screenId={screen.id}
+                paused={paused}
+                onTogglePaused={() => setPaused((p) => !p)}
+              />
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
-            <PlaybackControls
-              screenId={screen.id}
-              paused={paused}
-              onTogglePaused={() => setPaused((p) => !p)}
-            />
-          </div>
+          {/* Nearly the card's full height: -my-2 lets it reach 8px past
+              the content column above and below, into the card's own
+              16px padding. */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            title="Playback"
+            aria-label="Open playback menu"
+            className="-my-2 flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+          >
+            <PlaylistPlayIcon className="h-9 w-9" />
+          </button>
         </Card>
       </div>
 
-      <MediaMenuSheet screen={screen} open={menuOpen} onOpenChange={setMenuOpen} />
+      <PlaybackMenu
+        screen={screen}
+        playlist={playlist}
+        library={library}
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+      />
     </>
   );
 }

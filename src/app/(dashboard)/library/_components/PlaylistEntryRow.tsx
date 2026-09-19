@@ -4,19 +4,24 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { MediaThumb } from "@/components/MediaThumb";
 import { kindLabel } from "@/lib/utils/format";
-import type { PlaylistEntryWithMedia } from "@/types/domain";
+import type { MediaItem } from "@/types/domain";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+// Only the fields shared by a library playlist's entries and a screen's own
+// playlist_items — the dashboard's Playback Menu renders the latter with this
+// same row so both lists look and behave alike.
 export function PlaylistEntryRow({
   entry,
   onRemove,
   onDurationChange,
+  removeLabel = "Remove from playlist",
 }: {
-  entry: PlaylistEntryWithMedia;
+  entry: { id: string; duration_seconds: number; media_item: MediaItem };
   onRemove: () => void;
+  removeLabel?: string;
   onDurationChange: (seconds: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id });
@@ -75,7 +80,7 @@ export function PlaylistEntryRow({
         type="button"
         onClick={onRemove}
         className="shrink-0 px-1 text-muted hover:text-danger"
-        aria-label="Remove from playlist"
+        aria-label={removeLabel}
       >
         ✕
       </button>

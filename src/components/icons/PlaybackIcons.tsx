@@ -32,3 +32,53 @@ export function SkipForwardIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+// Three stacked list lines with a play triangle leading the top one — the
+// Screens tile's "open this screen's Playback Menu" button.
+export function PlaylistPlayIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M3.5 3.5v5l4.5-2.5z" fill="currentColor" strokeLinejoin="round" strokeWidth="1.5" />
+      <path d="M11 6h10" />
+      <path d="M3 12h18" />
+      <path d="M3 18h18" />
+    </svg>
+  );
+}
+
+export function AlarmClockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="13" r="7" />
+      <path d="M12 9.5V13l2.5 2" />
+      <path d="M4 5.5 6.5 3" />
+      <path d="M20 5.5 17.5 3" />
+      <path d="M6.5 19.5 5 21" />
+      <path d="M17.5 19.5 19 21" />
+    </svg>
+  );
+}
+
+export function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="5 12.5 10 17.5 19 7" />
+    </svg>
+  );
+}

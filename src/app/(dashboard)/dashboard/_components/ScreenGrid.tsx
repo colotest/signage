@@ -3,10 +3,11 @@
 import type { PlaylistItemWithMedia, Screen } from "@/types/domain";
 import { ScreenTile } from "./ScreenTile";
 import { AddScreenButton } from "./AddScreenButton";
+import type { LibraryData } from "./PlaybackMenu";
 
 type ScreenWithPlaylist = Screen & { playlist: PlaylistItemWithMedia[] };
 
-export function ScreenGrid({ screens }: { screens: ScreenWithPlaylist[] }) {
+export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]; library: LibraryData }) {
   return (
     // safari-toolbar-inset: this page scrolls via the shared dashboard
     // <main>, not an internal fixed-height scroll area like Media/
@@ -26,7 +27,7 @@ export function ScreenGrid({ screens }: { screens: ScreenWithPlaylist[] }) {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {screens.map((screen) => (
-            <ScreenTile key={screen.id} screen={screen} playlist={screen.playlist} />
+            <ScreenTile key={screen.id} screen={screen} playlist={screen.playlist} library={library} />
           ))}
         </div>
       )}
