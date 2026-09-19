@@ -41,19 +41,25 @@ export default function RootLayout({
     <html lang="en" className="app-shell-height overflow-hidden">
       <head>
         {/* Safety net for the "page shifted upward, header clipped" iOS
-            Safari bug: html/body are overflow:hidden and meant to never
-            scroll themselves (overscroll-behavior in globals.css stops the
-            usual trigger, momentum chaining from the inner lists). But if
-            Safari ever does record a nonzero scroll offset for html/body,
-            its default scroll-restoration replays that offset on every
-            reload of the tab — which is exactly why a reload alone didn't
-            clear the bug and only a fresh tab did. Forcing manual
-            restoration and zeroing the scroll position on every load/
-            pageshow (pageshow also covers the bfcache-restore case, which
-            "load" misses) means a reload now genuinely resets it. */}
+            Safari bug. html/body are overflow:hidden and meant to never
+            scroll themselves — overscroll-behavior in globals.css stops
+            momentum chaining from the inner lists, but there's a second,
+            separate trigger: focusing a text input (e.g. renaming a
+            screen/playlist) makes iOS Safari's own keyboard-avoidance
+            logic scroll the real document to keep the input clear of the
+            keyboard, and on this overflow:hidden shell that scroll
+            sometimes doesn't get reversed when the keyboard closes again.
+            Reloading fixes it because reload replays the load/pageshow
+            reset below — but switching views or using other UI doesn't,
+            since nothing else in the app ever touches document scroll.
+            So: watch visualViewport for the keyboard closing (its height
+            goes back to matching window.innerHeight) and force the
+            document back to scrollY 0 at that moment — not while the
+            keyboard is open, which would fight Safari's legitimate
+            scroll-into-view while the user is still typing. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){function reset(){if("scrollRestoration" in history){history.scrollRestoration="manual";}window.scrollTo(0,0);document.documentElement.scrollTop=0;if(document.body){document.body.scrollTop=0;}}reset();window.addEventListener("pageshow",reset);})();`,
+            __html: `(function(){function reset(){if("scrollRestoration" in history){history.scrollRestoration="manual";}window.scrollTo(0,0);document.documentElement.scrollTop=0;if(document.body){document.body.scrollTop=0;}}reset();window.addEventListener("pageshow",reset);var vv=window.visualViewport;if(vv){var onVvResize=function(){if(Math.abs(vv.height-window.innerHeight)<1){reset();}};vv.addEventListener("resize",onVvResize);}})();`,
           }}
         />
       </head>
