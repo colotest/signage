@@ -54,23 +54,26 @@ export function Player({
 
   const current = playlist.length > 0 ? playlist[currentIndex % playlist.length] : null;
 
-  // The auto-refresh/overlay mechanism further below is scoped to only
-  // this one item — whichever plays first after a cold load — rather than
-  // every item, so a run of glitchy items doesn't chop up playback with
-  // repeated QR-code breaks. Captured once and never changed after: the
-  // lazy initializer covers the common case (content already assigned at
-  // mount), and the guarded setState below covers a screen that starts out
-  // empty and only gets a playlist assigned later.
-  const [firstItemId, setFirstItemId] = useState<PlaylistItemWithMedia["id"] | null>(
-    () => initialPlaylist[0]?.id ?? null,
-  );
+  // The auto-refresh/overlay mechanism further below is scoped to only the
+  // first *video* item ever shown — not the first item of any type — since
+  // the bug it works around is specific to video decode; images/PDFs never
+  // hit it. Keying this on "first item" instead originally missed a real
+  // case: a screen that starts out on an images-only playlist and only
+  // later gets a video added plays that first video with no swap at all,
+  // hitting the exact same unplayable-first-frame bug. Keying on media type
+  // instead of position correctly covers both a video already in the
+  // playlist at mount and one added to an already-running playlist later —
+  // whichever happens first, this fires the first time *any* video becomes
+  // current. Scoped to just this one item (not every video) so a run of
+  // glitchy ones doesn't chop up playback with repeated QR-code breaks.
+  const [firstVideoItemId, setFirstVideoItemId] = useState<PlaylistItemWithMedia["id"] | null>(null);
   // Setting state directly during render, guarded so it only ever fires
   // once (the condition is false on every render after) — React's own
   // documented pattern for "derive this from what render sees, the first
   // time render sees it", cheaper than a useEffect for the same job and
   // without one more round trip through a committed frame first.
-  if (firstItemId === null && current) {
-    setFirstItemId(current.id);
+  if (firstVideoItemId === null && current?.media_item.media_type === "video") {
+    setFirstVideoItemId(current.id);
   }
 
   // The playback loop reads the playlist/index through refs and reschedules
@@ -227,12 +230,12 @@ export function Player({
   // screen is actually white, so there's no in-page signal left to trust.
   // Rather than keep chasing a detector, just do unconditionally what
   // fixing it by hand does: force a fresh <video> element a few seconds
-  // into that first item's play, regardless of whether anything looks
+  // into that first video's play, regardless of whether anything looks
   // wrong. One attempt isn't always enough in practice, so allow a few
   // tries before giving up and just showing whatever's there — but only
-  // for firstItemId (see above): a run of glitchy items each getting this
-  // treatment would chop up playback with repeated QR-code breaks, so
-  // every item after the first is left alone, whatever it does.
+  // for firstVideoItemId (see above): a run of glitchy items each getting
+  // this treatment would chop up playback with repeated QR-code breaks, so
+  // every video after the first is left alone, whatever it does.
   const autoRefreshCountsRef = useRef<Map<PlaylistItemWithMedia["id"], number>>(new Map());
   // A render-time-readable mirror of the ref above — reading a ref during
   // render is unreliable (and the lint rules here correctly forbid it), so
@@ -242,8 +245,8 @@ export function Player({
   // happens inside an event handler, not during render.
   const [autoRefreshCounts, setAutoRefreshCounts] = useState<Map<PlaylistItemWithMedia["id"], number>>(() => new Map());
 
-  // Stable identity (empty deps aside from firstItemId, which changes at
-  // most once, reading everything else through refs like
+  // Stable identity (empty deps aside from firstVideoItemId, which changes
+  // at most once, reading everything else through refs like
   // advanceNow/retreatNow above) is load-bearing here, not just tidiness:
   // this is handed to VideoSlide as a prop its timer effect depends on, so
   // a new function reference on every Player render — which a plain
@@ -254,14 +257,14 @@ export function Player({
     const items = playlistRef.current;
     if (items.length === 0) return;
     const item = items[indexRef.current % items.length];
-    if (!item || item.id !== firstItemId) return;
+    if (!item || item.id !== firstVideoItemId) return;
     const attempts = autoRefreshCountsRef.current.get(item.id) ?? 0;
     if (attempts >= MAX_AUTO_REFRESH_ATTEMPTS) return;
     const next = attempts + 1;
     autoRefreshCountsRef.current.set(item.id, next);
     setAutoRefreshCounts((prev) => new Map(prev).set(item.id, next));
     setReloadToken((t) => t + 1);
-  }, [firstItemId]);
+  }, [firstVideoItemId]);
 
   function skipNext() {
     advanceNow();
@@ -464,7 +467,7 @@ export function Player({
             onVideoEnded={handleVideoEnded}
             onVideoAutoRefresh={handleAutoRefresh}
             showAutoRefreshOverlay={
-              current.id === firstItemId && (autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS
+              current.id === firstVideoItemId && (autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS
             }
           />
         )}
