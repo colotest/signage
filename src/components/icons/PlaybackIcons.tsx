@@ -37,10 +37,10 @@ export function SkipForwardIcon({ className }: { className?: string }) {
 // Screens tile's "open this screen's Playback Menu" button.
 export function PlaylistPlayIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M2.5 3.5v5l4.5-2.5z" fill="currentColor" strokeLinejoin="round" strokeWidth="1.5" />
-      <path d="M11.5 6h9.5" />
-      <path d="M6 12h15" />
+     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M1 3.5v5l4.5-2.5z" fill="currentColor" strokeLinejoin="round" strokeWidth="1.5" />
+      <path d="M9 6h12" />
+      <path d="M3 12h18" />
       <path d="M3 18h18" />
     </svg>
   );
