@@ -38,8 +38,8 @@ export function SkipForwardIcon({ className }: { className?: string }) {
 export function PlaylistPlayIcon({ className }: { className?: string }) {
   return (
      <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M2 4.5v5l4.5-2.5z" fill="currentColor" strokeLinejoin="round" strokeWidth="1.5"/>
-  <path d="M10 7h12"/>
+      <path d="M0 4.5v5l4.5-2.5z" fill="currentColor" strokeLinejoin="round" strokeWidth="1.5"/>
+  <path d="M9 7h13"/>
   <path d="M4 13h18"/>
   <path d="M4 19h18"/>
     </svg>
