@@ -34,7 +34,7 @@ export function FitModeToggle({ screenId, fitMode }: { screenId: number; fitMode
           title={option.label}
           aria-label={option.label}
           className={cn(
-            "rounded-full p-1.5 transition-colors",
+            "press-ghost-fit rounded-full p-1.5 transition-colors",
             fitMode === option.value ? "bg-surface shadow-sm text-foreground" : "text-muted",
           )}
         >

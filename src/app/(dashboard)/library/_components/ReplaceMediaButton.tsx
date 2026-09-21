@@ -72,7 +72,7 @@ export function ReplaceMediaButton({ item, className }: { item: MediaItem; class
         type="button"
         disabled={uploading}
         onClick={() => inputRef.current?.click()}
-        className={className ?? "self-start text-[13px] text-muted hover:opacity-70"}
+        className={className ?? "press-ghost self-start text-[13px] text-muted hover:opacity-70"}
       >
         {uploading ? <Spinner className="inline h-3.5 w-3.5" /> : "Replace"}
       </button>

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { deleteScreen } from "@/lib/actions/screens";
+import { removeWithAnimation } from "@/lib/animation/removal";
 import { cn } from "@/lib/utils/cn";
 import type { ScreenRotation } from "@/types/domain";
 import { WrenchIcon } from "@/components/icons/WrenchIcon";
@@ -65,8 +66,10 @@ export function ScreenSetupMenu({
   }, [open]);
 
   function handleDelete() {
+    // The whole tile leaves, not just this menu — see ScreenGrid.
+    const tile = containerRef.current?.closest<HTMLElement>("[data-screen-tile]");
     startTransition(async () => {
-      await deleteScreen(screenId);
+      await removeWithAnimation(tile, () => deleteScreen(screenId));
       router.refresh();
     });
   }
@@ -79,7 +82,7 @@ export function ScreenSetupMenu({
         title="Screen setup"
         aria-label="Screen setup"
         aria-expanded={open}
-        className="rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
+        className="press-ghost-fit rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
       >
         <WrenchIcon className="h-4 w-4" />
       </button>
@@ -92,7 +95,7 @@ export function ScreenSetupMenu({
               close();
               onRename();
             }}
-            className="mb-2 block w-full rounded-[var(--radius-sm)] px-2 py-1 text-left text-[13px] font-medium text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+            className="press-ghost-fit mb-2 block w-full rounded-[var(--radius-sm)] px-2 py-1 text-left text-[13px] font-medium text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]"
           >
             Rename
           </button>
@@ -115,7 +118,7 @@ export function ScreenSetupMenu({
                   type="button"
                   onClick={() => onSelectRotation(option.value)}
                   className={cn(
-                    "flex-1 rounded-full py-1 text-center transition-colors",
+                    "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
                     rotation === option.value
                       ? "bg-surface text-foreground font-medium shadow-sm"
                       : "text-muted hover:text-foreground",
@@ -135,7 +138,7 @@ export function ScreenSetupMenu({
                   type="button"
                   onClick={handleDelete}
                   disabled={pending}
-                  className="font-medium text-danger hover:opacity-70"
+                  className="press-ghost font-medium text-danger hover:opacity-70"
                 >
                   {pending ? "Deleting…" : "Confirm"}
                 </button>
@@ -143,7 +146,7 @@ export function ScreenSetupMenu({
                   type="button"
                   onClick={() => setConfirmingDelete(false)}
                   disabled={pending}
-                  className="text-muted hover:opacity-70"
+                  className="press-ghost text-muted hover:opacity-70"
                 >
                   Cancel
                 </button>
@@ -152,7 +155,7 @@ export function ScreenSetupMenu({
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(true)}
-                className="text-[13px] font-medium text-danger hover:opacity-70"
+                className="press-ghost text-[13px] font-medium text-danger hover:opacity-70"
               >
                 Delete Screen
               </button>

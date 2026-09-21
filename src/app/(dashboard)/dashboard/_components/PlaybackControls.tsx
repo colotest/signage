@@ -32,7 +32,7 @@ export function PlaybackControls({
         onClick={() => send({ type: "prev" })}
         title="Previous item"
         aria-label="Previous item"
-        className="rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
+        className="press-ghost-fit rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
       >
         <SkipBackIcon className="h-4 w-4" />
       </button>
@@ -41,7 +41,7 @@ export function PlaybackControls({
         onClick={handleTogglePause}
         title={paused ? "Play" : "Pause"}
         aria-label={paused ? "Play" : "Pause"}
-        className="rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
+        className="press-ghost-fit rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
       >
         {paused ? <PlayIcon className="h-4 w-4" /> : <PauseIcon className="h-4 w-4" />}
       </button>
@@ -50,7 +50,7 @@ export function PlaybackControls({
         onClick={() => send({ type: "next" })}
         title="Next item"
         aria-label="Next item"
-        className="rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
+        className="press-ghost-fit rounded-full p-1.5 text-muted transition-colors hover:text-foreground"
       >
         <SkipForwardIcon className="h-4 w-4" />
       </button>

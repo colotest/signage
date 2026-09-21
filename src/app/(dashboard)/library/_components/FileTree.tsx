@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
 import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
+import { removeWithAnimation } from "@/lib/animation/removal";
 import type { Folder, MediaItem } from "@/types/domain";
 import { RenameableTitle } from "./RenameableTitle";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
@@ -317,7 +318,7 @@ export function FileTree({
                     <button
                       type="button"
                       onClick={() => startCreatingIn(null)}
-                      className="text-[13px] font-medium text-accent"
+                      className="press-ghost text-[13px] font-medium text-accent"
                     >
                       + New Folder
                     </button>
@@ -642,7 +643,7 @@ function RowMenu({ label, children }: { label: string; children: React.ReactNode
         onClick={() => setOpen((o) => !o)}
         aria-label={label}
         aria-expanded={open}
-        className="shrink-0 cursor-pointer rounded-full p-1.5 text-muted transition-colors hover:bg-black/[.04] hover:text-foreground dark:hover:bg-white/[.06]"
+        className="press-ghost-fit shrink-0 cursor-pointer rounded-full p-1.5 text-muted transition-colors hover:bg-black/[.04] hover:text-foreground dark:hover:bg-white/[.06]"
       >
         <ThreeDotIcon className="h-4 w-4" />
       </button>
@@ -680,7 +681,7 @@ function MenuItem({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] disabled:opacity-50 dark:hover:bg-white/[.06]",
+        "press-ghost-fit block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] disabled:opacity-50 dark:hover:bg-white/[.06]",
         danger ? "text-danger" : "text-foreground",
       )}
     >
@@ -690,7 +691,7 @@ function MenuItem({
 }
 
 export const MENU_ITEM_CLASS =
-  "block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]";
+  "press-ghost-fit block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]";
 
 function FolderRow({
   folder,
@@ -723,11 +724,14 @@ function FolderRow({
   // but the droppable registration itself still needs to live here for hit
   // testing.
   const { setNodeRef } = useDroppable({ id: `folder-${folder.id}` });
+  const rowRef = useRef<HTMLDivElement | null>(null);
 
   function handleDelete() {
     if (!window.confirm(`Delete folder "${folder.name}"? Subfolders are removed too; files inside move to Unsorted.`)) return;
     startTransition(async () => {
-      await deleteFolder(folder.id);
+      // The row's parent is TreeLevel's per-folder group, so the folder's
+      // expanded contents leave together with it.
+      await removeWithAnimation(rowRef.current?.parentElement, () => deleteFolder(folder.id));
       router.refresh();
     });
   }
@@ -746,7 +750,10 @@ function FolderRow({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        rowRef.current = node;
+      }}
       onClick={onRowClick}
       className={cn(
         "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
@@ -760,7 +767,7 @@ function FolderRow({
       <button
         type="button"
         onClick={handleChevronClick}
-        className="shrink-0 text-muted hover:text-foreground"
+        className="press-ghost shrink-0 text-muted hover:text-foreground"
         aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
       >
         <Chevron open={isExpanded} />
@@ -834,11 +841,12 @@ function FileRow({
   // isOver itself drives no styling here anymore — the group wrapper in
   // TreeLevel highlights the whole folder (or root) a file belongs to.
   const { setNodeRef: setDropRef } = useDroppable({ id: `file-${item.id}` });
+  const rowRef = useRef<HTMLDivElement | null>(null);
 
   function handleDelete() {
     if (!window.confirm(`Delete "${item.name}"? This removes it from any screens or playlists using it.`)) return;
     startTransition(async () => {
-      await deleteMediaItem(item.id);
+      await removeWithAnimation(rowRef.current, () => deleteMediaItem(item.id));
       router.refresh();
     });
   }
@@ -855,6 +863,7 @@ function FileRow({
       ref={(node) => {
         setDragRef(node);
         setDropRef(node);
+        rowRef.current = node;
       }}
       {...attributes}
       {...listeners}
@@ -979,7 +988,7 @@ function SortButton({
       type="button"
       onClick={() => onClick(sortKey)}
       className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap font-medium hover:text-foreground",
+        "press-ghost inline-flex items-center gap-1 whitespace-nowrap font-medium hover:text-foreground",
         isActive && "text-foreground",
         className,
       )}

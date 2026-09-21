@@ -2,7 +2,9 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useRef } from "react";
 import { MediaThumb } from "@/components/MediaThumb";
+import { animateRemoval } from "@/lib/animation/removal";
 import { kindLabel } from "@/lib/utils/format";
 import type { MediaItem } from "@/types/domain";
 
@@ -13,6 +15,10 @@ function formatDate(iso: string): string {
 // Only the fields shared by a library playlist's entries and a screen's own
 // playlist_items — the dashboard's Playback Menu renders the latter with this
 // same row so both lists look and behave alike.
+//
+// The row animates itself out before onRemove runs, so callers can drop it
+// from their state straight away. Leaving onRemove out disables ✕ — for rows
+// that can't be removed yet (still waiting on their optimistic insert).
 export function PlaylistEntryRow({
   entry,
   onRemove,
@@ -20,11 +26,17 @@ export function PlaylistEntryRow({
   removeLabel = "Remove from playlist",
 }: {
   entry: { id: string; duration_seconds: number; media_item: MediaItem };
-  onRemove: () => void;
+  onRemove?: () => void;
   removeLabel?: string;
   onDurationChange: (seconds: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id });
+  const rowRef = useRef<HTMLLIElement | null>(null);
+
+  function handleRemove() {
+    if (!onRemove) return;
+    animateRemoval(rowRef.current).finished.then(onRemove);
+  }
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -34,7 +46,10 @@ export function PlaylistEntryRow({
 
   return (
     <li
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        rowRef.current = node;
+      }}
       style={style}
       className="flex items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface p-2"
     >
@@ -42,7 +57,7 @@ export function PlaylistEntryRow({
         type="button"
         {...attributes}
         {...listeners}
-        className="cursor-grab touch-none px-1 text-muted active:cursor-grabbing"
+        className="press-ghost cursor-grab touch-none px-1 text-muted active:cursor-grabbing"
         aria-label="Drag to reorder"
       >
         ≡
@@ -78,8 +93,9 @@ export function PlaylistEntryRow({
 
       <button
         type="button"
-        onClick={onRemove}
-        className="shrink-0 px-1 text-muted hover:text-danger"
+        onClick={handleRemove}
+        disabled={!onRemove}
+        className="press-ghost shrink-0 px-1 text-muted hover:text-danger disabled:opacity-40 disabled:hover:text-muted"
         aria-label={removeLabel}
       >
         ✕

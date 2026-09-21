@@ -21,6 +21,8 @@
   --shadow-sheet: 0 -8px 40px rgba(0, 0, 0, 0.18);
 
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Overshoots slightly past its end value — for things that pop back. */
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   --font-system:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
@@ -103,6 +105,62 @@ body {
 
 .drag-pickup {
   animation: drag-pickup 180ms var(--ease-spring) forwards;
+}
+
+/* Popups (see Sheet) slide up from the bottom edge of the screen and back
+   down on close. Radix Dialog flips data-state to "closed" and waits for
+   the animation to finish before unmounting, so the exit plays out fully.
+   Animated via transform, which composes with the separate `translate`
+   property Tailwind uses to center the desktop popup — 100vh is far enough
+   to start fully off-screen from either position. */
+@keyframes sheet-slide-up {
+  from {
+    transform: translateY(100vh);
+  }
+}
+
+@keyframes sheet-slide-down {
+  to {
+    transform: translateY(100vh);
+  }
+}
+
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.sheet-content[data-state="open"] {
+  animation: sheet-slide-up 500ms var(--ease-spring);
+}
+
+.sheet-content[data-state="closed"] {
+  animation: sheet-slide-down 300ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.sheet-overlay[data-state="open"] {
+  animation: sheet-fade-in 300ms ease-out;
+}
+
+.sheet-overlay[data-state="closed"] {
+  animation: sheet-fade-out 300ms ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-content[data-state="open"] {
+    animation: sheet-fade-in 200ms ease-out;
+  }
+
+  .sheet-content[data-state="closed"] {
+    animation: sheet-fade-out 200ms ease-in forwards;
+  }
 }
 
 /* lvh alone (see root layout) still stops short of the true screen edge
@@ -205,3 +263,130 @@ body {
   padding-bottom: 90px;
 }
 
+/* The Library's playlists list is the last thing on a page that runs right
+   down behind iOS Safari's toolbar, and 90px alone left its last card
+   crowding the controls — two more list gaps (2 × 12px) on touch devices. */
+@media (pointer: coarse) {
+  .playlists-touch-inset {
+    padding-bottom: 114px;
+  }
+}
+
+
+/* Press feedback for every button: it sinks in while held, then springs
+   back out (with a touch of overshoot) on release. At the pressed-in
+   position a streak of light sweeps across it once, over a soft inner
+   shadow, so it reads as a physical key catching the light.
+
+   Unlayered on purpose — it has to beat Tailwind's own transition-*
+   utilities, which would otherwise replace the scale transition, so the
+   color/opacity transitions those utilities provided are listed here too.
+   `scale` (not transform) keeps it composable with any transform a button
+   already carries. .no-press opts a button out. */
+@layer base {
+  button {
+    position: relative;
+    isolation: isolate;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+button:not(.no-press) {
+  transition:
+    scale 420ms var(--ease-pop),
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease,
+    box-shadow 150ms ease;
+}
+
+button:not(.no-press):not(:disabled):active {
+  scale: 0.95;
+  transition-duration: 90ms;
+  transition-timing-function: ease-out;
+}
+
+/* The glint + inner shadow. The gradient is 3x the button's width: at
+   background-position 0 the bright band sits just past the right edge
+   (out of view, the resting state), at 100% just past the left — so the
+   press animation sweeps it across left to right. */
+button:not(.no-press)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+      110deg,
+      transparent 36%,
+      rgba(255, 255, 255, 0.55) 46%,
+      rgba(255, 255, 255, 0.2) 53%,
+      transparent 64%
+    )
+    0 0 / 300% 100% no-repeat;
+  box-shadow:
+    inset 0 1.5px 3px rgba(0, 0, 0, 0.28),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.22);
+  opacity: 0;
+  transition: opacity 320ms ease-out;
+}
+
+button:not(.no-press):not(:disabled):active::after {
+  opacity: 1;
+  transition-duration: 60ms;
+  animation: press-glint 700ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes press-glint {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* Buttons with no surface of their own. While pressed, a rounded, tinted
+   container shows up behind them. press-ghost is for bare text/icons, where
+   the container is a sliver wider than the button itself. press-ghost-fit
+   is for ones that already have padding and a radius, where it fills their
+   own shape. The glint and inner shadow follow the same outline. */
+.press-ghost::before,
+.press-ghost-fit::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+  opacity: 0;
+  transition: opacity 320ms ease-out;
+}
+
+/* button.-qualified to outrank the base ::after rule above. */
+button.press-ghost::before,
+button.press-ghost::after {
+  inset: -3px -8px;
+  border-radius: 999px;
+}
+
+.press-ghost-fit::before {
+  inset: 0;
+  border-radius: inherit;
+}
+
+.press-ghost:not(:disabled):active::before,
+.press-ghost-fit:not(:disabled):active::before {
+  opacity: 1;
+  transition-duration: 60ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(.no-press):not(:disabled):active {
+    scale: none;
+  }
+
+  button:not(.no-press):not(:disabled):active::after {
+    animation: none;
+  }
+}

@@ -178,7 +178,7 @@ export function ScreenTile({
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              className="relative bg-black transition-[transform,box-shadow] duration-300 ease-out"
+              className="no-press relative bg-black transition-[transform,box-shadow] duration-300 ease-out"
               style={{
                 width: FRAME_LONG,
                 height: FRAME_SHORT,
@@ -287,7 +287,7 @@ export function ScreenTile({
             onClick={() => setMenuOpen(true)}
             title="Playback"
             aria-label="Open playback menu"
-            className="-my-2 flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+            className="-my-2 flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm transition-all hover:opacity-90"
           >
             <PlaylistPlayIcon className="h-9 w-9" />
           </button>

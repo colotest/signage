@@ -421,10 +421,10 @@ export function PlaybackMenu({
                 finishing a pick. */}
             {confirmingEmpty ? (
               <div className="flex shrink-0 items-center gap-2 text-[13px]">
-                <button type="button" onClick={emptyItems} className="font-medium text-danger hover:opacity-70">
+                <button type="button" onClick={emptyItems} className="press-ghost font-medium text-danger hover:opacity-70">
                   Confirm
                 </button>
-                <button type="button" onClick={() => setConfirmingEmpty(false)} className="text-muted hover:opacity-70">
+                <button type="button" onClick={() => setConfirmingEmpty(false)} className="press-ghost text-muted hover:opacity-70">
                   Cancel
                 </button>
               </div>
@@ -433,7 +433,7 @@ export function PlaybackMenu({
                 type="button"
                 onClick={() => setConfirmingEmpty(true)}
                 disabled={items.length === 0}
-                className="shrink-0 text-[13px] text-muted hover:text-danger disabled:opacity-40 disabled:hover:text-muted"
+                className="press-ghost shrink-0 text-[13px] text-muted hover:text-danger disabled:opacity-40 disabled:hover:text-muted"
               >
                 Empty
               </button>

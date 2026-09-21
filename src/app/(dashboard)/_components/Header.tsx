@@ -43,7 +43,7 @@ export function Header() {
         ))}
       </nav>
       <form action={logoutAction}>
-        <button type="submit" className="text-[15px] text-accent">
+        <button type="submit" className="press-ghost text-[15px] text-accent">
           Log Out
         </button>
       </form>

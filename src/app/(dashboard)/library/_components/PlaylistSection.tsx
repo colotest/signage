@@ -22,6 +22,7 @@ import {
   renamePlaylist,
   updatePlaylistEntryDuration,
 } from "@/lib/actions/playlists";
+import { removeWithAnimation } from "@/lib/animation/removal";
 import type { Playlist, PlaylistEntryWithMedia } from "@/types/domain";
 import { ThreeDotIcon, type SortDir } from "./FileTree";
 import { PlaylistEntryRow } from "./PlaylistEntryRow";
@@ -64,8 +65,11 @@ export function PlaylistSection({
   dropTargetPlaylistId = null,
   showCreate = true,
   renderActions,
+  listClassName,
 }: {
   className?: string;
+  // Extra classes for the scrolling list itself (e.g. more bottom clearance).
+  listClassName?: string;
   playlists: PlaylistWithEntries[];
   activePlaylistId?: string | null;
   selectedCount?: number;
@@ -160,7 +164,7 @@ export function PlaylistSection({
           asymmetric on purpose, matching what reads well against the
           smaller bottom fade. This is what lets scrolled-past cards fade
           away underneath the title, top and bottom, instead of popping in
-          and out at a hard edge. pt-10/safari-toolbar-inset (padding on
+          and out at a hard edge. pt-[52px]/safari-toolbar-inset (padding on
           this scrolling element itself, not on the <ul> it wraps —
           percentage heights on a child of an auto-overflow box are exactly
           the kind of thing Safari gets flexbox-inconsistent about) keep
@@ -185,7 +189,14 @@ export function PlaylistSection({
           sized via inset-0 against this same div, which is also what keeps
           the blur pinned in place while content scrolls underneath it. */}
       <div className="scroll-fade-y relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
-        <div className="no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-10">
+        {/* pt-[52px]: the 40px fade zone plus one more list gap (gap-3), so
+            the first card doesn't sit right up under the title. */}
+        <div
+          className={cn(
+            "no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[52px]",
+            listClassName,
+          )}
+        >
           <ul className="flex flex-col gap-3">
             {/* The "+ Create" trigger lives as the list's own first entry —
                 not a header button — so it scrolls out of view with the
@@ -227,7 +238,7 @@ function CreatePlaylistRow({ onCreate, pending }: { onCreate: () => void; pendin
         type="button"
         onClick={onCreate}
         disabled={pending}
-        className="flex w-full items-center justify-center rounded-[var(--radius-md)] border border-dashed border-border p-3 text-[15px] font-medium text-accent hover:bg-black/[.02] disabled:opacity-40 dark:hover:bg-white/[.03]"
+        className="press-ghost-fit flex w-full items-center justify-center rounded-[var(--radius-md)] border border-dashed border-border p-3 text-[15px] font-medium text-accent hover:bg-black/[.02] disabled:opacity-40 dark:hover:bg-white/[.03]"
       >
         + Create
       </button>
@@ -276,6 +287,7 @@ function PlaylistRow({
   // `playlist-${playlist.id}` back to this exact playlist and adds the file
   // to it at the first position.
   const { setNodeRef: setPlaylistDropRef } = useDroppable({ id: `playlist-${playlist.id}` });
+  const rowRef = useRef<HTMLLIElement | null>(null);
 
   const totalSeconds = playlist.entries.reduce((sum, e) => sum + e.duration_seconds, 0);
   const fileCount = playlist.entries.length;
@@ -288,13 +300,6 @@ function PlaylistRow({
     onReorderEntries(arrayMove(playlist.entries, oldIndex, newIndex));
   }
 
-  function handleRemoveEntry(entryId: string) {
-    // Still resolving from an optimistic add — router.refresh() will settle
-    // it with a real id shortly; nothing to remove server-side yet.
-    if (entryId.startsWith("optimistic-")) return;
-    onRemoveEntry(entryId);
-  }
-
   function handleDurationChange(entryId: string, seconds: number) {
     if (entryId.startsWith("optimistic-")) return;
     startTransition(async () => {
@@ -305,21 +310,24 @@ function PlaylistRow({
 
   function handleDelete() {
     startTransition(async () => {
-      await deletePlaylist(playlist.id);
+      await removeWithAnimation(rowRef.current, () => deletePlaylist(playlist.id));
       router.refresh();
     });
   }
 
   return (
     <li
-      ref={setPlaylistDropRef}
+      ref={(node) => {
+        setPlaylistDropRef(node);
+        rowRef.current = node;
+      }}
       className={cn(
         "rounded-[var(--radius-md)] border bg-surface p-3",
         isDropTarget ? "border-accent ring-2 ring-inset ring-accent" : "border-border",
       )}
     >
       <div className="flex items-center gap-3">
-        <button type="button" onClick={onToggleExpanded} className="text-muted">
+        <button type="button" onClick={onToggleExpanded} className="press-ghost text-muted">
           <Chevron open={isExpanded} />
         </button>
 
@@ -374,10 +382,10 @@ function PlaylistRow({
 
             {confirmingDelete ? (
               <div className="flex shrink-0 items-center gap-2 text-[13px]">
-                <button type="button" disabled={pending} onClick={handleDelete} className="font-medium text-danger hover:opacity-70">
+                <button type="button" disabled={pending} onClick={handleDelete} className="press-ghost font-medium text-danger hover:opacity-70">
                   Confirm
                 </button>
-                <button type="button" onClick={() => setConfirmingDelete(false)} className="text-muted hover:opacity-70">
+                <button type="button" onClick={() => setConfirmingDelete(false)} className="press-ghost text-muted hover:opacity-70">
                   Cancel
                 </button>
               </div>
@@ -385,7 +393,7 @@ function PlaylistRow({
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(true)}
-                className="shrink-0 text-[13px] text-muted hover:text-danger"
+                className="press-ghost shrink-0 text-[13px] text-muted hover:text-danger"
               >
                 Delete
               </button>
@@ -408,7 +416,10 @@ function PlaylistRow({
                     <PlaylistEntryRow
                       key={entry.id}
                       entry={entry}
-                      onRemove={() => handleRemoveEntry(entry.id)}
+                      // Still resolving from an optimistic add — router.refresh()
+                      // will settle it with a real id shortly; nothing to
+                      // remove server-side yet.
+                      onRemove={entry.id.startsWith("optimistic-") ? undefined : () => onRemoveEntry(entry.id)}
                       onDurationChange={(seconds) => handleDurationChange(entry.id, seconds)}
                     />
                   ))}
@@ -510,7 +521,7 @@ function PlaylistSortMenuItem({
       type="button"
       onClick={() => onClick(sortKey)}
       className={cn(
-        "flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+        "press-ghost-fit flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
         isActive ? "font-medium text-foreground" : "text-muted",
       )}
     >

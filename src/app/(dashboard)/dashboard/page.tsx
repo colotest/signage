@@ -22,7 +22,11 @@ export default async function DashboardPage() {
     { data: playlists, error: playlistsError },
     { data: playlistEntries, error: entriesError },
   ] = await Promise.all([
-    admin.from("screens").select("*").order("id", { ascending: true }),
+    admin
+      .from("screens")
+      .select("*")
+      .order("position", { ascending: true })
+      .order("id", { ascending: true }),
     admin
       .from("playlist_items")
       .select("*, media_item:media_items(*)")

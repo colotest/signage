@@ -19,6 +19,7 @@ export type Database = {
           name: string;
           fit_mode: FitMode;
           rotation: ScreenRotation;
+          position: number;
           created_at: string;
           updated_at: string;
         };
@@ -27,6 +28,7 @@ export type Database = {
           name?: string;
           fit_mode?: FitMode;
           rotation?: ScreenRotation;
+          position?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -35,6 +37,7 @@ export type Database = {
           name?: string;
           fit_mode?: FitMode;
           rotation?: ScreenRotation;
+          position?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -241,6 +244,10 @@ export type Database = {
       next_free_screen_id: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      reorder_screens: {
+        Args: { p_ids: number[] };
+        Returns: undefined;
       };
       reorder_playlists: {
         Args: { p_ids: string[] };

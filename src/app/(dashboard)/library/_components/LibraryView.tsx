@@ -329,6 +329,7 @@ export function LibraryView({
 
   return (
     <DndContext
+      id="library"
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
@@ -393,6 +394,7 @@ export function LibraryView({
         <section className="flex min-h-0 flex-[4] flex-col sm:flex-1">
           <PlaylistSection
             className="min-h-0 flex-1"
+            listClassName="playlists-touch-inset"
             playlists={localPlaylists}
             activePlaylistId={activePlaylistId}
             selectedCount={selectedMediaIds.size}
@@ -502,7 +504,7 @@ function SortMenuItem({
       type="button"
       onClick={() => onClick(sortKey)}
       className={cn(
-        "flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+        "press-ghost-fit flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
         isActive ? "font-medium text-foreground" : "text-muted",
       )}
     >

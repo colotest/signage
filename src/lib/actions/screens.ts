@@ -15,9 +15,20 @@ export async function createScreen() {
   const { data: nextId, error: idError } = await admin.rpc("next_free_screen_id");
   if (idError) throw new Error(idError.message);
 
+  // New screens land at the top of the dashboard's manual order, so they're
+  // in view right away rather than easy to forget below the fold. Going
+  // negative is fine — the next drag-reorder renumbers everything from 0.
+  const { data: first, error: positionError } = await admin
+    .from("screens")
+    .select("position")
+    .order("position", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (positionError) throw new Error(positionError.message);
+
   const { data, error } = await admin
     .from("screens")
-    .insert({ id: nextId })
+    .insert({ id: nextId, position: (first?.position ?? 1) - 1 })
     .select()
     .single();
   if (error) throw new Error(error.message);
@@ -47,6 +58,14 @@ export async function setScreenRotation(id: number, rotation: ScreenRotation) {
   await requireSession();
   const admin = createAdminClient();
   const { error } = await admin.from("screens").update({ rotation }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
+
+export async function reorderScreens(orderedIds: number[]) {
+  await requireSession();
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("reorder_screens", { p_ids: orderedIds });
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
 }

@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils/cn";
 // layer overlaps and their blur compounds; further in, only the widest/
 // weakest layers still reach.
 //
-// BLUR_EXTENT matches scroll-fade-y's own 40px fade, so the blur reads as
-// just as tall as the color fade rather than a shorter effect nested inside
-// it. Each layer fades out over its *entire* span, start to stop, with no
+// BLUR_EXTENT is twice scroll-fade-y's own 40px fade, so the blur carries
+// on past where the color fade has already settled — a softer, deeper
+// hand-off at the edge. Each layer fades out over its *entire* span, start to stop, with no
 // held "full strength" plateau first (earlier versions had one, via a
 // feathered-but-still-largely-solid mask) — a plateau is what let a layer
 // linger at near-full blur well past where the color fade had already
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils/cn";
 // the fade rather than part of it. A continuous fade instead means every
 // layer is already tapering off long before it reaches its own stop, so by
 // the time each one's turn is up there's nothing left to clash with.
-const BLUR_EXTENT = 40;
+const BLUR_EXTENT = 80;
 const LAYERS = [
   { stop: 0.2, blur: 16 },
   { stop: 0.4, blur: 8 },
@@ -30,7 +30,8 @@ export function ProgressiveBlurEdge({ side }: { side: "top" | "bottom" }) {
   return (
     <div
       aria-hidden
-      className={cn("pointer-events-none absolute inset-x-0 z-[5] h-10", side === "top" ? "top-0" : "bottom-0")}
+      className={cn("pointer-events-none absolute inset-x-0 z-[5]", side === "top" ? "top-0" : "bottom-0")}
+      style={{ height: BLUR_EXTENT }}
     >
       {LAYERS.map(({ stop, blur }, i) => {
         const gradient =
