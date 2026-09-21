@@ -2,16 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { cn } from "@/lib/utils/cn";
@@ -22,10 +14,10 @@ import {
   renamePlaylist,
   updatePlaylistEntryDuration,
 } from "@/lib/actions/playlists";
-import { removeWithAnimation } from "@/lib/animation/removal";
+import { removeWithAnimation } from "@/lib/animation/listMotion";
 import type { Playlist, PlaylistEntryWithMedia } from "@/types/domain";
 import { ThreeDotIcon, type SortDir } from "./FileTree";
-import { PlaylistEntryRow } from "./PlaylistEntryRow";
+import { SortableEntryList } from "./PlaylistEntryRow";
 
 export type PlaylistWithEntries = Playlist & { entries: PlaylistEntryWithMedia[] };
 
@@ -64,6 +56,7 @@ export function PlaylistSection({
   onRemoveEntry,
   dropTargetPlaylistId = null,
   showCreate = true,
+  editable = true,
   renderActions,
   listClassName,
 }: {
@@ -76,13 +69,16 @@ export function PlaylistSection({
   onArmSelection?: (playlistId: string) => void;
   onCancelSelection?: () => void;
   onConfirmAdd?: (playlistId: string) => void;
-  onReorderEntries: (playlistId: string, nextEntries: PlaylistEntryWithMedia[]) => void;
+  onReorderEntries?: (playlistId: string, nextEntries: PlaylistEntryWithMedia[]) => void;
   onRemoveEntry: (playlistId: string, entryId: string) => void;
   // A file being dragged in from the Media list (DndContext lives in
   // LibraryView, a shared ancestor of both lists) resolves to a playlist id
   // when it's hovering this one — drives PlaylistRow's own highlight.
   dropTargetPlaylistId?: string | null;
   showCreate?: boolean;
+  // Names and entry order can only be changed on the Library page — the
+  // Playback Menu shows these same playlists to play from, not to edit.
+  editable?: boolean;
   renderActions?: (playlist: PlaylistWithEntries) => ReactNode;
 }) {
   const router = useRouter();
@@ -216,10 +212,11 @@ export function PlaylistSection({
                 onArmSelection={() => onArmSelection?.(playlist.id)}
                 onCancelSelection={() => onCancelSelection?.()}
                 onConfirmAdd={() => onConfirmAdd?.(playlist.id)}
-                onReorderEntries={(next) => onReorderEntries(playlist.id, next)}
+                onReorderEntries={(next) => onReorderEntries?.(playlist.id, next)}
                 onRemoveEntry={(entryId) => onRemoveEntry(playlist.id, entryId)}
                 isDropTarget={dropTargetPlaylistId === playlist.id}
                 actions={renderActions?.(playlist)}
+                editable={editable}
               />
             ))}
           </ul>
@@ -261,6 +258,7 @@ function PlaylistRow({
   onRemoveEntry,
   isDropTarget,
   actions,
+  editable,
 }: {
   playlist: PlaylistWithEntries;
   isExpanded: boolean;
@@ -277,6 +275,7 @@ function PlaylistRow({
   isDropTarget: boolean;
   // Replaces the Library's own "+"/"✕"/"Delete" controls when given.
   actions?: ReactNode;
+  editable: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -308,11 +307,10 @@ function PlaylistRow({
   const totalSeconds = playlist.entries.reduce((sum, e) => sum + e.duration_seconds, 0);
   const fileCount = playlist.entries.length;
 
-  function handleDragEndEntries(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = playlist.entries.findIndex((e) => e.id === active.id);
-    const newIndex = playlist.entries.findIndex((e) => e.id === over.id);
+  function handleMoveEntry(activeId: string, overId: string) {
+    const oldIndex = playlist.entries.findIndex((e) => e.id === activeId);
+    const newIndex = playlist.entries.findIndex((e) => e.id === overId);
+    if (oldIndex === -1 || newIndex === -1) return;
     onReorderEntries(arrayMove(playlist.entries, oldIndex, newIndex));
   }
 
@@ -349,22 +347,26 @@ function PlaylistRow({
         </button>
 
         <div className="min-w-0 flex-1">
-          <InlineRename
-            value={playlist.name}
-            startInEditMode={startInRename}
-            passClicks
-            onSave={(next) => {
-              renamePlaylist(playlist.id, next);
-              onDoneRenaming();
-              router.refresh();
-            }}
-            // block + w-fit: sized to the name's own text (so only that is the
-            // rename hitbox, same as the file browser's rows) yet capped at
-            // the column's width so a long name truncates — as a plain
-            // inline span, "truncate" never took effect and a long name ran
-            // straight into the file count beside it.
-            className="block w-fit max-w-full text-[15px] font-semibold"
-          />
+          {editable ? (
+            <InlineRename
+              value={playlist.name}
+              startInEditMode={startInRename}
+              passClicks
+              onSave={(next) => {
+                renamePlaylist(playlist.id, next);
+                onDoneRenaming();
+                router.refresh();
+              }}
+              // block + w-fit: sized to the name's own text (so only that is the
+              // rename hitbox, same as the file browser's rows) yet capped at
+              // the column's width so a long name truncates — as a plain
+              // inline span, "truncate" never took effect and a long name ran
+              // straight into the file count beside it.
+              className="block w-fit max-w-full text-[15px] font-semibold"
+            />
+          ) : (
+            <span className="block truncate text-[15px] font-semibold">{playlist.name}</span>
+          )}
         </div>
 
         <span className="hidden shrink-0 text-[12px] text-muted sm:block">{formatDate(playlist.created_at)}</span>
@@ -436,29 +438,23 @@ function PlaylistRow({
         <div className="min-h-0 overflow-hidden">
           {contentMounted && (
             <div className="mt-3 border-t border-border pt-3">
-              {playlist.entries.length === 0 ? (
-                <p className="text-[13px] text-muted">
-                  {actions ? "No files yet." : "No files yet — press + and select some from above."}
-                </p>
-              ) : (
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndEntries}>
-                  <SortableContext items={playlist.entries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
-                    <ul className="flex flex-col gap-2">
-                      {playlist.entries.map((entry) => (
-                        <PlaylistEntryRow
-                          key={entry.id}
-                          entry={entry}
-                          // Still resolving from an optimistic add — router.refresh()
-                          // will settle it with a real id shortly; nothing to
-                          // remove server-side yet.
-                          onRemove={entry.id.startsWith("optimistic-") ? undefined : () => onRemoveEntry(entry.id)}
-                          onDurationChange={(seconds) => handleDurationChange(entry.id, seconds)}
-                        />
-                      ))}
-                    </ul>
-                  </SortableContext>
-                </DndContext>
-              )}
+              <SortableEntryList
+                entries={playlist.entries}
+                sensors={sensors}
+                onMove={handleMoveEntry}
+                reorderable={editable}
+                onRemove={onRemoveEntry}
+                // Still resolving from an optimistic add — router.refresh()
+                // will settle it with a real id shortly; nothing to remove
+                // server-side yet.
+                canRemove={(entry) => !entry.id.startsWith("optimistic-")}
+                onDurationChange={handleDurationChange}
+                empty={
+                  <p className="text-[13px] text-muted">
+                    {actions ? "No files yet." : "No files yet — press + and select some from above."}
+                  </p>
+                }
+              />
             </div>
           )}
         </div>

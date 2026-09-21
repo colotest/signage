@@ -2,15 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
 import { Sheet } from "@/components/ui/Sheet";
 import { AlarmClockIcon, CheckIcon, PlayIcon } from "@/components/icons/PlaybackIcons";
 import { formatDuration } from "@/lib/utils/format";
@@ -21,10 +14,10 @@ import {
   unassignMedia,
   updateItemDuration,
 } from "@/lib/actions/playlist";
-import { removePlaylistEntry, reorderPlaylistEntries } from "@/lib/actions/playlists";
-import type { Folder, MediaItem, PlaylistEntryWithMedia, PlaylistItemWithMedia, Screen } from "@/types/domain";
+import { removePlaylistEntry } from "@/lib/actions/playlists";
+import type { Folder, MediaItem, PlaylistItemWithMedia, Screen } from "@/types/domain";
 import { FileTree, type SortDir, type SortKey } from "../../library/_components/FileTree";
-import { PlaylistEntryRow } from "../../library/_components/PlaylistEntryRow";
+import { SortableEntryList } from "../../library/_components/PlaylistEntryRow";
 import { PlaylistSection, type PlaylistWithEntries } from "../../library/_components/PlaylistSection";
 import { MobileFileMenuButton } from "../../library/_components/LibraryView";
 import { UploadDropzone } from "../../library/_components/UploadDropzone";
@@ -240,12 +233,11 @@ export function PlaybackMenu({
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
+  function moveItem(activeId: string, overId: string) {
     setItems((current) => {
-      const oldIndex = current.findIndex((i) => i.id === active.id);
-      const newIndex = current.findIndex((i) => i.id === over.id);
+      const oldIndex = current.findIndex((i) => i.id === activeId);
+      const newIndex = current.findIndex((i) => i.id === overId);
+      if (oldIndex === -1 || newIndex === -1) return current;
       return arrayMove(current, oldIndex, newIndex);
     });
     // Read at run time rather than captured now, so it reflects every edit
@@ -271,21 +263,12 @@ export function PlaybackMenu({
 
   // --- Library playlists (below) ------------------------------------------
 
-  // Same optimistic mirror LibraryView keeps — entries can still be
-  // reordered and removed here, exactly as on the Library page.
+  // Same optimistic mirror LibraryView keeps. Names and entry order are
+  // read-only here (editable={false} below) — that's the Library page's job.
   const [localPlaylists, setLocalPlaylists] = useState(library.playlists);
   useEffect(() => {
     setLocalPlaylists(library.playlists);
   }, [library.playlists]);
-
-  async function reorderEntries(playlistId: string, nextEntries: PlaylistEntryWithMedia[]) {
-    setLocalPlaylists((current) => current.map((p) => (p.id === playlistId ? { ...p, entries: nextEntries } : p)));
-    await reorderPlaylistEntries(
-      playlistId,
-      nextEntries.map((e) => e.id),
-    );
-    router.refresh();
-  }
 
   async function removeEntry(playlistId: string, entryId: string) {
     setLocalPlaylists((current) =>
@@ -441,25 +424,15 @@ export function PlaybackMenu({
           </div>
 
           <div className="no-scrollbar mt-3 min-h-0 overflow-y-auto overscroll-contain border-t border-border pt-3">
-            {items.length === 0 ? (
-              <p className="text-[13px] text-muted">No files yet — press + and select some from above.</p>
-            ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                  <ul className="flex flex-col gap-2">
-                    {items.map((item) => (
-                      <PlaylistEntryRow
-                        key={item.id}
-                        entry={item}
-                        removeLabel="Remove from Now Playing"
-                        onRemove={() => removeItems([item.id])}
-                        onDurationChange={(seconds) => changeDuration(item.id, seconds)}
-                      />
-                    ))}
-                  </ul>
-                </SortableContext>
-              </DndContext>
-            )}
+            <SortableEntryList
+              entries={items}
+              sensors={sensors}
+              onMove={moveItem}
+              onRemove={(id) => removeItems([id])}
+              onDurationChange={changeDuration}
+              removeLabel="Remove from Now Playing"
+              empty={<p className="text-[13px] text-muted">No files yet — press + and select some from above.</p>}
+            />
           </div>
         </section>
 
@@ -467,7 +440,7 @@ export function PlaybackMenu({
           className="mt-6 min-h-0 flex-1"
           playlists={localPlaylists}
           showCreate={false}
-          onReorderEntries={reorderEntries}
+          editable={false}
           onRemoveEntry={removeEntry}
           renderActions={(p) => (
             <div className="flex shrink-0 items-center gap-2">

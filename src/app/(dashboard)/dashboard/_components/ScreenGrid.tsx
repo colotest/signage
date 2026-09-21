@@ -22,14 +22,15 @@ import type { LibraryData } from "./PlaybackMenu";
 type ScreenWithPlaylist = Screen & { playlist: PlaylistItemWithMedia[] };
 
 // A tile can be picked up from anywhere on it — except text fields and
-// links, where a press-and-drag means selecting text or dragging the link.
+// links, where a press-and-drag means selecting text or dragging the link,
+// and controls with their own swipe gesture (data-no-tile-drag).
 // Also ignores events that only reach the tile through React's tree: the
 // tile's Playback popup is portaled elsewhere in the DOM, but its presses
 // still bubble through the tile's listeners.
 function startsTileDrag(event: SyntheticEvent) {
   const target = event.nativeEvent.target;
   if (!(target instanceof Element) || !(event.currentTarget as Element).contains(target)) return false;
-  return !target.closest("input, textarea, select, a, [contenteditable='true']");
+  return !target.closest("input, textarea, select, a, [contenteditable='true'], [data-no-tile-drag]");
 }
 
 const baseMouseActivator = MouseSensor.activators[0].handler;

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { deleteScreen } from "@/lib/actions/screens";
-import { removeWithAnimation } from "@/lib/animation/removal";
+import { removeWithAnimation } from "@/lib/animation/listMotion";
 import { cn } from "@/lib/utils/cn";
 import type { ScreenRotation } from "@/types/domain";
 import { WrenchIcon } from "@/components/icons/WrenchIcon";

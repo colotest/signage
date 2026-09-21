@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
 import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
-import { removeWithAnimation } from "@/lib/animation/removal";
+import { removeWithAnimation } from "@/lib/animation/listMotion";
 import type { Folder, MediaItem } from "@/types/domain";
 import { RenameableTitle } from "./RenameableTitle";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
@@ -584,24 +584,44 @@ export function ThreeDotIcon({ className }: { className?: string }) {
   );
 }
 
+// Always in the row, so entering/leaving selection mode can slide it in and
+// out instead of popping it: its slot grows from nothing (taking the row's
+// contents along with it) while the box itself slides in from the left and
+// fades up. collapsedClassName cancels out the row's own flex gap while
+// hidden — a zero-width item would otherwise still leave a gap behind.
 function Checkbox({
+  visible,
   state,
   onChange,
+  collapsedClassName,
 }: {
+  visible: boolean;
   state: boolean | "indeterminate";
   onChange: () => void;
+  collapsedClassName: string;
 }) {
   return (
-    <input
-      ref={(node) => {
-        if (node) node.indeterminate = state === "indeterminate";
-      }}
-      type="checkbox"
-      checked={state === true}
-      onChange={onChange}
-      onClick={(e) => e.stopPropagation()}
-      className="h-4 w-4 shrink-0 accent-accent"
-    />
+    <span
+      inert={!visible}
+      className={cn(
+        "flex shrink-0 overflow-hidden transition-[width,margin,opacity] duration-300 ease-[var(--ease-spring)]",
+        visible ? "w-4 opacity-100" : cn("w-0 opacity-0", collapsedClassName),
+      )}
+    >
+      <input
+        ref={(node) => {
+          if (node) node.indeterminate = state === "indeterminate";
+        }}
+        type="checkbox"
+        checked={state === true}
+        onChange={onChange}
+        onClick={(e) => e.stopPropagation()}
+        className={cn(
+          "h-4 w-4 shrink-0 accent-accent transition-transform duration-300 ease-[var(--ease-spring)]",
+          !visible && "-translate-x-4",
+        )}
+      />
+    </span>
   );
 }
 
@@ -760,9 +780,12 @@ function FolderRow({
         isHighlighted ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
-      {selectionMode && (
-        <Checkbox state={checkState === "some" ? "indeterminate" : checkState === "all"} onChange={onToggleSelect} />
-      )}
+      <Checkbox
+        visible={selectionMode}
+        state={checkState === "some" ? "indeterminate" : checkState === "all"}
+        onChange={onToggleSelect}
+        collapsedClassName="-mr-2"
+      />
       <div style={{ width: depth * 20 }} className="shrink-0" />
       <button
         type="button"
@@ -875,7 +898,7 @@ function FileRow({
         selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
-      {selectionMode && <Checkbox state={selected} onChange={onToggleSelect} />}
+      <Checkbox visible={selectionMode} state={selected} onChange={onToggleSelect} collapsedClassName="-mr-2.5" />
       <div style={{ width: depth * 20 }} className="shrink-0" />
       <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
         <MediaThumb item={item} />

@@ -1,6 +1,9 @@
-// Shared "delete" animation for list rows, playlist cards and screen tiles:
-// the removed element blurs and fades out first, then the space it leaves
+// Shared list motion for rows, playlist cards and screen tiles.
+//
+// Removal: the element blurs and fades out first, then the space it leaves
 // closes up — the rest of the list slides into it and settles.
+// Entrance (the same thing in reverse): the space opens up first, pushing
+// the rest of the list aside, then the element blurs into view within it.
 //
 // Runs on the live DOM node (Web Animations API) rather than through React
 // state, so it works the same whether the row disappears optimistically or
@@ -15,13 +18,13 @@ const EASE_OUT = "cubic-bezier(0.25, 1, 0.5, 1)";
 // Matches --ease-spring in globals.css.
 const EASE_SPRING = "cubic-bezier(0.32, 0.72, 0, 1)";
 
-export type RemovalAnimation = {
+export type ListAnimation = {
   finished: Promise<void>;
   // Puts the element back exactly as it was — for when the delete fails.
   cancel: () => void;
 };
 
-export function animateRemoval(el: HTMLElement | null | undefined): RemovalAnimation {
+export function animateRemoval(el: HTMLElement | null | undefined): ListAnimation {
   if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     return { finished: Promise.resolve(), cancel: () => {} };
   }
@@ -65,6 +68,65 @@ export function animateRemoval(el: HTMLElement | null | undefined): RemovalAnima
   };
 }
 
+export function animateEntrance(el: HTMLElement | null | undefined): ListAnimation {
+  if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return { finished: Promise.resolve(), cancel: () => {} };
+  }
+
+  const style = getComputedStyle(el);
+  const gap = columnGap(el);
+  const previousOverflow = el.style.overflow;
+  el.style.overflow = "hidden";
+
+  const open = el.animate(
+    [
+      {
+        height: "0px",
+        paddingTop: "0px",
+        paddingBottom: "0px",
+        borderTopWidth: "0px",
+        borderBottomWidth: "0px",
+        marginTop: "0px",
+        marginBottom: `${-gap}px`,
+      },
+      {
+        height: `${el.getBoundingClientRect().height}px`,
+        paddingTop: style.paddingTop,
+        paddingBottom: style.paddingBottom,
+        borderTopWidth: style.borderTopWidth,
+        borderBottomWidth: style.borderBottomWidth,
+        marginTop: style.marginTop,
+        marginBottom: style.marginBottom,
+      },
+    ],
+    { duration: CLOSE_GAP_MS, easing: EASE_SPRING },
+  );
+  // Created up front with a delay (held at its first frame meanwhile) rather
+  // than chained off open.finished, so there's no frame in between where
+  // the row shows at full opacity.
+  const appear = el.animate(
+    [
+      { opacity: 0, filter: "blur(10px)" },
+      { opacity: 1, filter: "blur(0px)" },
+    ],
+    { duration: FADE_MS + 60, delay: CLOSE_GAP_MS, easing: EASE_OUT, fill: "backwards" },
+  );
+  open.finished
+    .then(() => {
+      el.style.overflow = previousOverflow;
+    })
+    .catch(() => {});
+
+  return {
+    finished: appear.finished.then(() => {}).catch(() => {}),
+    cancel: () => {
+      open.cancel();
+      appear.cancel();
+      el.style.overflow = previousOverflow;
+    },
+  };
+}
+
 // Fades the element out while its server-side delete runs, and only
 // resolves once both are done — so the caller's router.refresh() can't
 // unmount it halfway through. Restores it if the delete throws.
@@ -84,11 +146,7 @@ export async function removeWithAnimation(el: HTMLElement | null | undefined, ac
 // negative margin swallows it too.
 function collapse(el: HTMLElement): Animation[] {
   const style = getComputedStyle(el);
-  const parentStyle = el.parentElement ? getComputedStyle(el.parentElement) : null;
-  const gap =
-    parentStyle?.display.includes("flex") && parentStyle.flexDirection.startsWith("column")
-      ? parseFloat(parentStyle.rowGap) || 0
-      : 0;
+  const gap = columnGap(el);
 
   el.style.overflow = "hidden";
   return [
@@ -116,6 +174,14 @@ function collapse(el: HTMLElement): Animation[] {
       { duration: CLOSE_GAP_MS, easing: EASE_SPRING, fill: "forwards" },
     ),
   ];
+}
+
+// The row gap of a flex column the element sits in (0 for anything else).
+function columnGap(el: HTMLElement) {
+  const parentStyle = el.parentElement ? getComputedStyle(el.parentElement) : null;
+  return parentStyle?.display.includes("flex") && parentStyle.flexDirection.startsWith("column")
+    ? parseFloat(parentStyle.rowGap) || 0
+    : 0;
 }
 
 // FLIP: take the element out of layout, then start each sibling back where

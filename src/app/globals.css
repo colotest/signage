@@ -107,6 +107,25 @@ body {
   animation: drag-pickup 180ms var(--ease-spring) forwards;
 }
 
+/* Small dropdown menus grow out of the corner they hang from (set
+   transform-origin on the menu itself, e.g. origin-top-right). */
+@keyframes menu-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(-4px);
+  }
+}
+
+.menu-pop {
+  animation: menu-pop 180ms var(--ease-spring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-pop {
+    animation-name: sheet-fade-in;
+  }
+}
+
 /* Popups (see Sheet) slide up from the bottom edge of the screen and back
    down on close. Radix Dialog flips data-state to "closed" and waits for
    the animation to finish before unmounting, so the exit plays out fully.
