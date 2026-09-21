@@ -137,13 +137,17 @@ export function PlaybackMenu({
 
   // --- File picking ---------------------------------------------------------
 
-  // Same mechanics as a playlist on the Library page: "+" arms picking and
-  // slides the file browser in, the "+N" it turns into commits the picked
-  // files (appended, in pick order), and "✕" drops out of picking without
-  // adding anything.
+  // "+" slides the file browser in and turns into "✕", which slides it back
+  // out. Ticking a file adds it to Now Playing right away (appended, in pick
+  // order) and unticking takes that same row back out — there's no separate
+  // confirm step, so closing the popup mid-pick keeps whatever was picked.
   const [picking, setPicking] = useState(false);
-  const [pickedIds, setPickedIds] = useState<string[]>([]);
-  const pickedSet = useMemo(() => new Set(pickedIds), [pickedIds]);
+  // Which Now Playing row each ticked file became, so unticking removes
+  // exactly that row rather than some other copy of the same file that was
+  // already in the list before picking started. Holds the optimistic id —
+  // resolveId() finds the real one once its insert has landed.
+  const [pickedRows, setPickedRows] = useState<Map<string, string>>(new Map());
+  const pickedSet = useMemo(() => new Set(pickedRows.keys()), [pickedRows]);
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -152,13 +156,13 @@ export function PlaybackMenu({
   const uploadTargetFolder = uploadTargetId ? library.folders.find((f) => f.id === uploadTargetId) : null;
 
   function startPicking() {
-    setPickedIds([]);
+    setPickedRows(new Map());
     setPicking(true);
   }
 
   function stopPicking() {
     setPicking(false);
-    setPickedIds([]);
+    setPickedRows(new Map());
   }
 
   function toggleSort(key: SortKey) {
@@ -169,32 +173,55 @@ export function PlaybackMenu({
     }
   }
 
-  function toggleMedia(id: string) {
-    setPickedIds((current) => (current.includes(id) ? current.filter((m) => m !== id) : [...current, id]));
-  }
-
-  function toggleFolderIds(ids: string[], select: boolean) {
-    setPickedIds((current) =>
-      select ? [...current, ...ids.filter((id) => !current.includes(id))] : current.filter((id) => !ids.includes(id)),
-    );
-  }
-
-  function confirmPicked() {
-    const newItems = pickedIds.flatMap((id) => {
+  function pickMedia(mediaIds: string[]) {
+    const newItems = mediaIds.flatMap((id) => {
       const mediaItem = mediaById.get(id);
-      return mediaItem ? [optimisticItem(mediaItem, 10)] : [];
+      return mediaItem && !pickedRows.has(id) ? [optimisticItem(mediaItem, 10)] : [];
     });
-    stopPicking();
     if (newItems.length === 0) return;
+    setPickedRows((current) => {
+      const next = new Map(current);
+      for (const item of newItems) next.set(item.media_item_id, item.id);
+      return next;
+    });
     setItems((current) => [...current, ...newItems]);
     insertItems(newItems, "end");
   }
 
+  function unpickMedia(mediaIds: string[]) {
+    const rowIds = mediaIds.flatMap((id) => {
+      const rowId = pickedRows.get(id);
+      return rowId ? [rowId] : [];
+    });
+    if (rowIds.length > 0) removeItems(rowIds);
+  }
+
+  function toggleMedia(id: string) {
+    if (pickedRows.has(id)) unpickMedia([id]);
+    else pickMedia([id]);
+  }
+
+  function toggleFolderIds(ids: string[], select: boolean) {
+    if (select) pickMedia(ids);
+    else unpickMedia(ids);
+  }
+
   // --- Now Playing edits ----------------------------------------------------
 
-  function removeItem(id: string) {
-    setItems((current) => current.filter((item) => item.id !== id));
-    enqueue(() => unassignMedia(resolveId(id)));
+  // Matched on both each given id and what it resolves to: a ticked file's
+  // row is tracked by its optimistic id but may already have been swapped
+  // for the real row (and a row removed via its own ✕ may be a ticked one,
+  // which then gets unticked too).
+  function removeItems(ids: string[]) {
+    const removed = new Set([...ids, ...ids.map(resolveId)]);
+    setItems((current) => current.filter((item) => !removed.has(item.id)));
+    setPickedRows((current) => {
+      const next = new Map([...current].filter(([, rowId]) => !removed.has(resolveId(rowId))));
+      return next.size === current.size ? current : next;
+    });
+    enqueue(async () => {
+      await Promise.all(ids.map((id) => unassignMedia(resolveId(id))));
+    });
   }
 
   const [confirmingEmpty, setConfirmingEmpty] = useState(false);
@@ -202,6 +229,7 @@ export function PlaybackMenu({
   function emptyItems() {
     setConfirmingEmpty(false);
     setItems([]);
+    setPickedRows(new Map());
     enqueue(() => clearScreenPlaylist(screen.id));
   }
 
@@ -366,28 +394,27 @@ export function PlaybackMenu({
             <span className="shrink-0 text-[12px] text-muted">
               {items.length} file{items.length === 1 ? "" : "s"}
             </span>
-            <div className="flex shrink-0 items-center gap-2">
+            {picking ? (
               <button
                 type="button"
-                onClick={picking ? confirmPicked : startPicking}
-                disabled={picking && pickedIds.length === 0}
-                title={picking ? "Add selected files" : "Add files"}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
+                onClick={stopPicking}
+                title="Done picking"
+                aria-label="Done picking"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90"
               >
-                {picking && pickedIds.length > 0 ? `+${pickedIds.length}` : "+"}
+                ✕
               </button>
-              {picking && (
-                <button
-                  type="button"
-                  onClick={stopPicking}
-                  title="Cancel selection"
-                  aria-label="Cancel selection"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+            ) : (
+              <button
+                type="button"
+                onClick={startPicking}
+                title="Add files"
+                aria-label="Add files"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast hover:opacity-90"
+              >
+                +
+              </button>
+            )}
 
             {/* Emptying lives on its own text button (with a confirm step,
                 like the Library's "Delete") so "✕" only ever means "stop
@@ -425,7 +452,7 @@ export function PlaybackMenu({
                         key={item.id}
                         entry={item}
                         removeLabel="Remove from Now Playing"
-                        onRemove={() => removeItem(item.id)}
+                        onRemove={() => removeItems([item.id])}
                         onDurationChange={(seconds) => changeDuration(item.id, seconds)}
                       />
                     ))}
