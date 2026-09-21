@@ -184,10 +184,28 @@ export function FileTree({
     if (id) setExpanded((c) => new Set(c).add(id));
   }
 
-  // Expanding a folder makes it the upload target — collapsing one hands
-  // that back to its parent (or Root) rather than leaving a now-collapsed,
-  // no-longer-visible folder as the target.
+  // A row click steps a folder through open → targeted → closed: a
+  // collapsed folder expands and becomes the upload target; an expanded one
+  // that isn't the target just becomes it (rather than collapsing out from
+  // under the click); only clicking the current target collapses it again,
+  // handing the target back to its parent (or Root) rather than leaving a
+  // now-collapsed, no-longer-visible folder as the target.
   function handleFolderRowClick(folder: FolderNode) {
+    const isExpanded = expanded.has(folder.id);
+    if (!isExpanded) {
+      toggleExpanded(folder.id);
+      onActivateFolder(folder.id);
+    } else if (uploadTargetId !== folder.id) {
+      onActivateFolder(folder.id);
+    } else {
+      toggleExpanded(folder.id);
+      onActivateFolder(folder.parent_id);
+    }
+  }
+
+  // The chevron stays a plain open/close toggle — expanding still targets
+  // the folder, collapsing hands the target back to its parent.
+  function handleFolderChevronClick(folder: FolderNode) {
     const wasExpanded = expanded.has(folder.id);
     toggleExpanded(folder.id);
     onActivateFolder(wasExpanded ? folder.parent_id : folder.id);
@@ -276,6 +294,7 @@ export function FileTree({
                   isRoot
                   expanded={expanded}
                   onFolderRowClick={handleFolderRowClick}
+                  onFolderChevronClick={handleFolderChevronClick}
                   creatingIn={creatingIn}
                   onStartCreating={startCreatingIn}
                   onDoneCreating={() => onCreatingChange(undefined)}
@@ -374,6 +393,7 @@ function TreeLevel({
   isRoot,
   expanded,
   onFolderRowClick,
+  onFolderChevronClick,
   creatingIn,
   onStartCreating,
   onDoneCreating,
@@ -393,6 +413,7 @@ function TreeLevel({
   isRoot?: boolean;
   expanded: Set<string>;
   onFolderRowClick: (folder: FolderNode) => void;
+  onFolderChevronClick: (folder: FolderNode) => void;
   creatingIn: string | null | undefined;
   onStartCreating: (id: string | null) => void;
   onDoneCreating: () => void;
@@ -443,7 +464,8 @@ function TreeLevel({
               folder={folder}
               depth={depth}
               isExpanded={isExpanded}
-              onExpandAndActivate={() => onFolderRowClick(folder)}
+              onRowClick={() => onFolderRowClick(folder)}
+              onChevronClick={() => onFolderChevronClick(folder)}
               selectionMode={selectionMode}
               checkState={checkState}
               onToggleSelect={() => onToggleFolderIds(descendantIds, checkState !== "all")}
@@ -458,6 +480,7 @@ function TreeLevel({
                 depth={depth + 1}
                 expanded={expanded}
                 onFolderRowClick={onFolderRowClick}
+                onFolderChevronClick={onFolderChevronClick}
                 creatingIn={creatingIn}
                 onStartCreating={onStartCreating}
                 onDoneCreating={onDoneCreating}
@@ -666,7 +689,8 @@ function FolderRow({
   folder,
   depth,
   isExpanded,
-  onExpandAndActivate,
+  onRowClick,
+  onChevronClick,
   selectionMode,
   checkState,
   onToggleSelect,
@@ -677,7 +701,8 @@ function FolderRow({
   folder: FolderNode;
   depth: number;
   isExpanded: boolean;
-  onExpandAndActivate: () => void;
+  onRowClick: () => void;
+  onChevronClick: () => void;
   selectionMode: boolean;
   checkState: "all" | "some" | "none";
   onToggleSelect: () => void;
@@ -700,18 +725,13 @@ function FolderRow({
     });
   }
 
-  // In selection mode the row's job is picking files for a playlist, so a
-  // click anywhere on it toggles selection instead — the chevron is carved
-  // out separately (see its own onClick) so folders stay browsable while
-  // selecting without that also touching selection or the upload target.
-  function handleRowClick() {
-    if (selectionMode) onToggleSelect();
-    else onExpandAndActivate();
-  }
-
+  // A row click opens/targets the folder in selection mode too — selecting
+  // a whole folder's contents takes its checkbox specifically (which stops
+  // its own click from reaching the row), so browsing into a folder while
+  // picking never selects it by accident.
   function handleChevronClick(e: React.MouseEvent) {
     e.stopPropagation();
-    onExpandAndActivate();
+    onChevronClick();
   }
 
   const isHighlighted = selectionMode ? checkState === "all" : isUploadTarget;
@@ -720,7 +740,7 @@ function FolderRow({
   return (
     <div
       ref={setNodeRef}
-      onClick={handleRowClick}
+      onClick={onRowClick}
       className={cn(
         "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
         isHighlighted ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
@@ -750,7 +770,12 @@ function FolderRow({
                 router.refresh();
               });
             }}
-            className="truncate text-[13px] font-medium"
+            // self-start: shrink to the name's own width (RowInfo's column
+            // would otherwise stretch it across the whole title column), so
+            // only the text itself is the rename hitbox and the rest of that
+            // column stays an ordinary row click. max-w-full keeps a long
+            // name truncating instead of overflowing.
+            className="max-w-full self-start truncate text-[13px] font-medium"
           />
         }
         date={formatDate(folder.created_at)}
