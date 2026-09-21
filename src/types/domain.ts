@@ -22,6 +22,10 @@ export type PlaylistEntryWithMedia = PlaylistEntry & {
   media_item: MediaItem;
 };
 
+// A one-off timer: at run_at, the screen's playlist is replaced wholesale
+// with this playlist's entries (see 0011_scheduled_playbacks.sql).
+export type ScheduledPlayback = Database["public"]["Tables"]["scheduled_playbacks"]["Row"];
+
 export function mediaPublicUrl(supabaseUrl: string, storagePath: string): string {
   return `${supabaseUrl}/storage/v1/object/public/media/${storagePath}`;
 }

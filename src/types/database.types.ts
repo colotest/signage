@@ -230,6 +230,45 @@ export type Database = {
           },
         ];
       };
+      scheduled_playbacks: {
+        Row: {
+          id: string;
+          screen_id: number;
+          playlist_id: string;
+          run_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          screen_id: number;
+          playlist_id: string;
+          run_at: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          screen_id?: number;
+          playlist_id?: string;
+          run_at?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_playbacks_screen_id_fkey";
+            columns: ["screen_id"];
+            isOneToOne: false;
+            referencedRelation: "screens";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "scheduled_playbacks_playlist_id_fkey";
+            columns: ["playlist_id"];
+            isOneToOne: false;
+            referencedRelation: "playlists";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -260,6 +299,10 @@ export type Database = {
       add_media_to_playlist: {
         Args: { p_playlist_id: string; p_media_ids: string[] };
         Returns: undefined;
+      };
+      run_due_scheduled_playbacks: {
+        Args: Record<string, never>;
+        Returns: number;
       };
     };
     Enums: Record<string, never>;

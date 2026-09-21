@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ScreenGrid } from "./_components/ScreenGrid";
-import type { PlaylistEntryWithMedia, PlaylistItemWithMedia } from "@/types/domain";
+import type { PlaylistEntryWithMedia, PlaylistItemWithMedia, ScheduledPlayback } from "@/types/domain";
 import type { PlaylistWithEntries } from "../library/_components/PlaylistSection";
 
 export default async function DashboardPage() {
@@ -21,6 +21,7 @@ export default async function DashboardPage() {
     { data: media, error: mediaError },
     { data: playlists, error: playlistsError },
     { data: playlistEntries, error: entriesError },
+    { data: schedules, error: schedulesError },
   ] = await Promise.all([
     admin
       .from("screens")
@@ -40,6 +41,7 @@ export default async function DashboardPage() {
       .select("*, media_item:media_items(*)")
       .order("playlist_id", { ascending: true })
       .order("position", { ascending: true }),
+    admin.from("scheduled_playbacks").select("*").order("run_at", { ascending: true }),
   ]);
 
   if (screensError) throw new Error(screensError.message);
@@ -48,6 +50,12 @@ export default async function DashboardPage() {
   if (mediaError) throw new Error(mediaError.message);
   if (playlistsError) throw new Error(playlistsError.message);
   if (entriesError) throw new Error(entriesError.message);
+  // Tolerated until 0011_scheduled_playbacks.sql has been run — the table
+  // simply isn't there yet, which shouldn't take the whole dashboard down.
+  if (schedulesError) {
+    if (schedulesError.code !== "PGRST205" && schedulesError.code !== "42P01") throw new Error(schedulesError.message);
+    console.warn("scheduled_playbacks unavailable — has migration 0011 been run?", schedulesError.message);
+  }
 
   const playlistsByScreen = new Map<number, PlaylistItemWithMedia[]>();
   for (const item of (playlistItems ?? []) as unknown as PlaylistItemWithMedia[]) {
@@ -56,9 +64,17 @@ export default async function DashboardPage() {
     else playlistsByScreen.set(item.screen_id, [item]);
   }
 
+  const schedulesByScreen = new Map<number, ScheduledPlayback[]>();
+  for (const schedule of schedules ?? []) {
+    const list = schedulesByScreen.get(schedule.screen_id);
+    if (list) list.push(schedule);
+    else schedulesByScreen.set(schedule.screen_id, [schedule]);
+  }
+
   const screensWithPlaylists = (screens ?? []).map((screen) => ({
     ...screen,
     playlist: playlistsByScreen.get(screen.id) ?? [],
+    schedules: schedulesByScreen.get(screen.id) ?? [],
   }));
 
   const entriesByPlaylist = new Map<string, PlaylistEntryWithMedia[]>();

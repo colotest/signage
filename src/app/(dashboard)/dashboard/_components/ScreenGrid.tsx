@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type MouseEvent, type SyntheticEvent, type TouchEvent } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, type MouseEvent, type SyntheticEvent, type TouchEvent } from "react";
 import {
   DndContext,
   MouseSensor,
@@ -13,13 +14,14 @@ import {
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { reorderScreens } from "@/lib/actions/screens";
+import { runDueScheduledPlaybacks } from "@/lib/actions/schedules";
 import { cn } from "@/lib/utils/cn";
-import type { PlaylistItemWithMedia, Screen } from "@/types/domain";
+import type { PlaylistItemWithMedia, ScheduledPlayback, Screen } from "@/types/domain";
 import { ScreenTile } from "./ScreenTile";
 import { AddScreenButton } from "./AddScreenButton";
 import type { LibraryData } from "./PlaybackMenu";
 
-type ScreenWithPlaylist = Screen & { playlist: PlaylistItemWithMedia[] };
+type ScreenWithPlaylist = Screen & { playlist: PlaylistItemWithMedia[]; schedules: ScheduledPlayback[] };
 
 // A tile can be picked up from anywhere on it — except text fields and
 // links, where a press-and-drag means selecting text or dragging the link,
@@ -84,6 +86,8 @@ export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]
     reorderScreens(next.map((s) => s.id));
   }
 
+  useFireTimersOnTime(screens.flatMap((s) => s.schedules.map((t) => t.run_at)));
+
   return (
     // safari-toolbar-inset: this page scrolls via the shared dashboard
     // <main>, not an internal fixed-height scroll area like Media/
@@ -115,6 +119,34 @@ export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]
   );
 }
 
+// Timed playback is fired server-side by a pg_cron job every few seconds;
+// while the dashboard's open, it also fires the soonest pending timer itself
+// the moment it comes due, so the switch (and its countdown turning back
+// into an alarm clock) lands on the dot rather than up to a tick late.
+// Keyed on the timer list's contents, so if a run somehow leaves a due
+// timer in place this doesn't loop — it waits for the list to change.
+function useFireTimersOnTime(runAts: string[]) {
+  const router = useRouter();
+  const key = [...runAts].sort().join(",");
+
+  useEffect(() => {
+    if (!key) return;
+    const soonest = Math.min(...key.split(",").map((iso) => new Date(iso).getTime()));
+    // setTimeout overflows past ~24.8 days; a longer wait just re-arms
+    // whenever the page is next refreshed.
+    const delay = Math.min(Math.max(0, soonest - Date.now()), 2 ** 31 - 1);
+    const id = setTimeout(async () => {
+      try {
+        await runDueScheduledPlaybacks();
+      } catch (err) {
+        console.error("Failed to run due timers", err);
+      }
+      router.refresh();
+    }, delay);
+    return () => clearTimeout(id);
+  }, [key, router]);
+}
+
 // select-none / no touch callout: holding a tile to pick it up on iOS would
 // otherwise start a text selection or pop the image preview menu instead.
 // The rename field opts back in — iOS Safari won't edit text inside a
@@ -134,7 +166,7 @@ function SortableScreenTile({ screen, library }: { screen: ScreenWithPlaylist; l
       )}
     >
       <div className={cn("transition-transform duration-200 ease-[var(--ease-spring)]", isDragging && "scale-[1.03]")}>
-        <ScreenTile screen={screen} playlist={screen.playlist} library={library} />
+        <ScreenTile screen={screen} playlist={screen.playlist} library={library} schedules={screen.schedules} />
       </div>
     </div>
   );

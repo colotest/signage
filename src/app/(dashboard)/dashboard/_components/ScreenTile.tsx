@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
 import { setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
-import type { PlaylistItemWithMedia, Screen, ScreenRotation } from "@/types/domain";
+import type { PlaylistItemWithMedia, ScheduledPlayback, Screen, ScreenRotation } from "@/types/domain";
 import { PauseIcon, PlaylistPlayIcon } from "@/components/icons/PlaybackIcons";
 import { ScreenTitle } from "./ScreenTitle";
 import { FitModeToggle } from "./FitModeToggle";
@@ -52,10 +52,12 @@ export function ScreenTile({
   screen,
   playlist,
   library,
+  schedules,
 }: {
   screen: Screen;
   playlist: PlaylistItemWithMedia[];
   library: LibraryData;
+  schedules: ScheduledPlayback[];
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -301,6 +303,7 @@ export function ScreenTile({
         screen={screen}
         playlist={playlist}
         library={library}
+        schedules={schedules}
         open={menuOpen}
         onOpenChange={setMenuOpen}
       />

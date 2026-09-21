@@ -14,13 +14,15 @@ import {
   unassignMedia,
   updateItemDuration,
 } from "@/lib/actions/playlist";
-import type { Folder, MediaItem, PlaylistItemWithMedia, Screen } from "@/types/domain";
+import { cancelScheduledPlayback, schedulePlaylist } from "@/lib/actions/schedules";
+import type { Folder, MediaItem, PlaylistItemWithMedia, ScheduledPlayback, Screen } from "@/types/domain";
 import { FileTree, type SortDir, type SortKey } from "../../library/_components/FileTree";
 import { SortableEntryList } from "../../library/_components/PlaylistEntryRow";
 import { PlaylistSection, type PlaylistWithEntries } from "../../library/_components/PlaylistSection";
 import { MobileFileMenuButton } from "../../library/_components/LibraryView";
 import { UploadDropzone } from "../../library/_components/UploadDropzone";
 import { useMediaUpload } from "../../library/_components/useMediaUpload";
+import { Countdown, ScheduleDialog } from "./ScheduleDialog";
 
 export type LibraryData = {
   folders: Folder[];
@@ -30,10 +32,15 @@ export type LibraryData = {
 
 const FILE_PICKER_MS = 300;
 
+function timersFrom(schedules: ScheduledPlayback[]) {
+  return new Map(schedules.map((t) => [t.playlist_id, new Date(t.run_at)]));
+}
+
 // A screen's playback, in one popup: its "Now Playing" list on top — which
 // IS the screen's playlist_items, so whatever sits in it is exactly what
 // the TV plays — and the Library's playlists below, each of which can be
-// dropped onto the front of Now Playing with its play button.
+// dropped onto the front of Now Playing with its play button, or timed to
+// replace Now Playing outright at a set moment with its alarm clock.
 //
 // Every write to Now Playing is applied locally first and then run through
 // a strictly serial queue, so rapid edits (adding files, playing a
@@ -45,12 +52,14 @@ export function PlaybackMenu({
   screen,
   playlist,
   library,
+  schedules,
   open,
   onOpenChange,
 }: {
   screen: Screen;
   playlist: PlaylistItemWithMedia[];
   library: LibraryData;
+  schedules: ScheduledPlayback[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -268,6 +277,61 @@ export function PlaybackMenu({
     setLocalPlaylists(library.playlists);
   }, [library.playlists]);
 
+  // --- Timed playback (alarm clock) -----------------------------------------
+
+  // Pending timers by playlist id — mirrored locally so setting/cancelling
+  // one swaps the button immediately, then resynced from the server.
+  const [timers, setTimers] = useState(() => timersFrom(schedules));
+  const [prevSchedules, setPrevSchedules] = useState(schedules);
+  if (schedules !== prevSchedules) {
+    setPrevSchedules(schedules);
+    setTimers(timersFrom(schedules));
+  }
+  const [schedulingId, setSchedulingId] = useState<string | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const schedulingPlaylist = localPlaylists.find((p) => p.id === schedulingId);
+
+  function openSchedule(playlistId: string) {
+    setSchedulingId(playlistId);
+    setScheduleOpen(true);
+  }
+
+  function setTimerLocal(playlistId: string, runAt: Date | null) {
+    setTimers((current) => {
+      const next = new Map(current);
+      if (runAt) next.set(playlistId, runAt);
+      else next.delete(playlistId);
+      return next;
+    });
+  }
+
+  async function handleSchedule(runAt: Date) {
+    if (!schedulingId) return;
+    const playlistId = schedulingId;
+    setScheduleOpen(false);
+    setTimerLocal(playlistId, runAt);
+    try {
+      await schedulePlaylist(screen.id, playlistId, runAt.toISOString());
+    } catch (err) {
+      console.error("Failed to schedule playlist", err);
+      alert(`Couldn't set the timer: ${err instanceof Error ? err.message : "unknown error"}`);
+    }
+    router.refresh();
+  }
+
+  async function handleCancelTimer() {
+    if (!schedulingId) return;
+    const playlistId = schedulingId;
+    setScheduleOpen(false);
+    setTimerLocal(playlistId, null);
+    try {
+      await cancelScheduledPlayback(screen.id, playlistId);
+    } catch (err) {
+      console.error("Failed to cancel timer", err);
+    }
+    router.refresh();
+  }
+
   function handleOpenChange(next: boolean) {
     if (!next) {
       stopPicking();
@@ -434,16 +498,31 @@ export function PlaybackMenu({
               >
                 <PlayIcon className="h-4 w-4 translate-x-px" />
               </button>
-              <button
-                type="button"
-                title="Schedule"
-                aria-label={`Schedule ${p.name}`}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-white text-[#1d1d1f] shadow-sm hover:bg-neutral-50"
-              >
-                <AlarmClockIcon className="h-[18px] w-[18px]" />
-              </button>
+              {(() => {
+                const runAt = timers.get(p.id);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => openSchedule(p.id)}
+                    title={runAt ? `Plays ${runAt.toLocaleString()}` : "Schedule"}
+                    aria-label={runAt ? `${p.name} plays ${runAt.toLocaleString()} — change timer` : `Schedule ${p.name}`}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-white text-[#1d1d1f] shadow-sm hover:bg-neutral-50"
+                  >
+                    {runAt ? <Countdown runAt={runAt} /> : <AlarmClockIcon className="h-[18px] w-[18px]" />}
+                  </button>
+                );
+              })()}
             </div>
           )}
+        />
+
+        <ScheduleDialog
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          playlistName={schedulingPlaylist?.name ?? ""}
+          runAt={schedulingId ? (timers.get(schedulingId) ?? null) : null}
+          onSchedule={handleSchedule}
+          onCancelTimer={handleCancelTimer}
         />
       </DndContext>
     </Sheet>
