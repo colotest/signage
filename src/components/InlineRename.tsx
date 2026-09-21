@@ -10,6 +10,7 @@ export function InlineRename({
   onSave,
   className,
   startInEditMode = false,
+  passClicks = false,
 }: {
   value: string;
   onSave: (next: string) => void;
@@ -18,6 +19,10 @@ export function InlineRename({
   // instead of appearing with a placeholder name the user has to notice
   // and then double-click.
   startInEditMode?: boolean;
+  // Lets single clicks on the name reach the row it sits in — for rows whose
+  // click means "open/close" rather than "select", so the name is part of
+  // the hit area. Only the double-click that starts editing is kept here.
+  passClicks?: boolean;
 }) {
   const [editing, setEditing] = useState(startInEditMode);
   // Shown the moment a rename commits rather than waiting for onSave's
@@ -74,7 +79,7 @@ export function InlineRename({
       // this row," and the title needs to opt out of that entirely rather
       // than translate into two of those (a double-click fires two plain
       // click events before the dblclick itself).
-      onClick={(e) => e.stopPropagation()}
+      onClick={passClicks ? undefined : (e) => e.stopPropagation()}
       onDoubleClick={(e) => {
         e.stopPropagation();
         setEditing(true);

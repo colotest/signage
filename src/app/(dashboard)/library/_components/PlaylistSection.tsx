@@ -289,6 +289,22 @@ function PlaylistRow({
   const { setNodeRef: setPlaylistDropRef } = useDroppable({ id: `playlist-${playlist.id}` });
   const rowRef = useRef<HTMLLIElement | null>(null);
 
+  // The entries stay mounted while the card slides shut, and are dropped
+  // once it's closed so collapsed playlists don't keep their thumbnails
+  // loaded.
+  const [contentMounted, setContentMounted] = useState(isExpanded);
+  if (isExpanded && !contentMounted) setContentMounted(true);
+
+  // Anywhere on the card opens/closes it — including the name, whose
+  // double-click still renames. Controls handle their own clicks, and the
+  // entries below are their own interactive list. The second click of a
+  // double-click is skipped so renaming doesn't also flip it back.
+  function handleCardClick(e: React.MouseEvent) {
+    if (e.detail > 1) return;
+    if ((e.target as Element).closest("button, input, a, [data-no-toggle]")) return;
+    onToggleExpanded();
+  }
+
   const totalSeconds = playlist.entries.reduce((sum, e) => sum + e.duration_seconds, 0);
   const fileCount = playlist.entries.length;
 
@@ -321,13 +337,14 @@ function PlaylistRow({
         setPlaylistDropRef(node);
         rowRef.current = node;
       }}
+      onClick={handleCardClick}
       className={cn(
-        "rounded-[var(--radius-md)] border bg-surface p-3",
+        "cursor-pointer rounded-[var(--radius-md)] border bg-surface p-3",
         isDropTarget ? "border-accent ring-2 ring-inset ring-accent" : "border-border",
       )}
     >
       <div className="flex items-center gap-3">
-        <button type="button" onClick={onToggleExpanded} className="press-ghost text-muted">
+        <button type="button" onClick={onToggleExpanded} className="no-press text-muted">
           <Chevron open={isExpanded} />
         </button>
 
@@ -335,6 +352,7 @@ function PlaylistRow({
           <InlineRename
             value={playlist.name}
             startInEditMode={startInRename}
+            passClicks
             onSave={(next) => {
               renamePlaylist(playlist.id, next);
               onDoneRenaming();
@@ -402,33 +420,49 @@ function PlaylistRow({
         )}
       </div>
 
-      {isExpanded && (
-        <div className="mt-3 border-t border-border pt-3">
-          {playlist.entries.length === 0 ? (
-            <p className="text-[13px] text-muted">
-              {actions ? "No files yet." : "No files yet — press + and select some from above."}
-            </p>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndEntries}>
-              <SortableContext items={playlist.entries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
-                <ul className="flex flex-col gap-2">
-                  {playlist.entries.map((entry) => (
-                    <PlaylistEntryRow
-                      key={entry.id}
-                      entry={entry}
-                      // Still resolving from an optimistic add — router.refresh()
-                      // will settle it with a real id shortly; nothing to
-                      // remove server-side yet.
-                      onRemove={entry.id.startsWith("optimistic-") ? undefined : () => onRemoveEntry(entry.id)}
-                      onDurationChange={(seconds) => handleDurationChange(entry.id, seconds)}
-                    />
-                  ))}
-                </ul>
-              </SortableContext>
-            </DndContext>
+      {/* Slides open/shut by animating the grid row between 0fr and 1fr —
+          CSS can't transition height to "auto", but it can this. */}
+      <div
+        data-no-toggle
+        inert={!isExpanded}
+        onTransitionEnd={(e) => {
+          if (e.target === e.currentTarget && !isExpanded) setContentMounted(false);
+        }}
+        className={cn(
+          "grid cursor-auto transition-[grid-template-rows] duration-[400ms] ease-[var(--ease-spring)]",
+          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {contentMounted && (
+            <div className="mt-3 border-t border-border pt-3">
+              {playlist.entries.length === 0 ? (
+                <p className="text-[13px] text-muted">
+                  {actions ? "No files yet." : "No files yet — press + and select some from above."}
+                </p>
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndEntries}>
+                  <SortableContext items={playlist.entries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+                    <ul className="flex flex-col gap-2">
+                      {playlist.entries.map((entry) => (
+                        <PlaylistEntryRow
+                          key={entry.id}
+                          entry={entry}
+                          // Still resolving from an optimistic add — router.refresh()
+                          // will settle it with a real id shortly; nothing to
+                          // remove server-side yet.
+                          onRemove={entry.id.startsWith("optimistic-") ? undefined : () => onRemoveEntry(entry.id)}
+                          onDurationChange={(seconds) => handleDurationChange(entry.id, seconds)}
+                        />
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
     </li>
   );
 }

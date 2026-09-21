@@ -767,7 +767,7 @@ function FolderRow({
       <button
         type="button"
         onClick={handleChevronClick}
-        className="press-ghost shrink-0 text-muted hover:text-foreground"
+        className="no-press shrink-0 text-muted hover:text-foreground"
         aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
       >
         <Chevron open={isExpanded} />
