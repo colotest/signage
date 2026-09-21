@@ -45,7 +45,7 @@ export function ScheduleDialog({
         <Dialog.Content
           data-no-toggle
           aria-describedby={undefined}
-          className="menu-pop fixed left-1/2 top-1/2 z-[70] w-[calc(100%-32px)] max-w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-lg)] bg-surface p-4 shadow-[var(--shadow-sheet)] outline-none"
+          className="menu-pop fixed left-1/2 top-1/2 z-[70] max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[360px] -translate-x-1/2 overflow-y-auto overscroll-contain -translate-y-1/2 rounded-[var(--radius-lg)] bg-surface p-4 shadow-[var(--shadow-sheet)] outline-none"
         >
           {/* Radix unmounts this while closed, so the form's state starts
               fresh from runAt on every open. */}

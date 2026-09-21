@@ -3,50 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
-// Apple's own date/time picker is what we want wherever it exists: every
-// iOS/iPadOS browser (all WebKit underneath, so a datetime-local input
-// opens the system picker) and Safari on macOS. Everywhere else a native
-// datetime-local looks nothing like it, so EmulatedPicker below stands in —
-// modelled on iOS's inline picker: a month grid, then a time pill that
-// opens hour/minute wheels.
-function hasApplePicker() {
-  const ua = navigator.userAgent;
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-  const isMacSafari =
-    /Macintosh/.test(ua) && /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|Firefox|FxiOS|OPR/.test(ua);
-  return isIOS || isMacSafari;
-}
-
-export function DateTimePicker({ value, onChange }: { value: Date; onChange: (next: Date) => void }) {
-  // Only ever rendered inside a popup opened by a click, never during SSR,
-  // so reading navigator up front can't cause a hydration mismatch.
-  const [native] = useState(hasApplePicker);
-  return native ? <NativePicker value={value} onChange={onChange} /> : <EmulatedPicker value={value} onChange={onChange} />;
-}
-
 const pad = (n: number) => String(n).padStart(2, "0");
-
-function toLocalInputValue(date: Date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function NativePicker({ value, onChange }: { value: Date; onChange: (next: Date) => void }) {
-  return (
-    <input
-      type="datetime-local"
-      value={toLocalInputValue(value)}
-      min={toLocalInputValue(new Date())}
-      onChange={(e) => {
-        // A datetime-local string with no zone parses as local time.
-        const next = new Date(e.target.value);
-        if (!Number.isNaN(next.getTime())) onChange(next);
-      }}
-      className="w-full rounded-[var(--radius-md)] bg-black/[.05] px-3 py-2.5 text-[17px] text-foreground outline-none dark:bg-white/[.08]"
-    />
-  );
-}
-
-// --- Emulated (non-Apple) ----------------------------------------------------
 
 function weekStartsOn(): number {
   // 0 = Sunday … 6 = Saturday. Intl's weekInfo reports Sunday as 7.
@@ -65,7 +22,11 @@ function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function EmulatedPicker({ value, onChange }: { value: Date; onChange: (next: Date) => void }) {
+// Modelled on iOS's inline date picker: a month grid with past days greyed
+// out, then a time pill that opens hour/minute wheels. Used on every
+// platform, Apple's included — the native iOS picker ignores `min`, so it
+// can't grey out past dates, and one picker everywhere behaves the same.
+export function DateTimePicker({ value, onChange }: { value: Date; onChange: (next: Date) => void }) {
   const [viewMonth, setViewMonth] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1));
   const [timeOpen, setTimeOpen] = useState(false);
   const firstDay = useMemo(() => weekStartsOn(), []);
