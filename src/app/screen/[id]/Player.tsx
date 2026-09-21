@@ -1,16 +1,17 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
 import type { ControlMessage } from "@/lib/realtime/channels";
 import { mediaPublicUrl } from "@/types/domain";
-import type { FitMode, PlaylistItemWithMedia, Screen } from "@/types/domain";
+import type { FitMode, MediaItem, PlaylistItemWithMedia, Screen } from "@/types/domain";
 import { loadFromCache, saveToCache } from "@/lib/cache/playerCache";
 import { brandFont } from "@/lib/fonts";
 import { QrCode } from "@/components/QrCode";
+import { useScheduledSwitch, type PendingTimer } from "./useScheduledSwitch";
 
 // pdf.js needs browser canvas APIs, so this must never run during SSR.
 const PdfSlide = dynamic(() => import("./PdfSlide"), { ssr: false });
@@ -24,6 +25,24 @@ const MAX_AUTO_REFRESH_ATTEMPTS = 1;
 // Any value other than 0/90/180/270 (e.g. undefined, before the migration
 // adding this column has run) falls through to the plain, unrotated case —
 // same defensive default as the rest of this app's orientation handling.
+// Whether two playlists would play exactly the same thing, ignoring row
+// ids. A timed switch happens here locally first (see useScheduledSwitch),
+// with stand-in ids; when the database's own copy of that same swap
+// arrives a few seconds later, taking it would re-key — and so restart —
+// the slide that's already showing, so a matching copy is skipped instead.
+function samePlayback(a: PlaylistItemWithMedia[], b: PlaylistItemWithMedia[]) {
+  return (
+    a.length === b.length &&
+    a.every(
+      (item, i) =>
+        item.media_item_id === b[i].media_item_id &&
+        item.duration_seconds === b[i].duration_seconds &&
+        item.media_item.storage_path === b[i].media_item.storage_path &&
+        item.media_item.media_type === b[i].media_item.media_type,
+    )
+  );
+}
+
 function rotationWrapperStyle(rotation: number): CSSProperties {
   if (rotation === 90 || rotation === 270) {
     return {
@@ -51,6 +70,14 @@ export function Player({
   const [playlist, setPlaylist] = useState(initialPlaylist);
   const [currentIndex, setCurrentIndex] = useState(0);
   const supabase = useMemo(() => createBrowserClient(), []);
+
+  // Reset to a valid index if the playlist shrinks (e.g. an item was
+  // unassigned). Adjusted during render — same pattern as firstVideoItemId
+  // below — rather than in an effect, which rendered one frame at the
+  // out-of-range index first before correcting it.
+  if (currentIndex >= playlist.length && playlist.length > 0) {
+    setCurrentIndex(0);
+  }
 
   const current = playlist.length > 0 ? playlist[currentIndex % playlist.length] : null;
 
@@ -333,6 +360,67 @@ export function Player({
     };
   }, [playlist]);
 
+  // Timed playback (see useScheduledSwitch): from a minute ahead, pull the
+  // timed playlist's media in — videos/PDFs as whole-file GETs the service
+  // worker keeps a full copy of (same trick as the prefetch above), images
+  // loaded and decoded so their first frame paints instantly. The decoded
+  // images are held onto until they've been switched to; dropping the
+  // reference early would let the browser discard the decode.
+  const preloadedImagesRef = useRef<HTMLImageElement[]>([]);
+
+  function preloadMedia(items: MediaItem[]) {
+    for (const media of items) {
+      const url = mediaPublicUrl(SUPABASE_URL, media.storage_path);
+      if (prefetchedUrlsRef.current.has(url)) continue;
+      prefetchedUrlsRef.current.add(url);
+      if (media.media_type === "image") {
+        const img = new Image();
+        img.src = url;
+        img.decode().catch(() => prefetchedUrlsRef.current.delete(url));
+        preloadedImagesRef.current.push(img);
+        continue;
+      }
+      const whenControlled = "serviceWorker" in navigator ? navigator.serviceWorker.ready : Promise.resolve();
+      whenControlled
+        .then(() => fetch(url))
+        .catch(() => prefetchedUrlsRef.current.delete(url));
+    }
+  }
+
+  // At the timer's moment, switch straight to the timed playlist from its
+  // first item — the same thing the database is about to do to
+  // playlist_items, just without waiting for that to arrive. Stand-in ids
+  // until then; samePlayback keeps the arriving copy from restarting it. If
+  // the database's copy somehow got here first, there's nothing to do.
+  function fireTimer(timer: PendingTimer) {
+    const items: PlaylistItemWithMedia[] = timer.entries.map((entry, i) => ({
+      id: `scheduled-${timer.id}-${entry.id}`,
+      screen_id: screen.id,
+      media_item_id: entry.media_item_id,
+      position: i,
+      duration_seconds: entry.duration_seconds,
+      fit_mode: "contain",
+      created_at: entry.created_at,
+      media_item: entry.media_item,
+    }));
+    if (samePlayback(playlistRef.current, items)) return;
+    playlistRef.current = items;
+    indexRef.current = 0;
+    setPlaylist(items);
+    setCurrentIndex(0);
+    // Every image in it is on screen or in the browser cache by now.
+    setTimeout(() => {
+      preloadedImagesRef.current = [];
+    }, 5_000);
+  }
+
+  useScheduledSwitch({
+    supabase,
+    screenId: screen.id,
+    onPreload: (timer) => preloadMedia(timer.entries.map((e) => e.media_item)),
+    onFire: fireTimer,
+  });
+
   // Multiple realtime events firing in quick succession (e.g. assigning an
   // item and then immediately editing its duration) each kick off their own
   // async refetch — network responses can resolve out of order, so an older
@@ -353,7 +441,10 @@ export function Player({
       ]);
       if (seq !== refetchSeqRef.current) return; // a newer refetch has since started — discard
       if (freshScreen) setScreen(freshScreen);
-      if (freshPlaylist) setPlaylist(freshPlaylist as unknown as PlaylistItemWithMedia[]);
+      if (freshPlaylist) {
+        const next = freshPlaylist as unknown as PlaylistItemWithMedia[];
+        if (!samePlayback(playlistRef.current, next)) setPlaylist(next);
+      }
     }
 
     const channel = supabase
@@ -434,13 +525,6 @@ export function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, current?.duration_seconds]);
 
-  // Reset to a valid index if the playlist shrinks (e.g. an item was unassigned).
-  useEffect(() => {
-    if (currentIndex >= playlist.length && playlist.length > 0) {
-      setCurrentIndex(0);
-    }
-  }, [playlist.length, currentIndex]);
-
   return (
     <div className="relative h-dvh w-dvw overflow-hidden bg-black">
       {/* A screen mounted rotated N degrees counterclockwise needs its
@@ -478,14 +562,17 @@ export function Player({
 
 // The QR code's target depends on the origin this player happens to be
 // served from (custom domain, *.vercel.app, localhost), which is only known
-// client-side — so it renders one tick after mount rather than needing a
-// prop threaded down from the server.
-function NoContentPlaceholder() {
-  const [dashboardUrl, setDashboardUrl] = useState<string | null>(null);
+// client-side. useSyncExternalStore reads it straight from `window` in the
+// browser while the server snapshot stays null, so hydration still matches
+// the server's QR-less render — without an effect setting state after mount.
+const noSubscribe = () => () => {};
 
-  useEffect(() => {
-    setDashboardUrl(`${window.location.origin}/dashboard`);
-  }, []);
+function NoContentPlaceholder() {
+  const dashboardUrl = useSyncExternalStore(
+    noSubscribe,
+    () => `${window.location.origin}/dashboard`,
+    () => null,
+  );
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-6">

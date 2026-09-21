@@ -304,6 +304,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: number;
       };
+      server_now: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
