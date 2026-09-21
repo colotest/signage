@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef } from "react";
+import Image from "next/image";
+import { useRef, useState } from "react";
 import { mediaPublicUrl } from "@/types/domain";
 import type { FitMode, MediaItem } from "@/types/domain";
 
@@ -8,6 +9,7 @@ export function MediaThumb({
   item,
   fit = "cover",
   live = false,
+  sizes = "64px",
 }: {
   item: MediaItem;
   fit?: FitMode;
@@ -17,13 +19,15 @@ export function MediaThumb({
   // a genuinely live-looking preview. Lists of many items (media library,
   // assignment menus) keep the still-frame default instead.
   live?: boolean;
+  // How wide the thumbnail renders, for picking a resized variant — the
+  // default fits the small list thumbnails; larger callers pass their own.
+  sizes?: string;
 }) {
   const fitClass = fit === "contain" ? "object-contain" : "object-cover";
 
   if (item.media_type === "image") {
     const url = mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path);
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={item.name} className={`h-full w-full ${fitClass}`} />;
+    return <ImageThumb key={url} url={url} alt={item.name} sizes={sizes} fitClass={fitClass} />;
   }
 
   if (item.media_type === "video") {
@@ -45,6 +49,29 @@ export function MediaThumb({
 
   return (
     <div className="flex h-full w-full items-center justify-center text-2xl text-muted">▤</div>
+  );
+}
+
+// Resized by next/image rather than the original file: uploads are
+// full-resolution print/screen assets (some several MB, 4500×8000), and a
+// 32px list thumbnail was downloading all of it. The TV player doesn't use
+// this component and still gets the originals. If resizing fails (the
+// optimizer gives up on an original that takes too long to fetch), falls
+// back to the original rather than showing nothing.
+function ImageThumb({ url, alt, sizes, fitClass }: { url: string; alt: string; sizes: string; fitClass: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="relative block h-full w-full">
+      <Image
+        src={url}
+        alt={alt}
+        fill
+        sizes={sizes}
+        unoptimized={failed}
+        onError={() => setFailed(true)}
+        className={fitClass}
+      />
+    </span>
   );
 }
 

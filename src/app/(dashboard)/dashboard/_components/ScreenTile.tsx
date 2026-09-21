@@ -229,7 +229,7 @@ export function ScreenTile({
               }}
             >
               {firstItem ? (
-                <MediaThumb fit={screen.fit_mode} live item={firstItem.media_item} />
+                <MediaThumb fit={screen.fit_mode} live item={firstItem.media_item} sizes={`${PREVIEW_LONG}px`} />
               ) : (
                 <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
               )}
