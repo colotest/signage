@@ -325,7 +325,6 @@ export function LibraryView({
     router.refresh();
   }
 
-  const uploadTargetFolder = uploadTargetId ? folders.find((f) => f.id === uploadTargetId) : null;
 
   return (
     <DndContext
@@ -352,16 +351,9 @@ export function LibraryView({
             <div className="flex items-center gap-3">
               {/* Hidden while picking files for a playlist — there's nothing
                   to upload to while the list is busy being a file picker,
-                  and the space is better spent on the list itself. */}
-              {activePlaylistId === null && (
-                <>
-                  <span className="text-[12px] text-muted">
-                    Uploading to:{" "}
-                    <span className="text-foreground">{uploadTargetFolder ? uploadTargetFolder.name : "Root"}</span>
-                  </span>
-                  <UploadDropzone uploading={uploading} onUploadFiles={uploadFiles} />
-                </>
-              )}
+                  and the space is better spent on the list itself. Where an
+                  upload lands is shown by the highlighted folder itself. */}
+              {activePlaylistId === null && <UploadDropzone uploading={uploading} onUploadFiles={uploadFiles} />}
               <MobileFileMenuButton
                 sortKey={sortKey}
                 sortDir={sortDir}

@@ -14,7 +14,6 @@ import {
   unassignMedia,
   updateItemDuration,
 } from "@/lib/actions/playlist";
-import { removePlaylistEntry } from "@/lib/actions/playlists";
 import type { Folder, MediaItem, PlaylistItemWithMedia, Screen } from "@/types/domain";
 import { FileTree, type SortDir, type SortKey } from "../../library/_components/FileTree";
 import { SortableEntryList } from "../../library/_components/PlaylistEntryRow";
@@ -146,7 +145,6 @@ export function PlaybackMenu({
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
   const { uploading, uploadFiles } = useMediaUpload(uploadTargetId);
-  const uploadTargetFolder = uploadTargetId ? library.folders.find((f) => f.id === uploadTargetId) : null;
 
   function startPicking() {
     setPickedRows(new Map());
@@ -263,25 +261,12 @@ export function PlaybackMenu({
 
   // --- Library playlists (below) ------------------------------------------
 
-  // Same optimistic mirror LibraryView keeps. Names and entry order are
-  // read-only here (editable={false} below) — that's the Library page's job.
+  // Playlists are read-only here (editable={false} below) — editing them is
+  // the Library page's job.
   const [localPlaylists, setLocalPlaylists] = useState(library.playlists);
   useEffect(() => {
     setLocalPlaylists(library.playlists);
   }, [library.playlists]);
-
-  async function removeEntry(playlistId: string, entryId: string) {
-    setLocalPlaylists((current) =>
-      current.map((p) => (p.id === playlistId ? { ...p, entries: p.entries.filter((e) => e.id !== entryId) } : p)),
-    );
-    try {
-      await removePlaylistEntry(entryId);
-    } catch (err) {
-      console.error("Failed to remove playlist entry", err);
-    }
-    // Brings it back if the removal failed.
-    router.refresh();
-  }
 
   function handleOpenChange(next: boolean) {
     if (!next) {
@@ -333,10 +318,6 @@ export function PlaybackMenu({
             <div className="relative z-10 flex items-center justify-between gap-3">
               <h2 className="text-[22px] font-semibold tracking-tight">Media</h2>
               <div className="flex items-center gap-3">
-                <span className="hidden text-[12px] text-muted sm:inline">
-                  Uploading to:{" "}
-                  <span className="text-foreground">{uploadTargetFolder ? uploadTargetFolder.name : "Root"}</span>
-                </span>
                 <UploadDropzone uploading={uploading} onUploadFiles={uploadFiles} />
                 <MobileFileMenuButton
                   sortKey={sortKey}
@@ -441,7 +422,6 @@ export function PlaybackMenu({
           playlists={localPlaylists}
           showCreate={false}
           editable={false}
-          onRemoveEntry={removeEntry}
           renderActions={(p) => (
             <div className="flex shrink-0 items-center gap-2">
               <button

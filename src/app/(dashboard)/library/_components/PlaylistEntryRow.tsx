@@ -28,7 +28,7 @@ export function SortableEntryList<T extends Entry>({
   entries,
   sensors,
   onMove,
-  reorderable = true,
+  editable = true,
   onRemove,
   canRemove = () => true,
   onDurationChange,
@@ -40,11 +40,12 @@ export function SortableEntryList<T extends Entry>({
   // Real item ids, even for a row whose on-screen key is still the
   // optimistic one it started out with.
   onMove: (activeId: string, overId: string) => void;
-  // Off: no drag handles and no dragging.
-  reorderable?: boolean;
-  onRemove: (id: string) => void;
+  // Off: a read-only list — no drag handles, no ✕, and durations shown as
+  // plain text.
+  editable?: boolean;
+  onRemove?: (id: string) => void;
   canRemove?: (entry: T) => boolean;
-  onDurationChange: (id: string, seconds: number) => void;
+  onDurationChange?: (id: string, seconds: number) => void;
   removeLabel?: string;
   empty: ReactNode;
 }) {
@@ -66,7 +67,7 @@ export function SortableEntryList<T extends Entry>({
   }
 
   return (
-    <DndContext sensors={reorderable ? sensors : []} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext sensors={editable ? sensors : []} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={presence.map((p) => p.renderKey)} strategy={verticalListSortingStrategy}>
         <ul className="flex flex-col gap-2">
           {presence.map(({ renderKey, item, state }) => (
@@ -74,12 +75,12 @@ export function SortableEntryList<T extends Entry>({
               key={renderKey}
               sortableId={renderKey}
               entry={item}
-              reorderable={reorderable}
+              editable={editable}
               presence={state}
               onExited={() => onExited(renderKey)}
               removeLabel={removeLabel}
-              onRemove={canRemove(item) ? () => onRemove(item.id) : undefined}
-              onDurationChange={(seconds) => onDurationChange(item.id, seconds)}
+              onRemove={onRemove && canRemove(item) ? () => onRemove(item.id) : undefined}
+              onDurationChange={(seconds) => onDurationChange?.(item.id, seconds)}
             />
           ))}
         </ul>
@@ -93,7 +94,7 @@ export function SortableEntryList<T extends Entry>({
 function PlaylistEntryRow({
   sortableId,
   entry,
-  reorderable,
+  editable,
   presence,
   onExited,
   onRemove,
@@ -102,7 +103,7 @@ function PlaylistEntryRow({
 }: {
   sortableId: string;
   entry: Entry;
-  reorderable: boolean;
+  editable: boolean;
   presence: PresenceState;
   onExited: () => void;
   onRemove?: () => void;
@@ -154,7 +155,7 @@ function PlaylistEntryRow({
       style={style}
       className="flex items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface p-2"
     >
-      {reorderable && (
+      {editable && (
         <button
           type="button"
           {...attributes}
@@ -178,6 +179,8 @@ function PlaylistEntryRow({
 
       {entry.media_item.media_type === "video" ? (
         <span className="w-20 shrink-0 text-right text-[12px] text-muted">Full length</span>
+      ) : !editable ? (
+        <span className="w-20 shrink-0 text-right text-[12px] text-muted">{entry.duration_seconds} sec</span>
       ) : (
         <label className="flex shrink-0 items-center gap-1 text-[12px] text-muted">
           <input
@@ -194,15 +197,17 @@ function PlaylistEntryRow({
         </label>
       )}
 
-      <button
-        type="button"
-        onClick={onRemove}
-        disabled={!onRemove}
-        className="press-ghost shrink-0 px-1 text-muted hover:text-danger disabled:opacity-40 disabled:hover:text-muted"
-        aria-label={removeLabel}
-      >
-        ✕
-      </button>
+      {editable && (
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={!onRemove}
+          className="press-ghost shrink-0 px-1 text-muted hover:text-danger disabled:opacity-40 disabled:hover:text-muted"
+          aria-label={removeLabel}
+        >
+          ✕
+        </button>
+      )}
     </li>
   );
 }

@@ -909,6 +909,7 @@ function FileRow({
           <RenameableTitle
             id={item.id}
             name={item.name}
+            selecting={selectionMode}
             className="truncate text-[13px] font-medium"
           />
         }

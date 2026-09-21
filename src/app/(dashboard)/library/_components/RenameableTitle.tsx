@@ -15,7 +15,20 @@ function splitExtension(name: string): { base: string; ext: string } {
   return { base: name.slice(0, idx), ext: name.slice(idx) };
 }
 
-export function RenameableTitle({ id, name, className }: { id: string; name: string; className?: string }) {
+// selecting: the row is in selection mode, where the title is just part of
+// the row — a click on it reaches the row (ticking the file), and
+// double-click doesn't start a rename.
+export function RenameableTitle({
+  id,
+  name,
+  className,
+  selecting = false,
+}: {
+  id: string;
+  name: string;
+  className?: string;
+  selecting?: boolean;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [, startTransition] = useTransition();
@@ -93,11 +106,15 @@ export function RenameableTitle({ id, name, className }: { id: string; name: str
       // this row," and the title needs to opt out of that entirely rather
       // than translate into two of those (a double-click fires two plain
       // click events before the dblclick itself).
-      onClick={(e) => e.stopPropagation()}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        startEditing();
-      }}
+      onClick={selecting ? undefined : (e) => e.stopPropagation()}
+      onDoubleClick={
+        selecting
+          ? undefined
+          : (e) => {
+              e.stopPropagation();
+              startEditing();
+            }
+      }
       // A row this sits in may double as a touch drag handle — stopping
       // touchstart here keeps a held press on the title a normal text
       // selection instead of picking the row up, matching the
@@ -105,12 +122,12 @@ export function RenameableTitle({ id, name, className }: { id: string; name: str
       // click-and-drag there was never ambiguous with selecting text the
       // way a touch hold is, so it's left to keep working as a drag start.
       onTouchStart={(e) => e.stopPropagation()}
-      title="Double-click to rename"
+      title={selecting ? undefined : "Double-click to rename"}
       // Plain CSS class for this gets its declaration silently stripped by
       // the build's CSS minifier (lightningcss treats the non-standard
       // vendor property as invalid) — inline style bypasses that pipeline.
       style={{ WebkitTouchCallout: "default" }}
-      className={cn("truncate select-text", className)}
+      className={cn("truncate", selecting ? "select-none" : "select-text", className)}
     >
       {displayName}
     </span>

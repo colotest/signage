@@ -70,14 +70,14 @@ export function PlaylistSection({
   onCancelSelection?: () => void;
   onConfirmAdd?: (playlistId: string) => void;
   onReorderEntries?: (playlistId: string, nextEntries: PlaylistEntryWithMedia[]) => void;
-  onRemoveEntry: (playlistId: string, entryId: string) => void;
+  onRemoveEntry?: (playlistId: string, entryId: string) => void;
   // A file being dragged in from the Media list (DndContext lives in
   // LibraryView, a shared ancestor of both lists) resolves to a playlist id
   // when it's hovering this one — drives PlaylistRow's own highlight.
   dropTargetPlaylistId?: string | null;
   showCreate?: boolean;
-  // Names and entry order can only be changed on the Library page — the
-  // Playback Menu shows these same playlists to play from, not to edit.
+  // Playlists (names, entries, order, durations) can only be edited on the
+  // Library page — the Playback Menu shows them to play from, not to edit.
   editable?: boolean;
   renderActions?: (playlist: PlaylistWithEntries) => ReactNode;
 }) {
@@ -213,7 +213,7 @@ export function PlaylistSection({
                 onCancelSelection={() => onCancelSelection?.()}
                 onConfirmAdd={() => onConfirmAdd?.(playlist.id)}
                 onReorderEntries={(next) => onReorderEntries?.(playlist.id, next)}
-                onRemoveEntry={(entryId) => onRemoveEntry(playlist.id, entryId)}
+                onRemoveEntry={(entryId) => onRemoveEntry?.(playlist.id, entryId)}
                 isDropTarget={dropTargetPlaylistId === playlist.id}
                 actions={renderActions?.(playlist)}
                 editable={editable}
@@ -442,7 +442,7 @@ function PlaylistRow({
                 entries={playlist.entries}
                 sensors={sensors}
                 onMove={handleMoveEntry}
-                reorderable={editable}
+                editable={editable}
                 onRemove={onRemoveEntry}
                 // Still resolving from an optimistic add — router.refresh()
                 // will settle it with a real id shortly; nothing to remove
