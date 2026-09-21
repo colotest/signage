@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Sheet } from "@/components/ui/Sheet";
-import { AlarmClockIcon, CheckIcon, PlayIcon } from "@/components/icons/PlaybackIcons";
+import { AlarmClockIcon, PlayIcon } from "@/components/icons/PlaybackIcons";
 import { formatDuration } from "@/lib/utils/format";
 import {
   addItemsToScreen,
@@ -26,6 +26,9 @@ import type { Folder, MediaItem, PlaylistEntryWithMedia, PlaylistItemWithMedia, 
 import { FileTree, type SortDir, type SortKey } from "../../library/_components/FileTree";
 import { PlaylistEntryRow } from "../../library/_components/PlaylistEntryRow";
 import { PlaylistSection, type PlaylistWithEntries } from "../../library/_components/PlaylistSection";
+import { MobileFileMenuButton } from "../../library/_components/LibraryView";
+import { UploadDropzone } from "../../library/_components/UploadDropzone";
+import { useMediaUpload } from "../../library/_components/useMediaUpload";
 
 export type LibraryData = {
   folders: Folder[];
@@ -41,8 +44,8 @@ const FILE_PICKER_MS = 300;
 // dropped onto the front of Now Playing with its play button.
 //
 // Every write to Now Playing is applied locally first and then run through
-// a strictly serial queue, so rapid picks (select, deselect, play a
-// playlist, reorder…) reach the server in the order they were made and
+// a strictly serial queue, so rapid edits (adding files, playing a
+// playlist, reordering…) reach the server in the order they were made and
 // never race each other for positions. Optimistic rows carry a temporary
 // id until their insert resolves; anything queued later looks the real id
 // up at run time, by which point the insert ahead of it has finished.
@@ -132,22 +135,30 @@ export function PlaybackMenu({
     });
   }
 
-  // --- File picking ("+ Media") ---------------------------------------------
+  // --- File picking ---------------------------------------------------------
 
+  // Same mechanics as a playlist on the Library page: "+" arms picking and
+  // slides the file browser in, the "+N" it turns into commits the picked
+  // files (appended, in pick order), and "✕" drops out of picking without
+  // adding anything.
   const [picking, setPicking] = useState(false);
-  // Which Now Playing row each picked file became — deselecting a file takes
-  // back exactly that row, not some other copy of the same file that was
-  // already in the list before picking started.
-  const [pickedRowIds, setPickedRowIds] = useState<Map<string, string>>(new Map());
-  const pickedIds = useMemo(() => new Set(pickedRowIds.keys()), [pickedRowIds]);
+  const [pickedIds, setPickedIds] = useState<string[]>([]);
+  const pickedSet = useMemo(() => new Set(pickedIds), [pickedIds]);
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
+  const { uploading, uploadFiles } = useMediaUpload(uploadTargetId);
+  const uploadTargetFolder = uploadTargetId ? library.folders.find((f) => f.id === uploadTargetId) : null;
 
   function startPicking() {
-    setPickedRowIds(new Map());
+    setPickedIds([]);
     setPicking(true);
+  }
+
+  function stopPicking() {
+    setPicking(false);
+    setPickedIds([]);
   }
 
   function toggleSort(key: SortKey) {
@@ -158,62 +169,39 @@ export function PlaybackMenu({
     }
   }
 
-  function pickMedia(mediaIds: string[]) {
-    const newItems = mediaIds.flatMap((id) => {
+  function toggleMedia(id: string) {
+    setPickedIds((current) => (current.includes(id) ? current.filter((m) => m !== id) : [...current, id]));
+  }
+
+  function toggleFolderIds(ids: string[], select: boolean) {
+    setPickedIds((current) =>
+      select ? [...current, ...ids.filter((id) => !current.includes(id))] : current.filter((id) => !ids.includes(id)),
+    );
+  }
+
+  function confirmPicked() {
+    const newItems = pickedIds.flatMap((id) => {
       const mediaItem = mediaById.get(id);
-      return mediaItem && !pickedRowIds.has(id) ? [optimisticItem(mediaItem, 10)] : [];
+      return mediaItem ? [optimisticItem(mediaItem, 10)] : [];
     });
+    stopPicking();
     if (newItems.length === 0) return;
-    setPickedRowIds((current) => {
-      const next = new Map(current);
-      for (const item of newItems) next.set(item.media_item_id, item.id);
-      return next;
-    });
-    // Appended — so they land just above the "+ Media" placeholder, which
-    // always stays last.
     setItems((current) => [...current, ...newItems]);
     insertItems(newItems, "end");
   }
 
-  function unpickMedia(mediaIds: string[]) {
-    const rowIds = mediaIds.flatMap((id) => {
-      const rowId = pickedRowIds.get(id);
-      return rowId ? [rowId] : [];
-    });
-    if (rowIds.length === 0) return;
-    setPickedRowIds((current) => {
-      const next = new Map(current);
-      for (const id of mediaIds) next.delete(id);
-      return next;
-    });
-    removeItems(rowIds);
-  }
-
-  function toggleMedia(id: string) {
-    if (pickedRowIds.has(id)) unpickMedia([id]);
-    else pickMedia([id]);
-  }
-
   // --- Now Playing edits ----------------------------------------------------
 
-  // Matched on both the given id and whatever it resolves to — a picked
-  // file's row is tracked by its optimistic id, but may have been swapped
-  // for the real row by now (and vice versa for a row removed via its ✕).
-  function removeItems(ids: string[]) {
-    const removed = new Set([...ids, ...ids.map(resolveId)]);
-    setItems((current) => current.filter((item) => !removed.has(item.id)));
-    setPickedRowIds((current) => {
-      const next = new Map([...current].filter(([, rowId]) => !removed.has(resolveId(rowId))));
-      return next.size === current.size ? current : next;
-    });
-    enqueue(async () => {
-      await Promise.all(ids.map((id) => unassignMedia(resolveId(id))));
-    });
+  function removeItem(id: string) {
+    setItems((current) => current.filter((item) => item.id !== id));
+    enqueue(() => unassignMedia(resolveId(id)));
   }
 
-  function clearItems() {
+  const [confirmingEmpty, setConfirmingEmpty] = useState(false);
+
+  function emptyItems() {
+    setConfirmingEmpty(false);
     setItems([]);
-    setPickedRowIds(new Map());
     enqueue(() => clearScreenPlaylist(screen.id));
   }
 
@@ -285,7 +273,10 @@ export function PlaybackMenu({
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next) setPicking(false);
+    if (!next) {
+      stopPicking();
+      setConfirmingEmpty(false);
+    }
     onOpenChange(next);
   }
 
@@ -325,17 +316,33 @@ export function PlaybackMenu({
               transition: `transform ${FILE_PICKER_MS}ms`,
             }}
           >
-            <div className="relative z-10 flex items-center">
+            {/* Same header as the Library's Media section, except the upload
+                controls stay put while picking — uploading straight into
+                the picker is the point of having them here. */}
+            <div className="relative z-10 flex items-center justify-between gap-3">
               <h2 className="text-[22px] font-semibold tracking-tight">Media</h2>
+              <div className="flex items-center gap-3">
+                <span className="hidden text-[12px] text-muted sm:inline">
+                  Uploading to:{" "}
+                  <span className="text-foreground">{uploadTargetFolder ? uploadTargetFolder.name : "Root"}</span>
+                </span>
+                <UploadDropzone uploading={uploading} onUploadFiles={uploadFiles} />
+                <MobileFileMenuButton
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onToggleSort={toggleSort}
+                  onNewFolder={() => setCreatingIn(null)}
+                />
+              </div>
             </div>
             <FileTree
               className="min-h-0 flex-1"
               folders={library.folders}
               media={library.media}
               selectionMode
-              selectedIds={pickedIds}
+              selectedIds={pickedSet}
               onToggleMedia={toggleMedia}
-              onToggleFolderIds={(ids, select) => (select ? pickMedia(ids) : unpickMedia(ids))}
+              onToggleFolderIds={toggleFolderIds}
               uploadTargetId={uploadTargetId}
               onActivateFolder={setUploadTargetId}
               sortKey={sortKey}
@@ -343,6 +350,7 @@ export function PlaybackMenu({
               onToggleSort={toggleSort}
               creatingIn={creatingIn}
               onCreatingChange={setCreatingIn}
+              onUploadFiles={uploadFiles}
               dropTargetFolderId={undefined}
             />
           </div>
@@ -359,56 +367,72 @@ export function PlaybackMenu({
               {items.length} file{items.length === 1 ? "" : "s"}
             </span>
             <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={picking ? confirmPicked : startPicking}
+                disabled={picking && pickedIds.length === 0}
+                title={picking ? "Add selected files" : "Add files"}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
+              >
+                {picking && pickedIds.length > 0 ? `+${pickedIds.length}` : "+"}
+              </button>
               {picking && (
                 <button
                   type="button"
-                  onClick={() => setPicking(false)}
-                  title="Done picking"
-                  aria-label="Done picking"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast hover:opacity-90"
+                  onClick={stopPicking}
+                  title="Cancel selection"
+                  aria-label="Cancel selection"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90"
                 >
-                  <CheckIcon className="h-4 w-4" />
+                  ✕
                 </button>
               )}
+            </div>
+
+            {/* Emptying lives on its own text button (with a confirm step,
+                like the Library's "Delete") so "✕" only ever means "stop
+                picking" and can't be mistaken for it. */}
+            {confirmingEmpty ? (
+              <div className="flex shrink-0 items-center gap-2 text-[13px]">
+                <button type="button" onClick={emptyItems} className="font-medium text-danger hover:opacity-70">
+                  Confirm
+                </button>
+                <button type="button" onClick={() => setConfirmingEmpty(false)} className="text-muted hover:opacity-70">
+                  Cancel
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
-                onClick={clearItems}
+                onClick={() => setConfirmingEmpty(true)}
                 disabled={items.length === 0}
-                title="Clear Now Playing"
-                aria-label="Clear Now Playing"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90 disabled:opacity-40"
+                className="shrink-0 text-[13px] text-muted hover:text-danger disabled:opacity-40 disabled:hover:text-muted"
               >
-                ✕
+                Empty
               </button>
-            </div>
+            )}
           </div>
 
           <div className="no-scrollbar mt-3 min-h-0 overflow-y-auto overscroll-contain border-t border-border pt-3">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                <ul className="flex flex-col gap-2">
-                  {items.map((item) => (
-                    <PlaylistEntryRow
-                      key={item.id}
-                      entry={item}
-                      removeLabel="Remove from Now Playing"
-                      onRemove={() => removeItems([item.id])}
-                      onDurationChange={(seconds) => changeDuration(item.id, seconds)}
-                    />
-                  ))}
-                  <li>
-                    <button
-                      type="button"
-                      onClick={startPicking}
-                      disabled={picking}
-                      className="flex w-full items-center justify-center rounded-[var(--radius-md)] border border-dashed border-border p-3 text-[15px] font-medium text-accent hover:bg-black/[.02] disabled:opacity-40 dark:hover:bg-white/[.03]"
-                    >
-                      + Media
-                    </button>
-                  </li>
-                </ul>
-              </SortableContext>
-            </DndContext>
+            {items.length === 0 ? (
+              <p className="text-[13px] text-muted">No files yet — press + and select some from above.</p>
+            ) : (
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                  <ul className="flex flex-col gap-2">
+                    {items.map((item) => (
+                      <PlaylistEntryRow
+                        key={item.id}
+                        entry={item}
+                        removeLabel="Remove from Now Playing"
+                        onRemove={() => removeItem(item.id)}
+                        onDurationChange={(seconds) => changeDuration(item.id, seconds)}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+              </DndContext>
+            )}
           </div>
         </section>
 

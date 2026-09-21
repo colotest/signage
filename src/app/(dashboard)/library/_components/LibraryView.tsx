@@ -18,19 +18,18 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { MediaThumb } from "@/components/MediaThumb";
 import type { Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
-import { createUploadUrl, finalizeMediaUpload, moveMediaItem } from "@/lib/actions/media";
+import { moveMediaItem } from "@/lib/actions/media";
 import {
   addMediaToPlaylist,
   getPlaylistEntryIds,
   removePlaylistEntry,
   reorderPlaylistEntries,
 } from "@/lib/actions/playlists";
-import { inspectFile } from "@/lib/media/inspectFile";
-import { createBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils/cn";
 import { FileTree, MENU_ITEM_CLASS, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
 import { UploadDropzone } from "./UploadDropzone";
+import { useMediaUpload } from "./useMediaUpload";
 
 // Resolved from whatever id dnd-kit's `over` reports — a folder (including
 // root, id null) when a file's dropped inside FileTree, or a playlist when
@@ -73,7 +72,6 @@ export function LibraryView({
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
-  const [uploading, setUploading] = useState(0);
 
   // A single DndContext up here (rather than one inside FileTree and
   // another inside PlaylistSection) is what lets a file be picked up in the
@@ -190,51 +188,10 @@ export function LibraryView({
     router.refresh();
   }
 
-  // Lives here (not in UploadDropzone) so both the "+ Upload" button and
-  // dropping OS files directly onto the file list (see FileTree) share the
-  // same upload pipeline and in-progress count.
-  async function uploadFiles(files: FileList | File[]) {
-    const fileArray = Array.from(files);
-    if (fileArray.length === 0) return;
-    const supabase = createBrowserClient();
-
-    setUploading((n) => n + fileArray.length);
-    await Promise.all(
-      fileArray.map(async (file) => {
-        try {
-          const { mediaItemId, storagePath, mediaType, token } = await createUploadUrl({
-            filename: file.name,
-            contentType: file.type,
-          });
-
-          const [metadata, { error: uploadError }] = await Promise.all([
-            inspectFile(file, mediaType),
-            supabase.storage.from("media").uploadToSignedUrl(storagePath, token, file),
-          ]);
-          if (uploadError) throw uploadError;
-
-          await finalizeMediaUpload({
-            mediaItemId,
-            folderId: uploadTargetId,
-            name: file.name,
-            storagePath,
-            mediaType,
-            mimeType: file.type,
-            sizeBytes: file.size,
-            width: metadata.width,
-            height: metadata.height,
-            durationSeconds: metadata.durationSeconds,
-          });
-        } catch (err) {
-          console.error("Upload failed", file.name, err);
-          alert(`Failed to upload "${file.name}": ${err instanceof Error ? err.message : "unknown error"}`);
-        } finally {
-          setUploading((n) => n - 1);
-        }
-      }),
-    );
-    router.refresh();
-  }
+  // Shared with the dashboard's Playback Menu (see useMediaUpload) — both
+  // the "+ Upload" button and dropping OS files directly onto the file list
+  // (see FileTree) go through it.
+  const { uploading, uploadFiles } = useMediaUpload(uploadTargetId);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -469,7 +426,7 @@ export function LibraryView({
 // space back on a small screen. Stays open after picking an option (the
 // user may want to flip a sort direction more than once, or glance at the
 // list after starting a new folder) — only an outside tap/Escape closes it.
-function MobileFileMenuButton({
+export function MobileFileMenuButton({
   sortKey,
   sortDir,
   onToggleSort,
