@@ -548,9 +548,16 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
 // tucked behind the "⋯" menu. Desktop has the width to spare, so it gets a
 // real Kind/Resolution/Duration/Size/Date Added row instead (see RowColumn
 // below) and this stacked date is redundant with that Date Added column.
+//
+// items-start shrinks the title (and date) to their own text width instead
+// of stretching across the whole column, so only the name itself is the
+// double-click-to-rename hitbox and the rest of the column stays an
+// ordinary row click. [&>*]:max-w-full keeps a long name truncating rather
+// than overflowing; the rename inputs opt back into the full width
+// themselves (self-stretch) while editing.
 function RowInfo({ title, date }: { title: React.ReactNode; date: string }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-w-0 flex-1 flex-col items-start [&>*]:max-w-full">
       {title}
       <span className="truncate text-[10px] text-muted sm:hidden">{date}</span>
     </div>
@@ -770,12 +777,7 @@ function FolderRow({
                 router.refresh();
               });
             }}
-            // self-start: shrink to the name's own width (RowInfo's column
-            // would otherwise stretch it across the whole title column), so
-            // only the text itself is the rename hitbox and the rest of that
-            // column stays an ordinary row click. max-w-full keeps a long
-            // name truncating instead of overflowing.
-            className="max-w-full self-start truncate text-[13px] font-medium"
+            className="truncate text-[13px] font-medium"
           />
         }
         date={formatDate(folder.created_at)}

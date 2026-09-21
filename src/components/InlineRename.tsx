@@ -60,7 +60,7 @@ export function InlineRename({
         }}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "min-w-0 rounded-[3px] border border-accent bg-transparent px-1 -mx-1 outline-none",
+          "min-w-0 self-stretch rounded-[3px] border border-accent bg-transparent px-1 -mx-1 outline-none",
           className,
         )}
       />

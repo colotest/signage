@@ -332,7 +332,12 @@ function PlaylistRow({
               onDoneRenaming();
               router.refresh();
             }}
-            className="text-[15px] font-semibold"
+            // block + w-fit: sized to the name's own text (so only that is the
+            // rename hitbox, same as the file browser's rows) yet capped at
+            // the column's width so a long name truncates — as a plain
+            // inline span, "truncate" never took effect and a long name ran
+            // straight into the file count beside it.
+            className="block w-fit max-w-full text-[15px] font-semibold"
           />
         </div>
 

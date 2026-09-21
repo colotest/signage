@@ -69,7 +69,7 @@ export function RenameableTitle({ id, name, className }: { id: string; name: str
 
   if (editing) {
     return (
-      <span className="inline-flex min-w-0 items-baseline">
+      <span className="inline-flex min-w-0 items-baseline self-stretch">
         <input
           ref={attachInput}
           defaultValue={base}

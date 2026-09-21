@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Sheet } from "@/components/ui/Sheet";
-import { AlarmClockIcon, PlayIcon } from "@/components/icons/PlaybackIcons";
+import { AlarmClockIcon, CheckIcon, PlayIcon } from "@/components/icons/PlaybackIcons";
 import { formatDuration } from "@/lib/utils/format";
 import {
   addItemsToScreen,
@@ -137,8 +137,8 @@ export function PlaybackMenu({
 
   // --- File picking ---------------------------------------------------------
 
-  // "+" slides the file browser in and turns into "✕", which slides it back
-  // out. Ticking a file adds it to Now Playing right away (appended, in pick
+  // "+" slides the file browser in and turns into a checkmark, which slides
+  // it back out. Ticking a file adds it to Now Playing right away (appended, in pick
   // order) and unticking takes that same row back out — there's no separate
   // confirm step, so closing the popup mid-pick keeps whatever was picked.
   const [picking, setPicking] = useState(false);
@@ -400,9 +400,9 @@ export function PlaybackMenu({
                 onClick={stopPicking}
                 title="Done picking"
                 aria-label="Done picking"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast hover:opacity-90"
               >
-                ✕
+                <CheckIcon className="h-4 w-4" />
               </button>
             ) : (
               <button
@@ -417,8 +417,8 @@ export function PlaybackMenu({
             )}
 
             {/* Emptying lives on its own text button (with a confirm step,
-                like the Library's "Delete") so "✕" only ever means "stop
-                picking" and can't be mistaken for it. */}
+                like the Library's "Delete") so it can't be mistaken for
+                finishing a pick. */}
             {confirmingEmpty ? (
               <div className="flex shrink-0 items-center gap-2 text-[13px]">
                 <button type="button" onClick={emptyItems} className="font-medium text-danger hover:opacity-70">
