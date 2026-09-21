@@ -45,6 +45,7 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 1. Push this repo to GitHub.
 2. Import it into [Vercel](https://vercel.com/new) (free tier).
 3. In the Vercel project's **Settings → Environment Variables**, add the same five variables as above (for Production and Preview).
+   - Server functions are pinned to Frankfurt (`fra1`) in `vercel.json` so they sit next to the Supabase project. If your Supabase project lives elsewhere, change that region to match — every dashboard page load makes several database round trips, so a cross-region hop adds up fast.
 4. Deploy. Every push to `main` redeploys automatically.
 
 ## Setting up a TV / kiosk device
