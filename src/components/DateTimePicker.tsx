@@ -26,6 +26,9 @@ function sameDay(a: Date, b: Date) {
 // out, then a time pill that opens hour/minute wheels. Used on every
 // platform, Apple's included — the native iOS picker ignores `min`, so it
 // can't grey out past dates, and one picker everywhere behaves the same.
+// Every button in here opts out of the app-wide press glint (no-press, see
+// globals.css) — across a whole grid of dates and wheel rows it was more
+// distracting than helpful.
 export function DateTimePicker({ value, onChange }: { value: Date; onChange: (next: Date) => void }) {
   const [viewMonth, setViewMonth] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1));
   const [timeOpen, setTimeOpen] = useState(false);
@@ -77,11 +80,11 @@ export function DateTimePicker({ value, onChange }: { value: Date; onChange: (ne
             onClick={() => shiftMonth(-1)}
             disabled={!canGoBack}
             aria-label="Previous month"
-            className="press-ghost rounded-full p-1.5 disabled:opacity-30"
+            className="no-press rounded-full p-1.5 disabled:opacity-30"
           >
             <Chevron className="h-5 w-5 rotate-180" />
           </button>
-          <button type="button" onClick={() => shiftMonth(1)} aria-label="Next month" className="press-ghost rounded-full p-1.5">
+          <button type="button" onClick={() => shiftMonth(1)} aria-label="Next month" className="no-press rounded-full p-1.5">
             <Chevron className="h-5 w-5" />
           </button>
         </div>
@@ -104,7 +107,7 @@ export function DateTimePicker({ value, onChange }: { value: Date; onChange: (ne
               type="button"
               disabled={isPast}
               onClick={() => pickDay(day)}
-              className="flex h-10 items-center justify-center disabled:cursor-default"
+              className="no-press flex h-10 items-center justify-center disabled:cursor-default"
             >
               <span
                 className={cn(
@@ -128,7 +131,7 @@ export function DateTimePicker({ value, onChange }: { value: Date; onChange: (ne
           onClick={() => setTimeOpen((o) => !o)}
           aria-expanded={timeOpen}
           className={cn(
-            "rounded-[8px] px-3 py-1.5 text-[17px] tabular-nums transition-colors",
+            "no-press rounded-[8px] px-3 py-1.5 text-[17px] tabular-nums transition-colors",
             timeOpen ? "bg-black/[.05] text-accent dark:bg-white/[.08]" : "bg-black/[.05] text-foreground dark:bg-white/[.08]",
           )}
         >
@@ -212,7 +215,7 @@ function Wheel({
           aria-selected={i === value}
           onClick={() => ref.current?.scrollTo({ top: i * ITEM_HEIGHT, behavior: "smooth" })}
           className={cn(
-            "block w-full snap-center text-center text-[20px] tabular-nums transition-colors",
+            "no-press block w-full snap-center text-center text-[20px] tabular-nums transition-colors",
             i === centered ? "text-foreground" : "text-muted",
           )}
           style={{ height: ITEM_HEIGHT, lineHeight: `${ITEM_HEIGHT}px` }}

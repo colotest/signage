@@ -486,6 +486,9 @@ export function PlaybackMenu({
           playlists={localPlaylists}
           showCreate={false}
           editable={false}
+          // Playlists with a timer running lead the list, soonest first, so
+          // an imminent change to the program is the first thing you see.
+          pinOrder={(p) => timers.get(p.id)?.getTime() ?? null}
           renderActions={(p) => (
             <div className="flex shrink-0 items-center gap-2">
               <button

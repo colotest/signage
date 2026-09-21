@@ -58,6 +58,7 @@ export function PlaylistSection({
   showCreate = true,
   editable = true,
   renderActions,
+  pinOrder,
   listClassName,
 }: {
   className?: string;
@@ -80,6 +81,11 @@ export function PlaylistSection({
   // Library page — the Playback Menu shows them to play from, not to edit.
   editable?: boolean;
   renderActions?: (playlist: PlaylistWithEntries) => ReactNode;
+  // Pins a playlist to the top of the list, whatever the active sort, when
+  // this returns a number for it; pinned ones are ordered by that number,
+  // ascending. The Playback Menu uses it to lead with playlists that have a
+  // timer running, soonest first.
+  pinOrder?: (playlist: PlaylistWithEntries) => number | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -111,6 +117,17 @@ export function PlaylistSection({
     if (activePlaylistId) {
       const index = copy.findIndex((p) => p.id === activePlaylistId);
       if (index > 0) copy.unshift(...copy.splice(index, 1));
+    }
+    if (pinOrder) {
+      const pinned = copy
+        .map((playlist) => ({ playlist, order: pinOrder(playlist) }))
+        .filter((p): p is { playlist: PlaylistWithEntries; order: number } => p.order !== null)
+        .sort((a, b) => a.order - b.order)
+        .map((p) => p.playlist);
+      if (pinned.length > 0) {
+        const pinnedIds = new Set(pinned.map((p) => p.id));
+        return [...pinned, ...copy.filter((p) => !pinnedIds.has(p.id))];
+      }
     }
     return copy;
   }
