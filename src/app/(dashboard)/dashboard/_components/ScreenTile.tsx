@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
 import { setScreenRotation } from "@/lib/actions/screens";
@@ -79,6 +79,9 @@ export function ScreenTile({
   const [contentHidden, setContentHidden] = useState(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [pending, startTransition] = useTransition();
+  // Shared by the Fit/Fill pill and the preview, so both switch the moment
+  // the pill is pressed (see FitModeToggle).
+  const [fitMode, setOptimisticFitMode] = useOptimistic(screen.fit_mode);
   const firstItem = playlist[0];
 
   const playerPath = `/screen/${screen.id}`;
@@ -229,7 +232,7 @@ export function ScreenTile({
               }}
             >
               {firstItem ? (
-                <MediaThumb fit={screen.fit_mode} live item={firstItem.media_item} sizes={`${PREVIEW_LONG}px`} />
+                <MediaThumb fit={fitMode} live item={firstItem.media_item} sizes={`${PREVIEW_LONG}px`} />
               ) : (
                 <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
               )}
@@ -270,7 +273,7 @@ export function ScreenTile({
             </div>
 
             <div className="flex items-center gap-2">
-              <FitModeToggle screenId={screen.id} fitMode={screen.fit_mode} />
+              <FitModeToggle screenId={screen.id} fitMode={fitMode} onOptimisticChange={setOptimisticFitMode} />
               <PlaybackControls
                 screenId={screen.id}
                 paused={paused}
