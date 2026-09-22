@@ -24,7 +24,7 @@ const HINGE_DOT = 55;
 // Where each wordmark's centre sits, measured down the screen. A landscape
 // screen is short, so both pull in towards the middle to stay clear of the
 // marks at 12 and 6.
-const COLO_FROM_TOP = { portrait: 0.2, landscape: 0.3 };
+const COLO_FROM_TOP = { portrait: 0.35, landscape: 0.3 };
 const CALLIGRAPHY_FROM_TOP = { portrait: 0.8, landscape: 0.7 };
 // How hard each layer reads against the background. The hands stay at full
 // strength; everything printed on the dial sits back behind them.
