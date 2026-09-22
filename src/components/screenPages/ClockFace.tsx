@@ -26,6 +26,10 @@ const HINGE_DOT = 55;
 // marks at 12 and 6.
 const COLO_FROM_TOP = { portrait: 0.2, landscape: 0.3 };
 const CALLIGRAPHY_FROM_TOP = { portrait: 0.8, landscape: 0.7 };
+// How hard each layer reads against the background. The hands stay at full
+// strength; everything printed on the dial sits back behind them.
+const MARKING_OPACITY = { hour: 0.27, tenMinute: 0.27 };
+const WORDMARK_OPACITY = 0.27;
 // A deep burgundy, the one touch of colour on the face.
 const BURGUNDY = "#800020";
 
@@ -87,8 +91,8 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
           transform: `translate(-50%, -50%) rotate(${landscape ? 90 : 0}deg)`,
         }}
       >
-        <Markings art={HOUR_MARKINGS} />
-        <Markings art={TEN_MIN_MARKINGS} opacity={0.27} />
+        <Markings art={HOUR_MARKINGS} opacity={MARKING_OPACITY.hour} />
+        <Markings art={TEN_MIN_MARKINGS} opacity={MARKING_OPACITY.tenMinute} />
       </div>
 
       {/* Both wordmarks sit inside the dial and stay upright whichever way
@@ -97,7 +101,12 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
           the dial's short side, so they look the same either way round. */}
       <div
         className={`${brandFont.className} absolute left-1/2 uppercase leading-none tracking-tight text-white`}
-        style={{ top: height * COLO_FROM_TOP[orientation], transform: "translate(-50%, -50%)", fontSize: shortSide * 0.225 }}
+        style={{
+          top: height * COLO_FROM_TOP[orientation],
+          transform: "translate(-50%, -50%)",
+          fontSize: shortSide * 0.225,
+          opacity: WORDMARK_OPACITY,
+        }}
       >
         Colo
       </div>
@@ -107,6 +116,7 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
           top: height * CALLIGRAPHY_FROM_TOP[orientation],
           transform: "translate(-50%, -50%)",
           width: shortSide * 0.5,
+          opacity: WORDMARK_OPACITY,
         }}
         viewBox={`0 0 ${COLOSSEUM_WORDMARK.width} ${COLOSSEUM_WORDMARK.height}`}
         aria-hidden
