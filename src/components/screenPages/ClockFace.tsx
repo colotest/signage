@@ -12,7 +12,7 @@ import { COLOSSEUM_WORDMARK, HOUR_ARM, HOUR_MARKINGS, MINUTE_ARM, TEN_MIN_MARKIN
 // because a kiosk browser on old hardware can be years behind on CSS.
 
 // How much of the screen the dial's markings span.
-const DIAL_SCALE = 0.9;
+const DIAL_SCALE = 0.97;
 // The hands are drawn at the markings' own scale, which is what the
 // artwork was designed around: the minute hand's tip then lands just past
 // the middle of the hour marks at 3 and 9 o'clock. These are in the same
@@ -21,6 +21,9 @@ const SECOND_REACH = MINUTE_ARM.pivotY;
 const SECOND_TAIL = SECOND_REACH * 0.14;
 const SECOND_WIDTH = 40;
 const HINGE_DOT = 55;
+// Where each wordmark's centre sits, measured down the screen.
+const COLO_FROM_TOP = 0.2;
+const CALLIGRAPHY_FROM_TOP = 0.8;
 // A deep burgundy, the one touch of colour on the face.
 const BURGUNDY = "#800020";
 
@@ -86,17 +89,20 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
       </div>
 
       {/* Both wordmarks sit inside the dial and stay upright whichever way
-          the markings are turned, printed under the hands like a watch's. */}
+          the markings are turned, printed under the hands like a watch's.
+          Each is centred on its own line down the screen; their sizes go by
+          the dial's short side, so they look the same either way round. */}
       <div
-        className={`${brandFont.className} absolute left-1/2 -translate-x-1/2 uppercase leading-none tracking-tight text-white`}
-        style={{ top: (height - (landscape ? dialWidth : dialHeight)) / 2 + shortSide * 0.11, fontSize: shortSide * 0.075 }}
+        className={`${brandFont.className} absolute left-1/2 uppercase leading-none tracking-tight text-white`}
+        style={{ top: height * COLO_FROM_TOP, transform: "translate(-50%, -50%)", fontSize: shortSide * 0.225 }}
       >
         Colo
       </div>
       <svg
-        className="absolute left-1/2 -translate-x-1/2"
+        className="absolute left-1/2"
         style={{
-          bottom: (height - (landscape ? dialWidth : dialHeight)) / 2 + shortSide * 0.11,
+          top: height * CALLIGRAPHY_FROM_TOP,
+          transform: "translate(-50%, -50%)",
           width: shortSide * 0.5,
         }}
         viewBox={`0 0 ${COLOSSEUM_WORDMARK.width} ${COLOSSEUM_WORDMARK.height}`}
@@ -154,18 +160,18 @@ function Hands({
     // two costs a re-raster of a detailed path for a fraction of a degree
     // nobody can see, so they're left alone until they've actually turned
     // far enough to land on a different pixel.
-    let lastHour = NaN;
-    let lastMinute = NaN;
+    let lastHour: number | null = null;
+    let lastMinute: number | null = null;
     function tick() {
       const t = new Date(nowRef.current());
       const s = t.getSeconds() + t.getMilliseconds() / 1000;
       const m = t.getMinutes() + s / 60;
       const h = (t.getHours() % 12) + m / 60;
-      if (Math.abs(h * 30 - lastHour) > 0.02) {
+      if (lastHour === null || Math.abs(h * 30 - lastHour) > 0.02) {
         lastHour = h * 30;
         hourRef.current?.setAttribute("transform", `rotate(${lastHour})`);
       }
-      if (Math.abs(m * 6 - lastMinute) > 0.02) {
+      if (lastMinute === null || Math.abs(m * 6 - lastMinute) > 0.02) {
         lastMinute = m * 6;
         minuteRef.current?.setAttribute("transform", `rotate(${lastMinute})`);
       }
