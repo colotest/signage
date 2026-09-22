@@ -31,16 +31,31 @@ export function ScreenSetupMenu({
   rotation,
   onSelectRotation,
   onRename,
+  onReload,
 }: {
   screenId: number;
   playerPath: string;
   rotation: ScreenRotation;
   onSelectRotation: (rotation: ScreenRotation) => void;
   onRename: () => void;
+  onReload: () => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Brief "sent" acknowledgement — the command is fire-and-forget (nothing
+  // reports back from the player), so this confirms it went out, not that
+  // the screen actually reloaded.
+  const [reloadSent, setReloadSent] = useState(false);
+  const reloadSentTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(reloadSentTimerRef.current), []);
+
+  function handleReload() {
+    onReload();
+    setReloadSent(true);
+    clearTimeout(reloadSentTimerRef.current);
+    reloadSentTimerRef.current = setTimeout(() => setReloadSent(false), 2000);
+  }
   const [pending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -131,6 +146,14 @@ export function ScreenSetupMenu({
           </div>
 
           <div className="mt-3 border-t border-border pt-3">
+            <button
+              type="button"
+              onClick={handleReload}
+              title="Fully reload this screen's player page"
+              className="press-ghost mb-3 block text-[13px] font-medium text-foreground hover:opacity-70"
+            >
+              {reloadSent ? "Reload sent ✓" : "Reload Screen"}
+            </button>
             {confirmingDelete ? (
               <div className="flex items-center gap-2 text-[13px]">
                 <span className="text-muted">Delete screen?</span>

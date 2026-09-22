@@ -1,6 +1,6 @@
 "use client";
 
-import { useScreenControl } from "@/lib/realtime/useScreenControl";
+import type { ControlMessage } from "@/lib/realtime/channels";
 import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@/components/icons/PlaybackIcons";
 
 // paused/onTogglePaused are owned by the parent (ScreenTile) rather than
@@ -9,16 +9,18 @@ import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@/components
 // applied a command — realtime presence used to report that back, but it
 // proved unreliable enough to remove — so this is a local, optimistic
 // reflection of "what was last asked of it" rather than a verified status.
+//
+// `send` comes from ScreenTile's one useScreenControl, shared with the
+// wrench menu's Reload — one channel per screen rather than one each.
 export function PlaybackControls({
-  screenId,
+  send,
   paused,
   onTogglePaused,
 }: {
-  screenId: number;
+  send: (message: ControlMessage) => void;
   paused: boolean;
   onTogglePaused: () => void;
 }) {
-  const { send } = useScreenControl(screenId);
 
   function handleTogglePause() {
     send({ type: paused ? "play" : "pause" });

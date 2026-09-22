@@ -504,6 +504,12 @@ export function Player({
           case "prev":
             skipPrev();
             break;
+          case "reload":
+            // A full reload, not just a remount: fresh page, fresh JS (so
+            // it also picks up a new deploy), fresh data. sw.js serves the
+            // page network-first, so this really does refetch it.
+            window.location.reload();
+            break;
         }
       })
       .subscribe();

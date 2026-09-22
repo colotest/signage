@@ -12,4 +12,6 @@ export function controlChannelName(screenId: number) {
   return `screen-control:${screenId}`;
 }
 
-export type ControlMessage = { type: "play" | "pause" | "next" | "prev" };
+// "reload" makes the player do a full page reload — a remote stand-in for
+// walking over to the TV and refreshing it by hand.
+export type ControlMessage = { type: "play" | "pause" | "next" | "prev" | "reload" };

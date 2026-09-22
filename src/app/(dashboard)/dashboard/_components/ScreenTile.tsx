@@ -10,6 +10,7 @@ import type { PlaylistItemWithMedia, ScheduledPlayback, Screen, ScreenRotation }
 import { PauseIcon, PlaylistPlayIcon } from "@/components/icons/PlaybackIcons";
 import { ScreenTitle } from "./ScreenTitle";
 import { FitModeToggle } from "./FitModeToggle";
+import { useScreenControl } from "@/lib/realtime/useScreenControl";
 import { PlaybackControls } from "./PlaybackControls";
 import { PlaybackMenu, type LibraryData } from "./PlaybackMenu";
 import { ScreenSetupMenu } from "./ScreenSetupMenu";
@@ -62,6 +63,9 @@ export function ScreenTile({
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  // One control channel per tile, shared by the playback buttons and the
+  // wrench menu's Reload.
+  const { send } = useScreenControl(screen.id);
   // Purely local and optimistic — there's no reliable way to confirm a
   // screen actually received and applied a command (that used to come from
   // realtime presence, which proved unreliable enough to remove entirely),
@@ -270,6 +274,7 @@ export function ScreenTile({
                   rotation={(step * 90) as ScreenRotation}
                   onSelectRotation={handleSelectRotation}
                   onRename={() => setRenaming(true)}
+                  onReload={() => send({ type: "reload" })}
                 />
               )}
             </div>
@@ -277,7 +282,7 @@ export function ScreenTile({
             <div className="flex items-center gap-2">
               <FitModeToggle screenId={screen.id} fitMode={fitMode} onOptimisticChange={setOptimisticFitMode} />
               <PlaybackControls
-                screenId={screen.id}
+                send={send}
                 paused={paused}
                 onTogglePaused={() => setPaused((p) => !p)}
               />
