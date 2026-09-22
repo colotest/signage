@@ -1,44 +1,148 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { brandFont } from "@/lib/fonts";
+import { COLOSSEUM_WORDMARK, HOUR_ARM, HOUR_MARKINGS, MINUTE_ARM, TEN_MIN_MARKINGS, type ArmArt } from "./clockArt";
 
-// An Apple Watch–style analog face. Everything is sized in container query
-// units against its own box rather than the viewport, so the same component
-// fills a rotated portrait TV, a landscape one, or a 32px library thumbnail
-// alike: the dial takes the largest circle that fits below the wordmark's
-// band (and a mirrored band underneath, so it stays visually centred).
+// The whole screen is the watch face: the dial's markings are a rectangular
+// border sitting at 90% of the screen, and everything else is measured
+// against it. Laid out from a measured pixel size rather than container
+// query units, both because the dial's proportions decide the layout (a
+// landscape screen turns the markings a quarter-turn — see clockArt.ts) and
+// because a kiosk browser on old hardware can be years behind on CSS.
 
-// The dial is drawn on a 200-unit square centred on the origin.
-const R = 100;
-const NUMERALS: { label: string; angle: number }[] = [
-  { label: "12", angle: 0 },
-  { label: "3", angle: 90 },
-  { label: "6", angle: 180 },
-  { label: "9", angle: 270 },
-];
-const NUMERAL_FONT = `"SF Pro Rounded", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, "Helvetica Neue", Roboto, sans-serif`;
-
-const ORANGE = "#ff9f0a";
-
-// Rounded so the server's and the browser's floating-point trig agree to
-// the digit — otherwise the tick coordinates trip a hydration mismatch.
-function polar(angleDeg: number, radius: number) {
-  const a = ((angleDeg - 90) * Math.PI) / 180;
-  const round = (n: number) => Math.round(n * 1000) / 1000;
-  return { x: round(Math.cos(a) * radius), y: round(Math.sin(a) * radius) };
-}
+// How much of the screen the dial's markings span.
+const DIAL_SCALE = 0.9;
+// The hands are drawn at the markings' own scale, which is what the
+// artwork was designed around: the minute hand's tip then lands just past
+// the middle of the hour marks at 3 and 9 o'clock. These are in the same
+// units, measured out from the centre.
+const SECOND_REACH = MINUTE_ARM.pivotY;
+const SECOND_TAIL = SECOND_REACH * 0.14;
+const SECOND_WIDTH = 40;
+const HINGE_DOT = 55;
+// A deep burgundy, the one touch of colour on the face.
+const BURGUNDY = "#800020";
 
 export function ClockFace({ now = Date.now }: { now?: () => number }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    function measure() {
+      if (root) setSize({ width: root.clientWidth, height: root.clientHeight });
+    }
+    measure();
+    // A screen's box changes on rotation and on a kiosk browser's own
+    // window resize, and a library thumbnail is laid out after mount.
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={rootRef} className="relative h-full w-full overflow-hidden">
+      {/* Its own layer, so a background image can take its place later
+          without touching anything the face is built out of. */}
+      <div className="absolute inset-0 bg-black" />
+      {size.width > 0 && size.height > 0 && <Face width={size.width} height={size.height} now={now} />}
+    </div>
+  );
+}
+
+function Face({ width, height, now }: { width: number; height: number; now: () => number }) {
+  // On a landscape screen the markings are turned a quarter-turn, so the
+  // artwork is laid out against the screen's dimensions swapped back round.
+  const landscape = width > height;
+  const frameWidth = landscape ? height : width;
+  const frameHeight = landscape ? width : height;
+
+  // Pixels per unit of the markings artwork: the dial keeps its own
+  // proportions and takes up DIAL_SCALE of the screen.
+  const scale = Math.min(
+    (DIAL_SCALE * frameWidth) / HOUR_MARKINGS.width,
+    (DIAL_SCALE * frameHeight) / HOUR_MARKINGS.height,
+  );
+  const dialWidth = HOUR_MARKINGS.width * scale;
+  const dialHeight = HOUR_MARKINGS.height * scale;
+  // The dial's short side, whichever way round it's turned — every element
+  // on the face is sized off this, so the face looks the same either way.
+  const shortSide = dialWidth;
+
+  return (
+    <>
+      <div
+        className="absolute left-1/2 top-1/2"
+        style={{
+          width: dialWidth,
+          height: dialHeight,
+          transform: `translate(-50%, -50%) rotate(${landscape ? 90 : 0}deg)`,
+        }}
+      >
+        <Markings art={HOUR_MARKINGS} />
+        <Markings art={TEN_MIN_MARKINGS} opacity={0.27} />
+      </div>
+
+      {/* Both wordmarks sit inside the dial and stay upright whichever way
+          the markings are turned, printed under the hands like a watch's. */}
+      <div
+        className={`${brandFont.className} absolute left-1/2 -translate-x-1/2 uppercase leading-none tracking-tight text-white`}
+        style={{ top: (height - (landscape ? dialWidth : dialHeight)) / 2 + shortSide * 0.11, fontSize: shortSide * 0.075 }}
+      >
+        Colo
+      </div>
+      <svg
+        className="absolute left-1/2 -translate-x-1/2"
+        style={{
+          bottom: (height - (landscape ? dialWidth : dialHeight)) / 2 + shortSide * 0.11,
+          width: shortSide * 0.5,
+        }}
+        viewBox={`0 0 ${COLOSSEUM_WORDMARK.width} ${COLOSSEUM_WORDMARK.height}`}
+        aria-hidden
+      >
+        <path d={COLOSSEUM_WORDMARK.d} fill="#fff" />
+      </svg>
+
+      <Hands width={width} height={height} scale={scale} now={now} />
+    </>
+  );
+}
+
+function Markings({ art, opacity }: { art: { width: number; height: number; d: string }; opacity?: number }) {
+  return (
+    <svg
+      className="absolute inset-0 h-full w-full"
+      viewBox={`0 0 ${art.width} ${art.height}`}
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <path d={art.d} fill="#fff" opacity={opacity} />
+    </svg>
+  );
+}
+
+function Hands({
+  width,
+  height,
+  scale,
+  now,
+}: {
+  width: number;
+  height: number;
+  scale: number;
+  now: () => number;
+}) {
   const hourRef = useRef<SVGGElement>(null);
   const minuteRef = useRef<SVGGElement>(null);
   const secondRef = useRef<SVGGElement>(null);
   const handsRef = useRef<SVGGElement>(null);
 
-  // Hands are rotated straight on the DOM every frame rather than through
-  // React state — a re-render per frame for three transforms would be pure
-  // overhead on a set-top box. The hands stay hidden until the first frame
-  // has placed them, so the server-rendered 12:00 never flashes up.
+  // Rotated straight on the DOM every frame rather than through React
+  // state — a re-render per frame for three transforms would be pure
+  // overhead on a set-top box. They stay hidden until the first frame has
+  // placed them, so a server-rendered 12 o'clock never flashes up.
   const nowRef = useRef(now);
   useEffect(() => {
     nowRef.current = now;
@@ -46,14 +150,25 @@ export function ClockFace({ now = Date.now }: { now?: () => number }) {
 
   useEffect(() => {
     let frame = 0;
+    // Only the second hand really moves every frame. Repainting the other
+    // two costs a re-raster of a detailed path for a fraction of a degree
+    // nobody can see, so they're left alone until they've actually turned
+    // far enough to land on a different pixel.
+    let lastHour = NaN;
+    let lastMinute = NaN;
     function tick() {
       const t = new Date(nowRef.current());
-      const ms = t.getMilliseconds();
-      const s = t.getSeconds() + ms / 1000;
+      const s = t.getSeconds() + t.getMilliseconds() / 1000;
       const m = t.getMinutes() + s / 60;
       const h = (t.getHours() % 12) + m / 60;
-      hourRef.current?.setAttribute("transform", `rotate(${h * 30})`);
-      minuteRef.current?.setAttribute("transform", `rotate(${m * 6})`);
+      if (Math.abs(h * 30 - lastHour) > 0.02) {
+        lastHour = h * 30;
+        hourRef.current?.setAttribute("transform", `rotate(${lastHour})`);
+      }
+      if (Math.abs(m * 6 - lastMinute) > 0.02) {
+        lastMinute = m * 6;
+        minuteRef.current?.setAttribute("transform", `rotate(${lastMinute})`);
+      }
       secondRef.current?.setAttribute("transform", `rotate(${s * 6})`);
       if (handsRef.current) handsRef.current.style.opacity = "1";
       frame = requestAnimationFrame(tick);
@@ -62,90 +177,44 @@ export function ClockFace({ now = Date.now }: { now?: () => number }) {
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  const secondWidth = Math.max(SECOND_WIDTH * scale, 1);
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black" style={{ containerType: "size" }}>
-      <div
-        className={`${brandFont.className} absolute inset-x-0 text-center uppercase leading-none tracking-tight text-white`}
-        style={{ top: "4.5cqmin", fontSize: "5.5cqmin" }}
-      >
-        Colo Cloud
-      </div>
-
-      <div className="absolute inset-0 flex items-center justify-center">
-        <svg
-          viewBox={`${-R} ${-R} ${R * 2} ${R * 2}`}
-          style={{ width: "min(90cqw, 100cqh - 28cqmin)", aspectRatio: "1" }}
-          aria-label="Clock"
-          role="img"
-        >
-          {/* Minute track: 60 fine ticks, with bolder bars at the hours not
-              already marked by a numeral. */}
-          {Array.from({ length: 60 }, (_, i) => {
-            const angle = i * 6;
-            if (i % 5 === 0) {
-              if (i % 15 === 0) return null;
-              const a = polar(angle, 97);
-              const b = polar(angle, 83);
-              return (
-                <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#fff" strokeWidth={3.2} strokeLinecap="round" />
-              );
-            }
-            const a = polar(angle, 97);
-            const b = polar(angle, 91);
-            return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#8e8e93" strokeWidth={1} strokeLinecap="round" />;
-          })}
-
-          {NUMERALS.map(({ label, angle }) => {
-            const p = polar(angle, 74);
-            return (
-              <text
-                key={label}
-                x={p.x}
-                y={p.y}
-                fill="#fff"
-                fontFamily={NUMERAL_FONT}
-                fontWeight={600}
-                fontSize={28}
-                textAnchor="middle"
-                dominantBaseline="central"
-                style={{ fontVariantNumeric: "tabular-nums" }}
-              >
-                {label}
-              </text>
-            );
-          })}
-
-          <g ref={handsRef} style={{ opacity: 0 }}>
-            <g ref={hourRef}>
-              <Hand length={50} />
-            </g>
-            <g ref={minuteRef}>
-              <Hand length={86} />
-            </g>
-            <circle r={5} fill="#fff" />
-            <g ref={secondRef}>
-              <line x1={0} y1={20} x2={0} y2={-94} stroke={ORANGE} strokeWidth={1.4} strokeLinecap="round" />
-              <line x1={0} y1={20} x2={0} y2={8} stroke={ORANGE} strokeWidth={3} strokeLinecap="round" />
-            </g>
-            <circle r={3.6} fill={ORANGE} />
-            <circle r={1.4} fill="#000" />
+    <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${width} ${height}`} aria-label="Clock" role="img">
+      <g transform={`translate(${width / 2}, ${height / 2})`}>
+        <g ref={handsRef} style={{ opacity: 0 }}>
+          <g ref={hourRef}>
+            <Arm art={HOUR_ARM} scale={scale} />
           </g>
-        </svg>
-      </div>
-    </div>
+          <g ref={minuteRef}>
+            <Arm art={MINUTE_ARM} scale={scale} />
+          </g>
+          {/* Plain line, round-capped, no bulge of its own — just the
+              little hinge dot it's mounted on over the other two. */}
+          <g ref={secondRef}>
+            <line
+              x1={0}
+              y1={SECOND_TAIL * scale}
+              x2={0}
+              y2={-SECOND_REACH * scale}
+              stroke={BURGUNDY}
+              strokeWidth={secondWidth}
+              strokeLinecap="round"
+            />
+          </g>
+          <circle r={Math.max(HINGE_DOT * scale, 1.5)} fill={BURGUNDY} />
+        </g>
+      </g>
+    </svg>
   );
 }
 
-// Apple's hour/minute hand: a slim stalk out of the centre that steps up
-// into a broad rounded bar, outlined in black so it reads cleanly where it
-// crosses the tick marks or the other hand. Drawn pointing to 12.
-function Hand({ length }: { length: number }) {
-  const stalk = 15;
-  const width = 7.5;
+// Drawn pointing at 12, turned about its own hinge, which sits on the
+// centre of the face.
+function Arm({ art, scale }: { art: ArmArt; scale: number }) {
   return (
-    <g stroke="#000" strokeWidth={1.2}>
-      <rect x={-1.6} y={-stalk - 2} width={3.2} height={stalk + 2} fill="#fff" />
-      <rect x={-width / 2} y={-length} width={width} height={length - stalk} rx={width / 2} fill="#fff" />
+    <g transform={`scale(${scale}) translate(${-art.pivotX}, ${-art.pivotY})`}>
+      <path d={art.d} fill="#fff" />
     </g>
   );
 }
