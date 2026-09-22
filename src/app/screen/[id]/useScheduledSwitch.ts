@@ -96,7 +96,8 @@ async function fetchTimers(supabase: Supabase, screenId: number): Promise<Pendin
 // exactly once at its time, measured on the server's clock. The database
 // makes the same swap a few seconds later (cron) or on the dot (an open
 // dashboard); the caller is expected to treat that arriving copy as a
-// no-op when it matches what's already playing.
+// no-op when it matches what's already playing. Returns the server clock
+// offset (see useServerClockOffset).
 export function useScheduledSwitch({
   supabase,
   screenId,
@@ -193,4 +194,6 @@ export function useScheduledSwitch({
     check();
     return () => clearTimeout(handle);
   }, [timers, offsetRef]);
+  // Handed back so the player's clock page can show server time too.
+  return offsetRef;
 }

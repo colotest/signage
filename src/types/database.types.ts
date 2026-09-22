@@ -4,7 +4,8 @@
 // and this file can be replaced outright — the shape below matches what that
 // command produces, so nothing else in the app needs to change.
 
-export type MediaType = "image" | "video" | "pdf";
+// "page" is a built-in, code-rendered slide — see src/components/screenPages.
+export type MediaType = "image" | "video" | "pdf" | "page";
 export type FitMode = "contain" | "cover";
 // Degrees the screen is physically mounted rotated counterclockwise from
 // upright landscape — the only four quarter-turns a TV can actually sit at.

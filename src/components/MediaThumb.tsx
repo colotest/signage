@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
+import { ScreenPage } from "@/components/screenPages";
 import { mediaPublicUrl } from "@/types/domain";
 import type { FitMode, MediaItem } from "@/types/domain";
 
@@ -24,6 +25,12 @@ export function MediaThumb({
   sizes?: string;
 }) {
   const fitClass = fit === "contain" ? "object-contain" : "object-cover";
+
+  // Pages render themselves live at any size, so the thumbnail is the real
+  // thing — a ticking clock on the screen tile, just like the TV.
+  if (item.media_type === "page") {
+    return <ScreenPage item={item} />;
+  }
 
   if (item.media_type === "image") {
     const url = mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path);

@@ -11,6 +11,7 @@ import type { FitMode, MediaItem, PlaylistItemWithMedia, Screen } from "@/types/
 import { loadFromCache, saveToCache } from "@/lib/cache/playerCache";
 import { brandFont } from "@/lib/fonts";
 import { QrCode } from "@/components/QrCode";
+import { ScreenPage } from "@/components/screenPages";
 import { useScheduledSwitch, type PendingTimer } from "./useScheduledSwitch";
 
 // pdf.js needs browser canvas APIs, so this must never run during SSR.
@@ -370,6 +371,7 @@ export function Player({
 
   function preloadMedia(items: MediaItem[]) {
     for (const media of items) {
+      if (media.media_type === "page") continue; // rendered in code, nothing to fetch
       const url = mediaPublicUrl(SUPABASE_URL, media.storage_path);
       if (prefetchedUrlsRef.current.has(url)) continue;
       prefetchedUrlsRef.current.add(url);
@@ -414,12 +416,16 @@ export function Player({
     }, 5_000);
   }
 
-  useScheduledSwitch({
+  const clockOffsetRef = useScheduledSwitch({
     supabase,
     screenId: screen.id,
     onPreload: (timer) => preloadMedia(timer.entries.map((e) => e.media_item)),
     onFire: fireTimer,
   });
+
+  // Pages that show the time (the clock) read it off the server's clock,
+  // same as timed playback — a TV's own clock can be minutes out.
+  const serverNow = useCallback(() => Date.now() + clockOffsetRef.current, [clockOffsetRef]);
 
   // Multiple realtime events firing in quick succession (e.g. assigning an
   // item and then immediately editing its duration) each kick off their own
@@ -552,6 +558,7 @@ export function Player({
             key={`${current.id}-${reloadToken}`}
             item={current}
             fitMode={screen.fit_mode}
+            now={serverNow}
             paused={paused}
             loop={playlist.length === 1}
             onVideoEnded={handleVideoEnded}
@@ -591,6 +598,7 @@ function NoContentPlaceholder() {
 function Slide({
   item,
   fitMode,
+  now,
   paused,
   loop,
   onVideoEnded,
@@ -599,12 +607,17 @@ function Slide({
 }: {
   item: PlaylistItemWithMedia;
   fitMode: FitMode;
+  now: () => number;
   paused: boolean;
   loop: boolean;
   onVideoEnded: () => void;
   onVideoAutoRefresh: () => void;
   showAutoRefreshOverlay: boolean;
 }) {
+  if (item.media_item.media_type === "page") {
+    return <ScreenPage item={item.media_item} now={now} />;
+  }
+
   const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
   const fitClass = fitMode === "cover" ? "object-cover" : "object-contain";
 

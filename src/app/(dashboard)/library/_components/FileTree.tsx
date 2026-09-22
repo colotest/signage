@@ -924,20 +924,27 @@ function FileRow({
 
       <RowMenu label={`${item.name} actions`}>
         <MenuInfo>
-          {kindLabel(item)} · {formatResolution(item.width, item.height)}
+          {kindLabel(item)}
+          {item.media_type !== "page" && <> · {formatResolution(item.width, item.height)}</>}
         </MenuInfo>
         {item.media_type === "video" && <MenuInfo>{formatDuration(item.duration_seconds)}</MenuInfo>}
-        <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>
-        <div className="my-1 border-t border-border" />
+        {item.media_type !== "page" && <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>}
+        {(item.folder_id || item.media_type !== "page") && <div className="my-1 border-t border-border" />}
         {item.folder_id && (
           <MenuItem disabled={pending} onClick={handleMoveToRoot}>
             Move to Root
           </MenuItem>
         )}
-        <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />
-        <MenuItem danger disabled={pending} onClick={handleDelete}>
-          Delete
-        </MenuItem>
+        {/* Pages are built in — there's no file behind one to replace, and
+            deleting one would leave no way to add it back. */}
+        {item.media_type !== "page" && (
+          <>
+            <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />
+            <MenuItem danger disabled={pending} onClick={handleDelete}>
+              Delete
+            </MenuItem>
+          </>
+        )}
       </RowMenu>
     </div>
   );

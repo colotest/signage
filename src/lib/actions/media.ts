@@ -149,10 +149,11 @@ export async function finalizeMediaReplace({
 
   const { data: existing, error: fetchError } = await admin
     .from("media_items")
-    .select("storage_path")
+    .select("storage_path, media_type")
     .eq("id", mediaItemId)
     .single();
   if (fetchError) throw new Error(fetchError.message);
+  if (existing.media_type === "page") throw new Error("Built-in pages can't be replaced.");
 
   const { error: updateError } = await admin
     .from("media_items")
@@ -200,10 +201,11 @@ export async function deleteMediaItem(id: string) {
 
   const { data: item, error: fetchError } = await admin
     .from("media_items")
-    .select("storage_path")
+    .select("storage_path, media_type")
     .eq("id", id)
     .single();
   if (fetchError) throw new Error(fetchError.message);
+  if (item.media_type === "page") throw new Error("Built-in pages can't be deleted.");
 
   const { error: storageError } = await admin.storage.from(BUCKET).remove([item.storage_path]);
   if (storageError) throw new Error(storageError.message);
