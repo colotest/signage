@@ -12,7 +12,7 @@ import { COLOSSEUM_WORDMARK, HOUR_ARM, HOUR_MARKINGS, MINUTE_ARM, TEN_MIN_MARKIN
 // because a kiosk browser on old hardware can be years behind on CSS.
 
 // How much of the screen the dial's markings span.
-const DIAL_SCALE = 0.97;
+const DIAL_SCALE = 0.95;
 // The hands are drawn at the markings' own scale, which is what the
 // artwork was designed around: the minute hand's tip then lands just past
 // the middle of the hour marks at 3 and 9 o'clock. These are in the same
@@ -21,9 +21,11 @@ const SECOND_REACH = MINUTE_ARM.pivotY;
 const SECOND_TAIL = SECOND_REACH * 0.14;
 const SECOND_WIDTH = 40;
 const HINGE_DOT = 55;
-// Where each wordmark's centre sits, measured down the screen.
-const COLO_FROM_TOP = 0.2;
-const CALLIGRAPHY_FROM_TOP = 0.8;
+// Where each wordmark's centre sits, measured down the screen. A landscape
+// screen is short, so both pull in towards the middle to stay clear of the
+// marks at 12 and 6.
+const COLO_FROM_TOP = { portrait: 0.2, landscape: 0.3 };
+const CALLIGRAPHY_FROM_TOP = { portrait: 0.8, landscape: 0.7 };
 // A deep burgundy, the one touch of colour on the face.
 const BURGUNDY = "#800020";
 
@@ -59,6 +61,7 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
   // On a landscape screen the markings are turned a quarter-turn, so the
   // artwork is laid out against the screen's dimensions swapped back round.
   const landscape = width > height;
+  const orientation = landscape ? "landscape" : "portrait";
   const frameWidth = landscape ? height : width;
   const frameHeight = landscape ? width : height;
 
@@ -94,14 +97,14 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
           the dial's short side, so they look the same either way round. */}
       <div
         className={`${brandFont.className} absolute left-1/2 uppercase leading-none tracking-tight text-white`}
-        style={{ top: height * COLO_FROM_TOP, transform: "translate(-50%, -50%)", fontSize: shortSide * 0.225 }}
+        style={{ top: height * COLO_FROM_TOP[orientation], transform: "translate(-50%, -50%)", fontSize: shortSide * 0.225 }}
       >
         Colo
       </div>
       <svg
         className="absolute left-1/2"
         style={{
-          top: height * CALLIGRAPHY_FROM_TOP,
+          top: height * CALLIGRAPHY_FROM_TOP[orientation],
           transform: "translate(-50%, -50%)",
           width: shortSide * 0.5,
         }}
