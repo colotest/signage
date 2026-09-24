@@ -271,21 +271,20 @@ export function FileTree({
             sized via inset-0, is what keeps the blur pinned in place while
             content scrolls underneath it.
 
-            scroll-fade-y itself lives one level further out, on the div
-            wrapping BOTH the scrolling content and the blur — masking only
-            the scrolling div left the blur unmasked, so it stayed at full
-            strength (the strongest layers are the ones nearest the true
-            edge) right up to the edge even where the color fade had
-            already faded the content itself to invisible. Sharing one mask
-            over both means the blur fades away in lockstep with the
-            content instead of outliving it. The sort bar stays *outside*
-            this masked div (siblings only share it if they're inside it) so
-            it stays fully opaque regardless. */}
+            scroll-fade-y sits on the scrolling div ITSELF, with the blur
+            (and the background wash it carries — see ProgressiveBlurEdge)
+            deliberately outside that mask. The blur has to stay at full
+            strength right up to the edge: it's what dissolves the content
+            there, and the wash on top is what takes everything — text and
+            flat highlight colours alike — the rest of the way to the page
+            background. A mask over both instead would fade the wash away
+            exactly where it does its work, leaving hovered/target rows
+            still showing their colour at the edge. */}
         <div className="relative min-h-0 flex-1">
-          <div className="scroll-fade-y absolute inset-0">
+          <div className="absolute inset-0">
             <div
               style={{ WebkitTouchCallout: "none" }}
-              className="no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-10 pb-10"
+              className="scroll-fade-y no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-10 pb-10"
             >
               <div>
                 <TreeLevel

@@ -236,8 +236,10 @@ body {
    reads fine even at the very start/end of a list. 40px matches the lists'
    own pt-10/pb-10 padding, so the fade lands entirely on that blank padding
    rather than eating into the first/last row. The extra intermediate stops
-   (a smoothstep-eased curve, not a straight linear ramp) make the fade
-   itself read as smoother/rounder rather than a flat diagonal. Long enough
+   ease the curve so content stays much fainter through the first half of
+   the zone, where the blur is strongest — that's where a flat highlight
+   colour would otherwise still read clearly while the text beside it had
+   already blurred into nothing. Long enough
    now that, combined with the lists' own negative top margin (see FileTree/
    PlaylistSection), scrolled-past rows fade away underneath the "Media"/
    "Playlists" title rows rather than popping in and out beneath them. */
@@ -245,27 +247,31 @@ body {
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0, 0, 0, 0.16) 10px,
-    rgba(0, 0, 0, 0.5) 20px,
-    rgba(0, 0, 0, 0.84) 30px,
+    rgba(0, 0, 0, 0.06) 8px,
+    rgba(0, 0, 0, 0.2) 16px,
+    rgba(0, 0, 0, 0.45) 24px,
+    rgba(0, 0, 0, 0.75) 32px,
     black 40px,
     black calc(100% - 40px),
-    rgba(0, 0, 0, 0.84) calc(100% - 30px),
-    rgba(0, 0, 0, 0.5) calc(100% - 20px),
-    rgba(0, 0, 0, 0.16) calc(100% - 10px),
+    rgba(0, 0, 0, 0.75) calc(100% - 32px),
+    rgba(0, 0, 0, 0.45) calc(100% - 24px),
+    rgba(0, 0, 0, 0.2) calc(100% - 16px),
+    rgba(0, 0, 0, 0.06) calc(100% - 8px),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0, 0, 0, 0.16) 10px,
-    rgba(0, 0, 0, 0.5) 20px,
-    rgba(0, 0, 0, 0.84) 30px,
+    rgba(0, 0, 0, 0.06) 8px,
+    rgba(0, 0, 0, 0.2) 16px,
+    rgba(0, 0, 0, 0.45) 24px,
+    rgba(0, 0, 0, 0.75) 32px,
     black 40px,
     black calc(100% - 40px),
-    rgba(0, 0, 0, 0.84) calc(100% - 30px),
-    rgba(0, 0, 0, 0.5) calc(100% - 20px),
-    rgba(0, 0, 0, 0.16) calc(100% - 10px),
+    rgba(0, 0, 0, 0.75) calc(100% - 32px),
+    rgba(0, 0, 0, 0.45) calc(100% - 24px),
+    rgba(0, 0, 0, 0.2) calc(100% - 16px),
+    rgba(0, 0, 0, 0.06) calc(100% - 8px),
     transparent 100%
   );
 }

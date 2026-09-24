@@ -7,37 +7,59 @@ import { cn } from "@/lib/utils/cn";
 // layer overlaps and their blur compounds; further in, only the widest/
 // weakest layers still reach.
 //
-// BLUR_EXTENT is twice scroll-fade-y's own 40px fade, so the blur carries
-// on past where the color fade has already settled — a softer, deeper
-// hand-off at the edge. Each layer fades out over its *entire* span, start to stop, with no
-// held "full strength" plateau first (earlier versions had one, via a
-// feathered-but-still-largely-solid mask) — a plateau is what let a layer
-// linger at near-full blur well past where the color fade had already
-// mostly settled into opaque, reading as its own thing sitting on top of
-// the fade rather than part of it. A continuous fade instead means every
-// layer is already tapering off long before it reaches its own stop, so by
-// the time each one's turn is up there's nothing left to clash with.
+// Each layer is SOLID over its own band before it fades out, and the next
+// (weaker) layer is solid exactly where the one before it starts fading.
+// That matters more than it sounds: a backdrop-filter layer at partial
+// alpha shows a blend of the blurred backdrop and the untouched one, so a
+// stack that fades everywhere leaves a sharp copy of the content — most
+// visibly letters — sitting on top of its own blur, reading as a halo.
+// With solid cores, every point in the zone is covered by some layer at
+// full alpha, so the only blending left is between two adjacent blur
+// strengths, and the last hand-off (1px blur to none) is imperceptible.
 const BLUR_EXTENT = 80;
 const LAYERS = [
-  { stop: 0.2, blur: 16 },
-  { stop: 0.4, blur: 8 },
-  { stop: 0.65, blur: 4 },
-  { stop: 0.8, blur: 2 },
-  { stop: 1, blur: 1 },
-].map(({ stop, blur }) => ({ stop: Math.round(stop * BLUR_EXTENT), blur }));
+  { blur: 16, solid: 6, stop: 20 },
+  { blur: 8, solid: 20, stop: 36 },
+  { blur: 4, solid: 36, stop: 52 },
+  { blur: 2, solid: 52, stop: 66 },
+  { blur: 1, solid: 66, stop: BLUR_EXTENT },
+];
+
+// A wash of the page's own background over the same edge, on top of the
+// blur. Blur alone can't make content disappear: it smears text into
+// illegibility, but a flat fill — a hovered row, a folder lit up as the
+// upload target — survives any amount of blurring at full strength, so the
+// color would still be clearly there where the text had already dissolved.
+// Fading it with the content's own mask doesn't fix that either, since a
+// mask dims a flat fill and blurred text by the same fraction while the
+// text is already far weaker. Washing everything toward the background
+// colour is what makes a flat fill fade at the same rate as everything
+// else. Note this only works from OUTSIDE the content's mask — a scrim
+// inside it gets faded away by that same mask exactly where it's needed.
+const SCRIM_EXTENT = 64;
+const SCRIM_STOPS: [number, number][] = [
+  [0, 100],
+  [14, 94],
+  [24, 74],
+  [36, 45],
+  [48, 18],
+  [SCRIM_EXTENT, 0],
+];
 
 export function ProgressiveBlurEdge({ side }: { side: "top" | "bottom" }) {
+  const direction = side === "top" ? "to bottom" : "to top";
+  const scrim = `linear-gradient(${direction}, ${SCRIM_STOPS.map(
+    ([offset, percent]) => `color-mix(in srgb, var(--background) ${percent}%, transparent) ${offset}px`,
+  ).join(", ")})`;
+
   return (
     <div
       aria-hidden
       className={cn("pointer-events-none absolute inset-x-0 z-[5]", side === "top" ? "top-0" : "bottom-0")}
       style={{ height: BLUR_EXTENT }}
     >
-      {LAYERS.map(({ stop, blur }, i) => {
-        const gradient =
-          side === "top"
-            ? `linear-gradient(to bottom, black 0, transparent ${stop}px)`
-            : `linear-gradient(to top, black 0, transparent ${stop}px)`;
+      {LAYERS.map(({ blur, solid, stop }, i) => {
+        const gradient = `linear-gradient(${direction}, black 0, black ${solid}px, transparent ${stop}px)`;
         return (
           <div
             key={i}
@@ -51,6 +73,10 @@ export function ProgressiveBlurEdge({ side }: { side: "top" | "bottom" }) {
           />
         );
       })}
+      <div
+        className={cn("absolute inset-x-0", side === "top" ? "top-0" : "bottom-0")}
+        style={{ height: SCRIM_EXTENT, background: scrim }}
+      />
     </div>
   );
 }
