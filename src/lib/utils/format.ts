@@ -27,9 +27,10 @@ export function formatResolution(width: number | null, height: number | null): s
 
 // A Finder-style "Kind" column — the file's format spelled out in words
 // rather than a raw MIME type (e.g. "MP4 Video" instead of "video/mp4").
-export function kindLabel(item: Pick<MediaItem, "media_type" | "mime_type">): string {
+export function kindLabel(item: Pick<MediaItem, "media_type" | "mime_type"> & Partial<Pick<MediaItem, "deck_id">>): string {
   if (item.media_type === "pdf") return "PDF Document";
   if (item.media_type === "page") return "Page";
+  if ("deck_id" in item && item.deck_id) return "PDF Page";
   const subtype = item.mime_type.split("/")[1]?.toUpperCase() ?? "";
   return item.media_type === "video" ? `${subtype} Video` : `${subtype} Image`;
 }

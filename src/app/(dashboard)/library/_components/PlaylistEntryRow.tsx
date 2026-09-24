@@ -78,6 +78,7 @@ export function SortableEntryList<T extends Entry>({
               editable={editable}
               presence={state}
               onExited={() => onExited(renderKey)}
+              soleEntry={entries.length === 1}
               removeLabel={removeLabel}
               onRemove={onRemove && canRemove(item) ? () => onRemove(item.id) : undefined}
               onDurationChange={(seconds) => onDurationChange?.(item.id, seconds)}
@@ -100,12 +101,17 @@ function PlaylistEntryRow({
   onRemove,
   onDurationChange,
   removeLabel = "Remove from playlist",
+  soleEntry,
 }: {
   sortableId: string;
   entry: Entry;
   editable: boolean;
   presence: PresenceState;
   onExited: () => void;
+  // The only entry in its list: it just stays up until something else
+  // replaces it, so there's no duration to set — a number field there only
+  // invites setting one that never applies.
+  soleEntry: boolean;
   onRemove?: () => void;
   removeLabel?: string;
   onDurationChange: (seconds: number) => void;
@@ -179,6 +185,8 @@ function PlaylistEntryRow({
 
       {entry.media_item.media_type === "video" ? (
         <span className="w-20 shrink-0 text-right text-[12px] text-muted">Full length</span>
+      ) : soleEntry ? (
+        <span className="w-20 shrink-0 text-right text-[12px] text-muted">Indefinite</span>
       ) : !editable ? (
         <span className="w-20 shrink-0 text-right text-[12px] text-muted">{entry.duration_seconds} sec</span>
       ) : (

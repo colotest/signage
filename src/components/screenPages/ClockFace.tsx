@@ -65,7 +65,7 @@ export function ClockFace({ now = Date.now }: { now?: () => number }) {
     <div ref={rootRef} className="relative h-full w-full overflow-hidden">
       {/* Its own layer, so a background image can take its place later
           without touching anything the face is built out of. */}
-      <div className="absolute inset-0 bg-black" />
+      <div className="absolute inset-0 bg-[var(--screen-bg,#000)]" />
       {size.width > 0 && size.height > 0 && <Face width={size.width} height={size.height} now={now} />}
     </div>
   );
@@ -111,7 +111,7 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
           their sizes go by the dial's short side, so they look the same
           either way round. */}
       <div
-        className={`${brandFont.className} absolute left-1/2 uppercase leading-none tracking-tight text-white`}
+        className={`${brandFont.className} absolute left-1/2 uppercase leading-none tracking-tight text-[var(--screen-ink,#fff)]`}
         style={{
           top: height * COLO_FROM_TOP[orientation],
           transform: "translate(-50%, -50%)",
@@ -122,7 +122,7 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
         Colo
       </div>
       <DateIndicator
-        className={`${brandFont.className} absolute top-1/2 leading-none tracking-tight text-white`}
+        className={`${brandFont.className} absolute top-1/2 leading-none tracking-tight text-[var(--screen-ink,#fff)]`}
         fontSize={shortSide * 0.225}
         // Half the dial's width across the screen, whichever way round the
         // markings are turned.
@@ -141,7 +141,7 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
         viewBox={`0 0 ${COLOSSEUM_WORDMARK.width} ${COLOSSEUM_WORDMARK.height}`}
         aria-hidden
       >
-        <path d={COLOSSEUM_WORDMARK.d} fill="#fff" />
+        <path d={COLOSSEUM_WORDMARK.d} fill="var(--screen-ink, #fff)" />
       </svg>
 
       <Hands width={width} height={height} scale={scale} now={now} />
@@ -238,7 +238,7 @@ function Markings({ art, opacity }: { art: { width: number; height: number; d: s
       preserveAspectRatio="none"
       aria-hidden
     >
-      <path d={art.d} fill="#fff" opacity={opacity} />
+      <path d={art.d} fill="var(--screen-ink, #fff)" opacity={opacity} />
     </svg>
   );
 }
@@ -340,22 +340,22 @@ function Hands({
               blur so only the second hand's is redrawn every frame. */}
           <g transform={`translate(${SHADOW_OFFSET * scale}, ${SHADOW_OFFSET * scale})`} opacity={SHADOW_OPACITY}>
             <g ref={hourShadowRef} filter={`url(#${blurId})`}>
-              <Arm art={HOUR_ARM} scale={scale} fill="#000" />
+              <Arm art={HOUR_ARM} scale={scale} fill="var(--screen-bg, #000)" />
             </g>
             <g ref={minuteShadowRef} filter={`url(#${blurId})`}>
-              <Arm art={MINUTE_ARM} scale={scale} fill="#000" />
+              <Arm art={MINUTE_ARM} scale={scale} fill="var(--screen-bg, #000)" />
             </g>
             <g ref={secondShadowRef} filter={`url(#${blurId})`}>
               {secondLine("#000")}
             </g>
-            <circle r={hingeRadius} fill="#000" filter={`url(#${blurId})`} />
+            <circle r={hingeRadius} fill="var(--screen-bg, #000)" filter={`url(#${blurId})`} />
           </g>
 
           <g ref={hourRef}>
-            <Arm art={HOUR_ARM} scale={scale} fill="#fff" />
+            <Arm art={HOUR_ARM} scale={scale} fill="var(--screen-ink, #fff)" />
           </g>
           <g ref={minuteRef}>
-            <Arm art={MINUTE_ARM} scale={scale} fill="#fff" />
+            <Arm art={MINUTE_ARM} scale={scale} fill="var(--screen-ink, #fff)" />
           </g>
           {/* Plain line, round-capped, no bulge of its own — just the
               little hinge dot it's mounted on over the other two. */}

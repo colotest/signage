@@ -415,3 +415,32 @@ button.press-ghost::after {
     animation: none;
   }
 }
+
+/* Slide transitions on the player (see Player.tsx). Only opacity and
+   transform are animated — those are the two things a Fire TV-class stick
+   composites on the GPU without redrawing the image itself, which is what
+   keeps a transition from stuttering next to hardware video decode.
+   Durations and delays are set inline, per transition. */
+@keyframes screen-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes screen-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes screen-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes screen-slide-out {
+  to {
+    transform: translateX(-100%);
+  }
+}

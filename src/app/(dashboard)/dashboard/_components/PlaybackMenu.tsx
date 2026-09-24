@@ -15,7 +15,17 @@ import {
   updateItemDuration,
 } from "@/lib/actions/playlist";
 import { cancelScheduledPlayback, schedulePlaylist } from "@/lib/actions/schedules";
-import type { Folder, MediaItem, PlaylistItemWithMedia, ScheduledPlayback, Screen } from "@/types/domain";
+import { setScreenTransition, setScreenTransitionSpeed } from "@/lib/actions/screens";
+import type {
+  DeckWithPages,
+  Folder,
+  MediaItem,
+  PlaylistItemWithMedia,
+  ScheduledPlayback,
+  Screen,
+  ScreenTransition,
+  ScreenTransitionSpeed,
+} from "@/types/domain";
 import { FileTree, type SortDir, type SortKey } from "../../library/_components/FileTree";
 import { SortableEntryList } from "../../library/_components/PlaylistEntryRow";
 import { PlaylistSection, type PlaylistWithEntries } from "../../library/_components/PlaylistSection";
@@ -23,10 +33,12 @@ import { MobileFileMenuButton } from "../../library/_components/LibraryView";
 import { UploadDropzone } from "../../library/_components/UploadDropzone";
 import { useMediaUpload } from "../../library/_components/useMediaUpload";
 import { Countdown, ScheduleDialog } from "./ScheduleDialog";
+import { TransitionMenu } from "./TransitionMenu";
 
 export type LibraryData = {
   folders: Folder[];
   media: MediaItem[];
+  decks: DeckWithPages[];
   playlists: PlaylistWithEntries[];
 };
 
@@ -153,7 +165,7 @@ export function PlaybackMenu({
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
-  const { uploading, uploadFiles } = useMediaUpload(uploadTargetId);
+  const { uploading, status: uploadStatus, uploadFiles } = useMediaUpload(uploadTargetId);
 
   function startPicking() {
     setPickedRows(new Map());
@@ -332,6 +344,45 @@ export function PlaybackMenu({
     router.refresh();
   }
 
+  // --- Playback settings ("⋯" in the header) --------------------------------
+
+  // Applied locally first so the pill moves on the press, then persisted.
+  const [transition, setTransition] = useState<ScreenTransition>(screen.transition ?? "cut");
+  const [prevTransition, setPrevTransition] = useState(screen.transition);
+  if (screen.transition !== prevTransition) {
+    setPrevTransition(screen.transition);
+    setTransition(screen.transition ?? "cut");
+  }
+
+  const [speed, setSpeed] = useState<ScreenTransitionSpeed>(screen.transition_speed ?? "normal");
+  const [prevSpeed, setPrevSpeed] = useState(screen.transition_speed);
+  if (screen.transition_speed !== prevSpeed) {
+    setPrevSpeed(screen.transition_speed);
+    setSpeed(screen.transition_speed ?? "normal");
+  }
+
+  async function handleSelectSpeed(next: ScreenTransitionSpeed) {
+    if (next === speed) return;
+    setSpeed(next);
+    try {
+      await setScreenTransitionSpeed(screen.id, next);
+    } catch (err) {
+      console.error("Failed to set transition speed", err);
+    }
+    router.refresh();
+  }
+
+  async function handleSelectTransition(next: ScreenTransition) {
+    if (next === transition) return;
+    setTransition(next);
+    try {
+      await setScreenTransition(screen.id, next);
+    } catch (err) {
+      console.error("Failed to set transition", err);
+    }
+    router.refresh();
+  }
+
   function handleOpenChange(next: boolean) {
     if (!next) {
       stopPicking();
@@ -347,6 +398,29 @@ export function PlaybackMenu({
       open={open}
       onOpenChange={handleOpenChange}
       title={screen.name}
+      // The screen's name as a page-sized heading, matching "Playlists"
+      // below it, with the plain "Done" link replaced by the "⋯" playback
+      // settings and a blue tick that closes the menu.
+      titleClassName="text-[28px] font-semibold tracking-tight"
+      actions={
+        <div className="flex shrink-0 items-center gap-2">
+          <TransitionMenu
+            transition={transition}
+            onSelect={handleSelectTransition}
+            speed={speed}
+            onSelectSpeed={handleSelectSpeed}
+          />
+          <button
+            type="button"
+            onClick={() => handleOpenChange(false)}
+            title="Done"
+            aria-label="Done"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast hover:opacity-90"
+          >
+            <CheckIcon className="h-4 w-4" />
+          </button>
+        </div>
+      }
       contentClassName="sm:max-w-3xl sm:h-[85vh]"
       bodyClassName="flex min-h-0 flex-col overflow-hidden"
     >
@@ -382,7 +456,7 @@ export function PlaybackMenu({
             <div className="relative z-10 flex items-center justify-between gap-3">
               <h2 className="text-[22px] font-semibold tracking-tight">Media</h2>
               <div className="flex items-center gap-3">
-                <UploadDropzone uploading={uploading} onUploadFiles={uploadFiles} />
+                <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />
                 <MobileFileMenuButton
                   sortKey={sortKey}
                   sortDir={sortDir}
@@ -392,6 +466,7 @@ export function PlaybackMenu({
               </div>
             </div>
             <FileTree
+              decks={library.decks}
               className="min-h-0 flex-1"
               folders={library.folders}
               media={library.media}

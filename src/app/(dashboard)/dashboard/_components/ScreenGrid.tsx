@@ -15,6 +15,7 @@ import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@d
 import { CSS } from "@dnd-kit/utilities";
 import { reorderScreens } from "@/lib/actions/screens";
 import { runDueScheduledPlaybacks } from "@/lib/actions/schedules";
+import { useLiveRefresh } from "@/lib/realtime/useLiveRefresh";
 import { cn } from "@/lib/utils/cn";
 import type { PlaylistItemWithMedia, ScheduledPlayback, Screen } from "@/types/domain";
 import { ScreenTile } from "./ScreenTile";
@@ -85,6 +86,10 @@ export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]
     setOrdered(next);
     reorderScreens(next.map((s) => s.id));
   }
+
+  // Someone else's edits — here or on the Library page — land on this
+  // dashboard as they happen.
+  useLiveRefresh("live-dashboard");
 
   useFireTimersOnTime(screens.flatMap((s) => s.schedules.map((t) => t.run_at)));
 

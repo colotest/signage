@@ -23,11 +23,15 @@ export function RenameableTitle({
   name,
   className,
   selecting = false,
+  onRename,
 }: {
   id: string;
   name: string;
   className?: string;
   selecting?: boolean;
+  // What to save the new name with. Defaults to renaming a media item;
+  // a PDF deck passes its own, which renames the deck's pages with it.
+  onRename?: (id: string, name: string) => Promise<void>;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -64,7 +68,7 @@ export function RenameableTitle({
     const nextName = `${newBase}${ext}`;
     setDisplayName(nextName);
     startTransition(async () => {
-      await renameMediaItem(id, nextName);
+      await (onRename ?? renameMediaItem)(id, nextName);
       router.refresh();
     });
   }

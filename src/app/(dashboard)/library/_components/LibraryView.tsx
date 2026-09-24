@@ -17,7 +17,7 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { MediaThumb } from "@/components/MediaThumb";
-import type { Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
+import type { DeckWithPages, Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
 import { moveMediaItem } from "@/lib/actions/media";
 import {
   addMediaToPlaylist,
@@ -26,6 +26,7 @@ import {
   reorderPlaylistEntries,
 } from "@/lib/actions/playlists";
 import { cn } from "@/lib/utils/cn";
+import { useLiveRefresh } from "@/lib/realtime/useLiveRefresh";
 import { FileTree, MENU_ITEM_CLASS, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
 import { UploadDropzone } from "./UploadDropzone";
@@ -59,13 +60,18 @@ const dropAnimation: DropAnimation = {
 export function LibraryView({
   folders,
   media,
+  decks,
   playlists,
 }: {
   folders: Folder[];
   media: MediaItem[];
+  decks: DeckWithPages[];
   playlists: PlaylistWithEntries[];
 }) {
   const router = useRouter();
+  // Another person's uploads, renames, moves and playlist edits appear
+  // here as they happen.
+  useLiveRefresh("live-library");
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set());
@@ -140,7 +146,10 @@ export function LibraryView({
 
     if (target.type === "folder") {
       const item = mediaById.get(mediaId);
-      if (!item || item.folder_id === target.folderId) return;
+      // A PDF's page moves with its deck, never on its own — dropping one
+      // on a folder does nothing, while dropping it on a playlist (below)
+      // works like any other file.
+      if (!item || item.deck_id || item.folder_id === target.folderId) return;
       setLocalMedia((current) =>
         current.map((m) => (m.id === mediaId ? { ...m, folder_id: target.folderId } : m)),
       );
@@ -191,7 +200,7 @@ export function LibraryView({
   // Shared with the dashboard's Playback Menu (see useMediaUpload) — both
   // the "+ Upload" button and dropping OS files directly onto the file list
   // (see FileTree) go through it.
-  const { uploading, uploadFiles } = useMediaUpload(uploadTargetId);
+  const { uploading, status: uploadStatus, uploadFiles } = useMediaUpload(uploadTargetId);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -353,7 +362,7 @@ export function LibraryView({
                   to upload to while the list is busy being a file picker,
                   and the space is better spent on the list itself. Where an
                   upload lands is shown by the highlighted folder itself. */}
-              {activePlaylistId === null && <UploadDropzone uploading={uploading} onUploadFiles={uploadFiles} />}
+              {activePlaylistId === null && <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />}
               <MobileFileMenuButton
                 sortKey={sortKey}
                 sortDir={sortDir}
@@ -367,6 +376,7 @@ export function LibraryView({
             className="min-h-0 flex-1"
             folders={folders}
             media={localMedia}
+            decks={decks}
             selectionMode={activePlaylistId !== null}
             selectedIds={selectedMediaIds}
             onToggleMedia={toggleMedia}

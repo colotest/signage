@@ -10,17 +10,21 @@ import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
 import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
+import { deleteDeck, moveDeck, renameDeck } from "@/lib/actions/decks";
 import { removeWithAnimation } from "@/lib/animation/listMotion";
-import { mediaPublicUrl, type Folder, type MediaItem } from "@/types/domain";
+import { mediaPublicUrl, type DeckWithPages, type Folder, type MediaItem } from "@/types/domain";
 import { RenameableTitle } from "./RenameableTitle";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
+import { ReplaceDeckButton } from "./ReplaceDeckButton";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 type Router = ReturnType<typeof useRouter>;
-type FolderNode = Folder & { children: FolderNode[]; files: MediaItem[] };
+type FolderNode = Folder & { children: FolderNode[]; files: MediaItem[]; decks: DeckWithPages[] };
 
-function buildTree(folders: Folder[], media: MediaItem[]) {
+function buildTree(folders: Folder[], media: MediaItem[], decks: DeckWithPages[]) {
   const nodeById = new Map<string, FolderNode>();
-  for (const f of folders) nodeById.set(f.id, { ...f, children: [], files: [] });
+  for (const f of folders) nodeById.set(f.id, { ...f, children: [], files: [], decks: [] });
   const roots: FolderNode[] = [];
   for (const f of folders) {
     const node = nodeById.get(f.id)!;
@@ -30,15 +34,30 @@ function buildTree(folders: Folder[], media: MediaItem[]) {
   }
   const rootFiles: MediaItem[] = [];
   for (const m of media) {
+    // A PDF's pages are listed inside their deck, never loose among the
+    // files — the deck is the thing that lives in a folder.
+    if (m.deck_id) continue;
     const parent = m.folder_id ? nodeById.get(m.folder_id) : undefined;
     if (parent) parent.files.push(m);
     else rootFiles.push(m);
   }
-  return { roots, rootFiles, nodeById };
+  const rootDecks: DeckWithPages[] = [];
+  for (const deck of decks) {
+    const parent = deck.folder_id ? nodeById.get(deck.folder_id) : undefined;
+    if (parent) parent.decks.push(deck);
+    else rootDecks.push(deck);
+  }
+  return { roots, rootFiles, rootDecks, nodeById };
 }
 
+// Everything a folder holds, deck pages included and in page order — what
+// ticking a folder's own checkbox selects.
 function collectMediaIds(node: FolderNode): string[] {
-  return [...node.files.map((f) => f.id), ...node.children.flatMap(collectMediaIds)];
+  return [
+    ...node.files.map((f) => f.id),
+    ...node.decks.flatMap((deck) => deck.pages.map((page) => page.id)),
+    ...node.children.flatMap(collectMediaIds),
+  ];
 }
 
 export type SortKey = "name" | "kind" | "resolution" | "duration" | "size" | "date";
@@ -75,6 +94,7 @@ export function FileTree({
   className,
   folders,
   media,
+  decks,
   selectionMode,
   selectedIds,
   onToggleMedia,
@@ -92,6 +112,7 @@ export function FileTree({
   className?: string;
   folders: Folder[];
   media: MediaItem[];
+  decks: DeckWithPages[];
   selectionMode: boolean;
   selectedIds: Set<string>;
   onToggleMedia: (id: string) => void;
@@ -152,7 +173,7 @@ export function FileTree({
     if (e.dataTransfer.files.length > 0) onUploadFiles?.(e.dataTransfer.files);
   }
 
-  const { roots, rootFiles } = useMemo(() => buildTree(folders, media), [folders, media]);
+  const { roots, rootFiles, rootDecks } = useMemo(() => buildTree(folders, media, decks), [folders, media, decks]);
 
   function sortFiles(items: MediaItem[]) {
     const copy = [...items];
@@ -167,6 +188,25 @@ export function FileTree({
 
   function sortFolders(nodes: FolderNode[]) {
     return [...nodes].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Decks sort by the columns they actually have — name, size, date — and
+  // fall back to name for the ones they don't (a deck has no single
+  // resolution or duration of its own).
+  function sortDecks(items: DeckWithPages[]) {
+    const copy = [...items];
+    copy.sort((a, b) => {
+      const value = (deck: DeckWithPages): string | number => {
+        if (sortKey === "size") return deck.size_bytes ?? -1;
+        if (sortKey === "date") return new Date(deck.created_at).getTime();
+        return deck.name.toLowerCase();
+      };
+      const av = value(a);
+      const bv = value(b);
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return copy;
   }
 
   function toggleExpanded(id: string) {
@@ -212,7 +252,7 @@ export function FileTree({
     onActivateFolder(wasExpanded ? folder.parent_id : folder.id);
   }
 
-  if (roots.length === 0 && rootFiles.length === 0) {
+  if (roots.length === 0 && rootFiles.length === 0 && rootDecks.length === 0) {
     return (
       <div
         onDragEnter={handleNativeDragEnter}
@@ -290,11 +330,13 @@ export function FileTree({
                 <TreeLevel
                   folders={sortFolders(roots)}
                   files={sortFiles(rootFiles)}
+                  decks={sortDecks(rootDecks)}
                   depth={0}
                   isRoot
                   expanded={expanded}
                   onFolderRowClick={handleFolderRowClick}
                   onFolderChevronClick={handleFolderChevronClick}
+                  onToggleDeck={toggleExpanded}
                   creatingIn={creatingIn}
                   onStartCreating={startCreatingIn}
                   onDoneCreating={() => onCreatingChange(undefined)}
@@ -305,6 +347,7 @@ export function FileTree({
                   uploadTargetId={uploadTargetId}
                   sortFiles={sortFiles}
                   sortFolders={sortFolders}
+                  sortDecks={sortDecks}
                   dropTargetFolderId={dropTargetFolderId}
                   router={router}
                 />
@@ -389,11 +432,13 @@ export function FileTree({
 function TreeLevel({
   folders,
   files,
+  decks,
   depth,
   isRoot,
   expanded,
   onFolderRowClick,
   onFolderChevronClick,
+  onToggleDeck,
   creatingIn,
   onStartCreating,
   onDoneCreating,
@@ -404,16 +449,21 @@ function TreeLevel({
   uploadTargetId,
   sortFiles,
   sortFolders,
+  sortDecks,
   dropTargetFolderId,
   router,
 }: {
   folders: FolderNode[];
   files: MediaItem[];
+  decks: DeckWithPages[];
   depth: number;
   isRoot?: boolean;
   expanded: Set<string>;
   onFolderRowClick: (folder: FolderNode) => void;
   onFolderChevronClick: (folder: FolderNode) => void;
+  // A deck opens and closes like a folder, but has no upload target or
+  // subfolder behaviour of its own — just the one toggle.
+  onToggleDeck: (id: string) => void;
   creatingIn: string | null | undefined;
   onStartCreating: (id: string | null) => void;
   onDoneCreating: () => void;
@@ -424,6 +474,7 @@ function TreeLevel({
   uploadTargetId: string | null;
   sortFiles: (items: MediaItem[]) => MediaItem[];
   sortFolders: (nodes: FolderNode[]) => FolderNode[];
+  sortDecks: (items: DeckWithPages[]) => DeckWithPages[];
   dropTargetFolderId: string | null | undefined;
   router: Router;
 }) {
@@ -477,10 +528,12 @@ function TreeLevel({
               <TreeLevel
                 folders={sortFolders(folder.children)}
                 files={sortFiles(folder.files)}
+                decks={sortDecks(folder.decks)}
                 depth={depth + 1}
                 expanded={expanded}
                 onFolderRowClick={onFolderRowClick}
                 onFolderChevronClick={onFolderChevronClick}
+                onToggleDeck={onToggleDeck}
                 creatingIn={creatingIn}
                 onStartCreating={onStartCreating}
                 onDoneCreating={onDoneCreating}
@@ -491,6 +544,7 @@ function TreeLevel({
                 uploadTargetId={uploadTargetId}
                 sortFiles={sortFiles}
                 sortFolders={sortFolders}
+                sortDecks={sortDecks}
                 dropTargetFolderId={dropTargetFolderId}
                 router={router}
               />
@@ -498,6 +552,41 @@ function TreeLevel({
             {isExpanded && creatingIn === folder.id && (
               <NewFolderRow depth={depth + 1} parentId={folder.id} onDone={onDoneCreating} router={router} />
             )}
+          </div>
+        );
+      })}
+
+      {decks.map((deck) => {
+        const pageIds = deck.pages.map((page) => page.id);
+        const selectedCount = pageIds.filter((id) => selectedIds.has(id)).length;
+        const checkState: "all" | "some" | "none" =
+          pageIds.length === 0 || selectedCount === 0 ? "none" : selectedCount === pageIds.length ? "all" : "some";
+
+        return (
+          <div key={deck.id}>
+            <DeckRow
+              deck={deck}
+              depth={depth}
+              isExpanded={expanded.has(deck.id)}
+              onToggleExpanded={() => onToggleDeck(deck.id)}
+              selectionMode={selectionMode}
+              checkState={checkState}
+              onToggleSelect={() => onToggleFolderIds(pageIds, checkState !== "all")}
+              router={router}
+            />
+            {expanded.has(deck.id) &&
+              deck.pages.map((page) => (
+                <FileRow
+                  key={page.id}
+                  item={page}
+                  depth={depth + 1}
+                  inDeck
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(page.id)}
+                  onToggleSelect={() => onToggleMedia(page.id)}
+                  router={router}
+                />
+              ))}
           </div>
         );
       })}
@@ -837,6 +926,7 @@ function FolderRow({
 function FileRow({
   item,
   depth,
+  inDeck = false,
   selectionMode,
   selected,
   onToggleSelect,
@@ -844,6 +934,10 @@ function FileRow({
 }: {
   item: MediaItem;
   depth: number;
+  // A page of a PDF: renamed, deleted and put in a playlist like anything
+  // else, but with no file of its own to replace and no folder to move to —
+  // the deck it belongs to has both.
+  inDeck?: boolean;
   selectionMode: boolean;
   selected: boolean;
   onToggleSelect: () => void;
@@ -929,7 +1023,7 @@ function FileRow({
         {item.media_type === "video" && <MenuInfo>{formatDuration(item.duration_seconds)}</MenuInfo>}
         {item.media_type !== "page" && <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>}
         {(item.folder_id || item.media_type !== "page") && <div className="my-1 border-t border-border" />}
-        {item.folder_id && (
+        {item.folder_id && !inDeck && (
           <MenuItem disabled={pending} onClick={handleMoveToRoot}>
             Move to Root
           </MenuItem>
@@ -949,7 +1043,7 @@ function FileRow({
             >
               Download
             </a>
-            <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />
+            {!inDeck && <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />}
             <MenuItem danger disabled={pending} onClick={handleDelete}>
               Delete
             </MenuItem>
@@ -1037,5 +1131,138 @@ function SortButton({
       {label}
       {isActive && <span className="text-[10px]">{dir === "asc" ? "▲" : "▼"}</span>}
     </button>
+  );
+}
+
+// A PDF in the library: one row that opens like a folder to show the pages
+// it was split into (see 0019_pdf_decks.sql). The pages themselves are
+// ordinary media items, so each one below this row behaves exactly like any
+// other file — its own duration in a playlist, its own deletion — while
+// this row is the original PDF: rename it, move it, download it, replace it
+// with a newer version, or delete the lot.
+function DeckRow({
+  deck,
+  depth,
+  isExpanded,
+  onToggleExpanded,
+  selectionMode,
+  checkState,
+  onToggleSelect,
+  router,
+}: {
+  deck: DeckWithPages;
+  depth: number;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
+  selectionMode: boolean;
+  checkState: "all" | "some" | "none";
+  onToggleSelect: () => void;
+  router: Router;
+}) {
+  const [pending, startTransition] = useTransition();
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const cover = deck.pages[0];
+  const fileName = `${deck.name}.pdf`;
+
+  function handleDelete() {
+    if (
+      !window.confirm(
+        `Delete "${deck.name}" and all ${deck.pages.length} of its pages? They're removed from any screens or playlists using them.`,
+      )
+    )
+      return;
+    startTransition(async () => {
+      await removeWithAnimation(rowRef.current?.parentElement, () => deleteDeck(deck.id));
+      router.refresh();
+    });
+  }
+
+  function handleMoveToRoot() {
+    startTransition(async () => {
+      await moveDeck(deck.id, null);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div
+      ref={rowRef}
+      onClick={selectionMode ? onToggleSelect : onToggleExpanded}
+      className={cn(
+        "flex cursor-pointer items-center gap-2.5 border-b border-border px-4 py-2 last:border-0",
+        selectionMode && checkState === "all"
+          ? "bg-accent/10 dark:bg-accent/15"
+          : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
+      )}
+    >
+      <Checkbox
+        visible={selectionMode}
+        state={checkState === "all" ? true : checkState === "some" ? "indeterminate" : false}
+        onChange={onToggleSelect}
+        collapsedClassName="-mr-2.5"
+      />
+      <div style={{ width: depth * 20 }} className="shrink-0" />
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleExpanded();
+        }}
+        aria-label={isExpanded ? `Collapse ${deck.name}` : `Expand ${deck.name}`}
+        className="press-ghost -m-1 shrink-0 p-1 text-muted"
+      >
+        <Chevron open={isExpanded} />
+      </button>
+      {/* The first page stands in for the deck, the way a cover does. */}
+      <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
+        {cover && <MediaThumb item={cover} />}
+      </div>
+
+      <RowInfo
+        title={
+          <RenameableTitle
+            id={deck.id}
+            name={deck.name}
+            selecting={selectionMode}
+            onRename={renameDeck}
+            className="truncate text-[13px] font-medium"
+          />
+        }
+        date={formatDate(deck.created_at)}
+      />
+
+      <RowColumn width="w-28">PDF</RowColumn>
+      <RowColumn width="w-24">{formatResolution(cover?.width ?? null, cover?.height ?? null)}</RowColumn>
+      <RowColumn width="w-16">{deck.pages.length} pp.</RowColumn>
+      <RowColumn width="w-20">{formatBytes(deck.size_bytes)}</RowColumn>
+      <RowColumn width="w-40">{formatDate(deck.created_at)}</RowColumn>
+
+      <RowMenu label={`${deck.name} actions`}>
+        <MenuInfo>
+          PDF · {deck.pages.length} {deck.pages.length === 1 ? "page" : "pages"}
+        </MenuInfo>
+        <MenuInfo>{formatBytes(deck.size_bytes)}</MenuInfo>
+        <div className="my-1 border-t border-border" />
+        {deck.folder_id && (
+          <MenuItem disabled={pending} onClick={handleMoveToRoot}>
+            Move to Root
+          </MenuItem>
+        )}
+        {/* The original PDF, exactly as it was uploaded — the pages on
+            screen are images rendered from it. Same ?download= trick as a
+            file's own Download above. */}
+        <a
+          href={`${mediaPublicUrl(SUPABASE_URL, deck.storage_path)}?download=${encodeURIComponent(fileName)}`}
+          download={fileName}
+          className={MENU_ITEM_CLASS}
+        >
+          Download
+        </a>
+        <ReplaceDeckButton deck={deck} className={MENU_ITEM_CLASS} />
+        <MenuItem danger disabled={pending} onClick={handleDelete}>
+          Delete
+        </MenuItem>
+      </RowMenu>
+    </div>
   );
 }

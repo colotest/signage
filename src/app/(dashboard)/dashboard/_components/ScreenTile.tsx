@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import type { CSSProperties } from "react";
 import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
-import { setScreenRotation } from "@/lib/actions/screens";
+import { setScreenBackground, setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
-import type { PlaylistItemWithMedia, ScheduledPlayback, Screen, ScreenRotation } from "@/types/domain";
+import type { PlaylistItemWithMedia, ScheduledPlayback, Screen, ScreenBackground, ScreenRotation } from "@/types/domain";
 import { PauseIcon, PlaylistPlayIcon } from "@/components/icons/PlaybackIcons";
 import { ScreenTitle } from "./ScreenTitle";
 import { FitModeToggle } from "./FitModeToggle";
@@ -66,6 +67,23 @@ export function ScreenTile({
   // One control channel per tile, shared by the playback buttons and the
   // wrench menu's Reload.
   const { send } = useScreenControl(screen.id);
+  // Applied locally first so the pill moves on the press rather than after
+  // the round trip — same as the rotation control above it.
+  const [background, setBackground] = useState<ScreenBackground>(screen.background ?? "black");
+  const [prevBackground, setPrevBackground] = useState(screen.background);
+  if (screen.background !== prevBackground) {
+    setPrevBackground(screen.background);
+    setBackground(screen.background ?? "black");
+  }
+
+  function handleSelectBackground(next: ScreenBackground) {
+    if (next === background) return;
+    setBackground(next);
+    startTransition(async () => {
+      await setScreenBackground(screen.id, next);
+      router.refresh();
+    });
+  }
   // Purely local and optimistic — there's no reliable way to confirm a
   // screen actually received and applied a command (that used to come from
   // realtime presence, which proved unreliable enough to remove entirely),
@@ -231,11 +249,20 @@ export function ScreenTile({
                 "relative overflow-hidden transition-opacity duration-150",
                 contentHidden ? "opacity-0" : "opacity-100",
               )}
-              style={{
-                width: contentWidth + BORDER_WIDTH * 2,
-                height: contentHeight + BORDER_WIDTH * 2,
-                border: `${BORDER_WIDTH}px solid #2e2e2e`,
-              }}
+              // --screen-bg/--screen-ink mirror what the real screen shows
+              // behind its media (see Player), so a white-background screen
+              // previews white here too — the clock page and the letterbox
+              // area around a fitted image both read them.
+              style={
+                {
+                  width: contentWidth + BORDER_WIDTH * 2,
+                  height: contentHeight + BORDER_WIDTH * 2,
+                  border: `${BORDER_WIDTH}px solid #2e2e2e`,
+                  backgroundColor: background === "white" ? "#fff" : "#000",
+                  "--screen-bg": background === "white" ? "#fff" : "#000",
+                  "--screen-ink": background === "white" ? "#000" : "#fff",
+                } as CSSProperties
+              }
             >
               {firstItem ? (
                 <MediaThumb fit={fitMode} live item={firstItem.media_item} sizes={`${PREVIEW_LONG}px`} />
@@ -273,6 +300,8 @@ export function ScreenTile({
                   playerPath={playerPath}
                   rotation={(step * 90) as ScreenRotation}
                   onSelectRotation={handleSelectRotation}
+                  background={background}
+                  onSelectBackground={handleSelectBackground}
                   onRename={() => setRenaming(true)}
                   onReload={() => send({ type: "reload" })}
                 />

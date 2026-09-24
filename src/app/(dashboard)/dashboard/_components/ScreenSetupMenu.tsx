@@ -5,8 +5,13 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { deleteScreen } from "@/lib/actions/screens";
 import { removeWithAnimation } from "@/lib/animation/listMotion";
 import { cn } from "@/lib/utils/cn";
-import type { ScreenRotation } from "@/types/domain";
+import type { ScreenBackground, ScreenRotation } from "@/types/domain";
 import { WrenchIcon } from "@/components/icons/WrenchIcon";
+
+const BACKGROUND_OPTIONS: { value: ScreenBackground; label: string }[] = [
+  { value: "black", label: "Black" },
+  { value: "white", label: "White" },
+];
 
 const ROTATION_OPTIONS: { value: ScreenRotation; label: string }[] = [
   { value: 0, label: "0°" },
@@ -30,6 +35,8 @@ export function ScreenSetupMenu({
   playerPath,
   rotation,
   onSelectRotation,
+  background,
+  onSelectBackground,
   onRename,
   onReload,
 }: {
@@ -37,6 +44,8 @@ export function ScreenSetupMenu({
   playerPath: string;
   rotation: ScreenRotation;
   onSelectRotation: (rotation: ScreenRotation) => void;
+  background: ScreenBackground;
+  onSelectBackground: (background: ScreenBackground) => void;
   onRename: () => void;
   onReload: () => void;
 }) {
@@ -135,6 +144,27 @@ export function ScreenSetupMenu({
                   className={cn(
                     "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
                     rotation === option.value
+                      ? "bg-surface text-foreground font-medium shadow-sm"
+                      : "text-muted hover:text-foreground",
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="mb-1.5 text-[11px] text-muted">Background</p>
+            <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[12px]">
+              {BACKGROUND_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onSelectBackground(option.value)}
+                  className={cn(
+                    "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
+                    background === option.value
                       ? "bg-surface text-foreground font-medium shadow-sm"
                       : "text-muted hover:text-foreground",
                   )}

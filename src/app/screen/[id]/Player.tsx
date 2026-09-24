@@ -7,7 +7,14 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import { controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
 import type { ControlMessage } from "@/lib/realtime/channels";
 import { mediaPublicUrl } from "@/types/domain";
-import type { FitMode, MediaItem, PlaylistItemWithMedia, Screen } from "@/types/domain";
+import type {
+  FitMode,
+  MediaItem,
+  PlaylistItemWithMedia,
+  Screen,
+  ScreenTransition,
+  ScreenTransitionSpeed,
+} from "@/types/domain";
 import { loadFromCache, saveToCache } from "@/lib/cache/playerCache";
 import { brandFont } from "@/lib/fonts";
 import { QrCode } from "@/components/QrCode";
@@ -42,6 +49,56 @@ function samePlayback(a: PlaylistItemWithMedia[], b: PlaylistItemWithMedia[]) {
         item.media_item.media_type === b[i].media_item.media_type,
     )
   );
+}
+
+// How long a transition runs, and the two animations (outgoing, incoming)
+// each one is made of. A dip is the same fade, split in half: the outgoing
+// slide is gone before the incoming one starts, so only one is ever
+// visible — which is also why it's the fallback wherever an overlap would
+// mean decoding two videos at once.
+const TRANSITION_MS: Record<ScreenTransitionSpeed, number> = { fast: 200, normal: 400, slow: 800 };
+
+function noop() {}
+
+function transitionStyles(
+  transition: Exclude<ScreenTransition, "cut">,
+  duration: number,
+): {
+  outgoing: CSSProperties;
+  incoming: CSSProperties;
+} {
+  const half = duration / 2;
+  switch (transition) {
+    case "dip":
+      return {
+        outgoing: { animation: `screen-fade-out ${half}ms ease-in both` },
+        incoming: { animation: `screen-fade-in ${half}ms ease-out ${half}ms both` },
+      };
+    case "crossfade":
+      return {
+        outgoing: { animation: `screen-fade-out ${duration}ms ease-in both` },
+        incoming: { animation: `screen-fade-in ${duration}ms ease-out both` },
+      };
+    case "slide":
+      return {
+        outgoing: { animation: `screen-slide-out ${duration}ms cubic-bezier(0.4, 0, 0.2, 1) both` },
+        incoming: { animation: `screen-slide-in ${duration}ms cubic-bezier(0.4, 0, 0.2, 1) both` },
+      };
+  }
+}
+
+// A crossfade or slide keeps both slides on screen at once, which for two
+// videos means two decoders running — the one thing these sticks reliably
+// choke on. Those pairings fall back to a dip, where the outgoing slide is
+// already gone before the next appears.
+function effectiveTransition(
+  transition: ScreenTransition,
+  outgoing: PlaylistItemWithMedia,
+  incoming: PlaylistItemWithMedia,
+): ScreenTransition {
+  if (transition === "cut" || transition === "dip") return transition;
+  const videos = [outgoing, incoming].filter((item) => item.media_item.media_type === "video").length;
+  return videos > 1 ? "dip" : transition;
 }
 
 function rotationWrapperStyle(rotation: number): CSSProperties {
@@ -124,6 +181,26 @@ export function Player({
   }, [currentIndex]);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The slide being left behind, kept mounted for the length of the
+  // transition so it can animate out. Worked out during render (React's own
+  // "derive from what render sees" pattern, as with firstVideoItemId above)
+  // rather than in an effect, so the outgoing slide is already there on the
+  // very first frame of the new one instead of popping in a frame late.
+  const transition: ScreenTransition = screen.transition ?? "cut";
+  const transitionMs = TRANSITION_MS[screen.transition_speed ?? "normal"];
+  const [outgoing, setOutgoing] = useState<PlaylistItemWithMedia | null>(null);
+  const [shownItem, setShownItem] = useState(current);
+  if (current?.id !== shownItem?.id) {
+    setOutgoing(transition !== "cut" && shownItem && current ? shownItem : null);
+    setShownItem(current);
+  }
+
+  useEffect(() => {
+    if (!outgoing) return;
+    const done = setTimeout(() => setOutgoing(null), transitionMs);
+    return () => clearTimeout(done);
+  }, [outgoing, transitionMs]);
 
   // A video/image/PDF that's mid-fetch when the network dies just stays
   // stuck there — browsers don't automatically resume a failed media fetch
@@ -537,8 +614,30 @@ export function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, current?.duration_seconds]);
 
+  // No animation at all unless a slide is actually on its way out, so an
+  // ordinary single-item playlist (or a cut) renders exactly as before.
+  const animation =
+    outgoing && current && outgoing.id !== current.id
+      ? transitionStyles(
+          effectiveTransition(transition, outgoing, current) as Exclude<ScreenTransition, "cut">,
+          transitionMs,
+        )
+      : { outgoing: undefined, incoming: undefined };
+
   return (
-    <div className="relative h-dvh w-dvw overflow-hidden bg-black">
+    // --screen-bg / --screen-ink: the screen's own background (letterbox
+    // bars, the clock's face, the placeholder) and whatever has to read
+    // against it. Set here once so every layer below — including code-
+    // rendered pages — picks them up without threading a prop down.
+    <div
+      className="relative h-dvh w-dvw overflow-hidden bg-[var(--screen-bg)]"
+      style={
+        {
+          "--screen-bg": screen.background === "white" ? "#fff" : "#000",
+          "--screen-ink": screen.background === "white" ? "#000" : "#fff",
+        } as CSSProperties
+      }
+    >
       {/* A screen mounted rotated N degrees counterclockwise needs its
           content rotated N degrees clockwise to cancel that out and land
           upright for the viewer — that's the whole point: media never has
@@ -554,19 +653,45 @@ export function Player({
         {!current ? (
           <NoContentPlaceholder />
         ) : (
-          <Slide
-            key={`${current.id}-${reloadToken}`}
-            item={current}
-            fitMode={screen.fit_mode}
-            now={serverNow}
-            paused={paused}
-            loop={playlist.length === 1}
-            onVideoEnded={handleVideoEnded}
-            onVideoAutoRefresh={handleAutoRefresh}
-            showAutoRefreshOverlay={
-              current.id === firstVideoItemId && (autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS
-            }
-          />
+          <>
+            {/* The slide on its way out, animating while the new one
+                arrives. Its playback callbacks are deliberately dropped:
+                it's already handed over, and a stray "ended" or
+                auto-refresh from it would advance (or remount) the slide
+                that's just taken its place. */}
+            {outgoing && outgoing.id !== current.id && (
+              <div
+                key={`out-${outgoing.id}`}
+                className="absolute inset-0"
+                style={animation.outgoing}
+              >
+                <Slide
+                  item={outgoing}
+                  fitMode={screen.fit_mode}
+                  now={serverNow}
+                  paused
+                  loop={false}
+                  onVideoEnded={noop}
+                  onVideoAutoRefresh={noop}
+                  showAutoRefreshOverlay={false}
+                />
+              </div>
+            )}
+            <div key={`in-${current.id}-${reloadToken}`} className="absolute inset-0" style={animation.incoming}>
+              <Slide
+                item={current}
+                fitMode={screen.fit_mode}
+                now={serverNow}
+                paused={paused}
+                loop={playlist.length === 1}
+                onVideoEnded={handleVideoEnded}
+                onVideoAutoRefresh={handleAutoRefresh}
+                showAutoRefreshOverlay={
+                  current.id === firstVideoItemId && (autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS
+                }
+              />
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -589,7 +714,9 @@ function NoContentPlaceholder() {
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-6">
-      <span className={`${brandFont.className} text-[40px] uppercase tracking-tight text-white`}>Colo Cloud</span>
+      <span className={`${brandFont.className} text-[40px] uppercase tracking-tight text-[var(--screen-ink)]`}>
+        Colo Cloud
+      </span>
       {dashboardUrl && <QrCode value={dashboardUrl} size={200} />}
     </div>
   );
@@ -811,7 +938,7 @@ function VideoSlide({
         style={{ transform: "translateZ(0)", willChange: "transform" }}
       />
       {showInitialOverlay && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black">
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--screen-bg)]">
           <NoContentPlaceholder />
         </div>
       )}

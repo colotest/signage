@@ -6,9 +6,13 @@ import { Spinner } from "@/components/ui/Spinner";
 
 export function UploadDropzone({
   uploading,
+  status,
   onUploadFiles,
 }: {
   uploading: number;
+  // What a long upload is currently doing — splitting a PDF into pages
+  // takes long enough that a bare count would look stuck.
+  status?: string | null;
   onUploadFiles: (files: FileList) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -28,7 +32,7 @@ export function UploadDropzone({
       />
       <Button onClick={() => inputRef.current?.click()} disabled={uploading > 0}>
         {uploading > 0 ? <Spinner /> : null}
-        {uploading > 0 ? `Uploading ${uploading}…` : "+ Upload"}
+        {uploading > 0 ? (status ?? `Uploading ${uploading}…`) : "+ Upload"}
       </Button>
     </div>
   );

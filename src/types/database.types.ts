@@ -10,6 +10,13 @@ export type FitMode = "contain" | "cover";
 // Degrees the screen is physically mounted rotated counterclockwise from
 // upright landscape — the only four quarter-turns a TV can actually sit at.
 export type ScreenRotation = 0 | 90 | 180 | 270;
+// What shows wherever media doesn't cover the screen — letterbox bars, the
+// clock page's face, the QR placeholder.
+export type ScreenBackground = "black" | "white";
+// How one slide gives way to the next — see 0017_screen_transition.sql.
+export type ScreenTransition = "cut" | "dip" | "crossfade" | "slide";
+// How long that transition runs — the player maps these to milliseconds.
+export type ScreenTransitionSpeed = "fast" | "normal" | "slow";
 
 export type Database = {
   public: {
@@ -20,6 +27,9 @@ export type Database = {
           name: string;
           fit_mode: FitMode;
           rotation: ScreenRotation;
+          background: ScreenBackground;
+          transition: ScreenTransition;
+          transition_speed: ScreenTransitionSpeed;
           position: number;
           created_at: string;
           updated_at: string;
@@ -29,6 +39,9 @@ export type Database = {
           name?: string;
           fit_mode?: FitMode;
           rotation?: ScreenRotation;
+          background?: ScreenBackground;
+          transition?: ScreenTransition;
+          transition_speed?: ScreenTransitionSpeed;
           position?: number;
           created_at?: string;
           updated_at?: string;
@@ -38,6 +51,9 @@ export type Database = {
           name?: string;
           fit_mode?: FitMode;
           rotation?: ScreenRotation;
+          background?: ScreenBackground;
+          transition?: ScreenTransition;
+          transition_speed?: ScreenTransitionSpeed;
           position?: number;
           created_at?: string;
           updated_at?: string;
@@ -85,6 +101,8 @@ export type Database = {
           width: number | null;
           height: number | null;
           duration_seconds: number | null;
+          deck_id: string | null;
+          deck_position: number | null;
           created_at: string;
         };
         Insert: {
@@ -98,6 +116,8 @@ export type Database = {
           width?: number | null;
           height?: number | null;
           duration_seconds?: number | null;
+          deck_id?: string | null;
+          deck_position?: number | null;
           created_at?: string;
         };
         Update: {
@@ -111,11 +131,61 @@ export type Database = {
           width?: number | null;
           height?: number | null;
           duration_seconds?: number | null;
+          deck_id?: string | null;
+          deck_position?: number | null;
           created_at?: string;
         };
         Relationships: [
           {
             foreignKeyName: "media_items_folder_id_fkey";
+            columns: ["folder_id"];
+            isOneToOne: false;
+            referencedRelation: "folders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "media_items_deck_id_fkey";
+            columns: ["deck_id"];
+            isOneToOne: false;
+            referencedRelation: "decks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      decks: {
+        Row: {
+          id: string;
+          folder_id: string | null;
+          name: string;
+          storage_path: string;
+          mime_type: string;
+          size_bytes: number | null;
+          page_count: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          folder_id?: string | null;
+          name: string;
+          storage_path: string;
+          mime_type?: string;
+          size_bytes?: number | null;
+          page_count?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          folder_id?: string | null;
+          name?: string;
+          storage_path?: string;
+          mime_type?: string;
+          size_bytes?: number | null;
+          page_count?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "decks_folder_id_fkey";
             columns: ["folder_id"];
             isOneToOne: false;
             referencedRelation: "folders";

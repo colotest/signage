@@ -65,6 +65,21 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 - `src/lib/realtime/` — Realtime channel-name helpers and the dashboard's live-preview presence hook.
 - `supabase/migrations/` — the SQL schema.
 
+## PDFs
+
+A PDF uploaded to the library becomes a **deck**: the original file is kept
+(the row's Download gives it back), and the uploader's browser renders one
+JPEG per page, which are added as ordinary media items belonging to that
+deck. So a page carries its own duration, order and deletion inside a
+playlist exactly like any other file, and a player only ever shows images —
+no pdf.js on a set-top box. In the file browser a deck is a row that opens
+like a folder: tick the deck to take the whole thing, or tick single pages.
+
+**Replace** on a deck swaps a newer PDF in under it. Page 1 stays page 1 —
+the same library item, repointed — so playlists keep working in place; a
+shorter PDF drops the pages past its end, and a longer one leaves the extra
+pages in the deck to place yourself.
+
 ## Not in v1
 
-Scheduling, screen groups, multi-zone/video-wall layouts, proof-of-play analytics, and multi-page PDF flipping are intentionally out of scope for this MVP but don't require restructuring the schema to add later.
+Screen groups, multi-zone/video-wall layouts and proof-of-play analytics are intentionally out of scope for this MVP but don't require restructuring the schema to add later.

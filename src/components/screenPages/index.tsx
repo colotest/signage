@@ -21,6 +21,6 @@ export function ScreenPage({ item, now }: { item: MediaItem; now?: () => number 
   const Page = PAGES[key];
   // An unknown key (a page added in the database ahead of the deploy that
   // brings its component) shows black, like any slide still loading.
-  if (!Page) return <div className="h-full w-full bg-black" />;
+  if (!Page) return <div className="h-full w-full bg-[var(--screen-bg,#000)]" />;
   return <Page now={now} />;
 }

@@ -15,6 +15,9 @@ export function Sheet({
   children,
   contentClassName,
   bodyClassName,
+  titleClassName,
+  headerClassName,
+  actions,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -22,6 +25,12 @@ export function Sheet({
   children: ReactNode;
   contentClassName?: string;
   bodyClassName?: string;
+  // The Playback Menu wears its screen's name as a page-sized heading (like
+  // "Playlists" on the Library page) and replaces the plain "Done" link
+  // with its own controls — hence these three.
+  titleClassName?: string;
+  headerClassName?: string;
+  actions?: ReactNode;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -36,9 +45,11 @@ export function Sheet({
             contentClassName,
           )}
         >
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <Dialog.Title className="text-[17px] font-semibold">{title}</Dialog.Title>
-            <Dialog.Close className="press-ghost text-accent text-[15px]">Done</Dialog.Close>
+          <div className={cn("flex items-center justify-between gap-3 border-b border-border px-5 py-4", headerClassName)}>
+            <Dialog.Title className={cn("min-w-0 truncate text-[17px] font-semibold", titleClassName)}>
+              {title}
+            </Dialog.Title>
+            {actions ?? <Dialog.Close className="press-ghost text-accent text-[15px]">Done</Dialog.Close>}
           </div>
           <div className={cn("flex-1 overflow-y-auto p-5", bodyClassName)}>{children}</div>
         </Dialog.Content>
