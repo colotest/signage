@@ -21,14 +21,18 @@ const SECOND_REACH = MINUTE_ARM.pivotY;
 const SECOND_TAIL = SECOND_REACH * 0.14;
 const SECOND_WIDTH = 40;
 const HINGE_DOT = 55;
-// Where each wordmark's centre sits, measured down the screen. A landscape
-// screen is short, so both pull in towards the middle to stay clear of the
-// marks at 12 and 6.
-const COLO_FROM_TOP = { portrait: 0.35, landscape: 0.3 };
+// Where the wordmarks sit, measured down the screen. A landscape screen is
+// short, so both pull in towards the middle to stay clear of 12 and 6.
+const COLO_FROM_TOP = { portrait: 0.2, landscape: 0.3 };
+// The date sits on the centre line, weekday out to the left and the day
+// itself out to the right, each this far in from the dial's edge. A
+// portrait screen is wide enough across the middle for them to sit halfway
+// in; a landscape one keeps them out nearer the marks.
+const DATE_FROM_EDGE = { portrait: 0.5, landscape: 0.3 };
 const CALLIGRAPHY_FROM_TOP = { portrait: 0.8, landscape: 0.7 };
 // How hard each layer reads against the background. The hands stay at full
 // strength; everything printed on the dial sits back behind them.
-const MARKING_OPACITY = { hour: 0.27, tenMinute: 0.27 };
+const MARKING_OPACITY = { hour: 1, tenMinute: 0.27 };
 const WORDMARK_OPACITY = 0.27;
 // A deep burgundy, the one touch of colour on the face.
 const BURGUNDY = "#800020";
@@ -95,10 +99,11 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
         <Markings art={TEN_MIN_MARKINGS} opacity={MARKING_OPACITY.tenMinute} />
       </div>
 
-      {/* Both wordmarks sit inside the dial and stay upright whichever way
-          the markings are turned, printed under the hands like a watch's.
-          Each is centred on its own line down the screen; their sizes go by
-          the dial's short side, so they look the same either way round. */}
+      {/* The date and the wordmark sit inside the dial and stay upright
+          whichever way the markings are turned, printed under the hands
+          like a watch's. Each is centred on its own line down the screen;
+          their sizes go by the dial's short side, so they look the same
+          either way round. */}
       <div
         className={`${brandFont.className} absolute left-1/2 uppercase leading-none tracking-tight text-white`}
         style={{
@@ -110,6 +115,15 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
       >
         Colo
       </div>
+      <DateIndicator
+        className={`${brandFont.className} absolute top-1/2 leading-none tracking-tight text-white`}
+        fontSize={shortSide * 0.225}
+        // Half the dial's width across the screen, whichever way round the
+        // markings are turned.
+        limit={(landscape ? dialHeight : dialWidth) / 2}
+        fromEdge={DATE_FROM_EDGE[orientation]}
+        now={now}
+      />
       <svg
         className="absolute left-1/2"
         style={{
@@ -125,6 +139,87 @@ function Face({ width, height, now }: { width: number; height: number; now: () =
       </svg>
 
       <Hands width={width} height={height} scale={scale} now={now} />
+    </>
+  );
+}
+
+// German weekday on one side, the day of the month on the other, with no
+// leading zero: "Mi" | "23", "Fr" | "5".
+const WEEKDAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+function formatDate(ms: number) {
+  const t = new Date(ms);
+  return { weekday: WEEKDAYS[t.getDay()], day: String(t.getDate()) };
+}
+
+// Only ever rendered client-side (the face waits to be measured first), so
+// the date the browser reads is the only one there ever is — no risk of a
+// server's own idea of today being hydrated over.
+function DateIndicator({
+  className,
+  fontSize,
+  limit,
+  fromEdge,
+  now,
+}: {
+  className: string;
+  fontSize: number;
+  // Half the dial's width across the screen: where the markings are, and
+  // as far out as either half of the date is allowed to reach.
+  limit: number;
+  fromEdge: number;
+  now: () => number;
+}) {
+  const [label, setLabel] = useState(() => formatDate(now()));
+  const nowRef = useRef(now);
+  useEffect(() => {
+    nowRef.current = now;
+  });
+
+  // Checked well short of a minute so the turn of midnight lands promptly,
+  // but only ever re-rendered on the days it actually reads differently.
+  useEffect(() => {
+    const id = setInterval(() => setLabel((current) => {
+      const next = formatDate(nowRef.current());
+      return next.day === current.day ? current : next;
+    }), 20_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Where each half would sit on its own. Were it far enough out to run
+  // past the dial's edge from there, it's measured once drawn and pulled
+  // back in just far enough to keep it on the dial — no further.
+  const wanted = limit * (1 - fromEdge);
+  const weekdayRef = useRef<HTMLDivElement>(null);
+  const dayRef = useRef<HTMLDivElement>(null);
+  const [widths, setWidths] = useState({ weekday: 0, day: 0 });
+
+  useLayoutEffect(() => {
+    setWidths({
+      weekday: weekdayRef.current?.offsetWidth ?? 0,
+      day: dayRef.current?.offsetWidth ?? 0,
+    });
+  }, [fontSize, label]);
+
+  const weekdayOffset = Math.min(wanted, limit - widths.weekday / 2);
+  const dayOffset = Math.min(wanted, limit - widths.day / 2);
+
+  return (
+    <>
+      <div
+        ref={weekdayRef}
+        className={className}
+        style={{ left: `calc(50% - ${weekdayOffset}px)`, transform: "translate(-50%, -50%)", fontSize }}
+      >
+        {label.weekday}
+      </div>
+      <div
+        ref={dayRef}
+        className={className}
+        style={{ left: `calc(50% + ${dayOffset}px)`, transform: "translate(-50%, -50%)", fontSize }}
+      >
+        {label.day}
+      </div>
     </>
   );
 }
