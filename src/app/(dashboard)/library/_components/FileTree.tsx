@@ -11,7 +11,7 @@ import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
 import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
 import { removeWithAnimation } from "@/lib/animation/listMotion";
-import type { Folder, MediaItem } from "@/types/domain";
+import { mediaPublicUrl, type Folder, type MediaItem } from "@/types/domain";
 import { RenameableTitle } from "./RenameableTitle";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
 
@@ -939,6 +939,17 @@ function FileRow({
             deleting one would leave no way to add it back. */}
         {item.media_type !== "page" && (
           <>
+            {/* Supabase's own ?download= is what actually saves the file
+                under its library name: the file lives on the storage
+                domain, so a plain download attribute (different origin)
+                would be ignored and the browser would just open it. */}
+            <a
+              href={`${mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path)}?download=${encodeURIComponent(item.name)}`}
+              download={item.name}
+              className={MENU_ITEM_CLASS}
+            >
+              Download
+            </a>
             <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />
             <MenuItem danger disabled={pending} onClick={handleDelete}>
               Delete

@@ -71,7 +71,16 @@ export function ReplaceMediaButton({ item, className }: { item: MediaItem; class
       <button
         type="button"
         disabled={uploading}
-        onClick={() => inputRef.current?.click()}
+        // Kept from reaching the row menu this sits in, which closes on any
+        // click inside it: that would unmount this button — and the hidden
+        // input below — while the file dialog is still open, so picking a
+        // file would fire a change event React no longer listens to, and
+        // the replace would silently never happen. The menu stays open
+        // behind the dialog instead, and shows the spinner while it runs.
+        onClick={(e) => {
+          e.stopPropagation();
+          inputRef.current?.click();
+        }}
         className={className ?? "press-ghost self-start text-[13px] text-muted hover:opacity-70"}
       >
         {uploading ? <Spinner className="inline h-3.5 w-3.5" /> : "Replace"}
