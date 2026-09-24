@@ -38,7 +38,7 @@ const WORDMARK_OPACITY = 0.27;
 // the right, barely softened, and dark enough to read over a background
 // image as well as over the markings.
 const SHADOW_OFFSET = 34;
-const SHADOW_BLUR = 12;
+const SHADOW_BLUR = 72;
 const SHADOW_OPACITY = 0.75;
 // A deep burgundy, the one touch of colour on the face.
 const BURGUNDY = "#800020";
