@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { brandFont } from "@/lib/fonts";
 import { COLOSSEUM_WORDMARK, HOUR_ARM, HOUR_MARKINGS, MINUTE_ARM, TEN_MIN_MARKINGS, type ArmArt } from "./clockArt";
 
@@ -34,6 +34,12 @@ const CALLIGRAPHY_FROM_TOP = { portrait: 0.8, landscape: 0.7 };
 // strength; everything printed on the dial sits back behind them.
 const MARKING_OPACITY = { hour: 1, tenMinute: 0.27 };
 const WORDMARK_OPACITY = 0.27;
+// The hands' shadow, in the markings' units: a short offset down and to
+// the right, barely softened, and dark enough to read over a background
+// image as well as over the markings.
+const SHADOW_OFFSET = 34;
+const SHADOW_BLUR = 12;
+const SHADOW_OPACITY = 0.75;
 // A deep burgundy, the one touch of colour on the face.
 const BURGUNDY = "#800020";
 
@@ -252,6 +258,13 @@ function Hands({
   const minuteRef = useRef<SVGGElement>(null);
   const secondRef = useRef<SVGGElement>(null);
   const handsRef = useRef<SVGGElement>(null);
+  // Each hand's shadow is a second copy of it, turned to the same angle.
+  const hourShadowRef = useRef<SVGGElement>(null);
+  const minuteShadowRef = useRef<SVGGElement>(null);
+  const secondShadowRef = useRef<SVGGElement>(null);
+  // Scoped to this face: a library page draws a dozen of them at once, and
+  // each one's blur is in its own pixels.
+  const blurId = `${useId()}-hand-shadow`;
 
   // Rotated straight on the DOM every frame rather than through React
   // state — a re-render per frame for three transforms would be pure
@@ -278,12 +291,15 @@ function Hands({
       if (lastHour === null || Math.abs(h * 30 - lastHour) > 0.02) {
         lastHour = h * 30;
         hourRef.current?.setAttribute("transform", `rotate(${lastHour})`);
+        hourShadowRef.current?.setAttribute("transform", `rotate(${lastHour})`);
       }
       if (lastMinute === null || Math.abs(m * 6 - lastMinute) > 0.02) {
         lastMinute = m * 6;
         minuteRef.current?.setAttribute("transform", `rotate(${lastMinute})`);
+        minuteShadowRef.current?.setAttribute("transform", `rotate(${lastMinute})`);
       }
       secondRef.current?.setAttribute("transform", `rotate(${s * 6})`);
+      secondShadowRef.current?.setAttribute("transform", `rotate(${s * 6})`);
       if (handsRef.current) handsRef.current.style.opacity = "1";
       frame = requestAnimationFrame(tick);
     }
@@ -292,31 +308,59 @@ function Hands({
   }, []);
 
   const secondWidth = Math.max(SECOND_WIDTH * scale, 1);
+  const hingeRadius = Math.max(HINGE_DOT * scale, 1.5);
+
+  function secondLine(stroke: string) {
+    return (
+      <line
+        x1={0}
+        y1={SECOND_TAIL * scale}
+        x2={0}
+        y2={-SECOND_REACH * scale}
+        stroke={stroke}
+        strokeWidth={secondWidth}
+        strokeLinecap="round"
+      />
+    );
+  }
 
   return (
     <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${width} ${height}`} aria-label="Clock" role="img">
+      <defs>
+        {/* Room around each shape for the blur to spread into, rather than
+            the default box that would clip a thin hand's own shadow. */}
+        <filter id={blurId} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation={SHADOW_BLUR * scale} />
+        </filter>
+      </defs>
       <g transform={`translate(${width / 2}, ${height / 2})`}>
         <g ref={handsRef} style={{ opacity: 0 }}>
+          {/* The shadows are offset outside the rotations, so they all fall
+              the same way whatever the time is, and each carries its own
+              blur so only the second hand's is redrawn every frame. */}
+          <g transform={`translate(${SHADOW_OFFSET * scale}, ${SHADOW_OFFSET * scale})`} opacity={SHADOW_OPACITY}>
+            <g ref={hourShadowRef} filter={`url(#${blurId})`}>
+              <Arm art={HOUR_ARM} scale={scale} fill="#000" />
+            </g>
+            <g ref={minuteShadowRef} filter={`url(#${blurId})`}>
+              <Arm art={MINUTE_ARM} scale={scale} fill="#000" />
+            </g>
+            <g ref={secondShadowRef} filter={`url(#${blurId})`}>
+              {secondLine("#000")}
+            </g>
+            <circle r={hingeRadius} fill="#000" filter={`url(#${blurId})`} />
+          </g>
+
           <g ref={hourRef}>
-            <Arm art={HOUR_ARM} scale={scale} />
+            <Arm art={HOUR_ARM} scale={scale} fill="#fff" />
           </g>
           <g ref={minuteRef}>
-            <Arm art={MINUTE_ARM} scale={scale} />
+            <Arm art={MINUTE_ARM} scale={scale} fill="#fff" />
           </g>
           {/* Plain line, round-capped, no bulge of its own — just the
               little hinge dot it's mounted on over the other two. */}
-          <g ref={secondRef}>
-            <line
-              x1={0}
-              y1={SECOND_TAIL * scale}
-              x2={0}
-              y2={-SECOND_REACH * scale}
-              stroke={BURGUNDY}
-              strokeWidth={secondWidth}
-              strokeLinecap="round"
-            />
-          </g>
-          <circle r={Math.max(HINGE_DOT * scale, 1.5)} fill={BURGUNDY} />
+          <g ref={secondRef}>{secondLine(BURGUNDY)}</g>
+          <circle r={hingeRadius} fill={BURGUNDY} />
         </g>
       </g>
     </svg>
@@ -325,10 +369,10 @@ function Hands({
 
 // Drawn pointing at 12, turned about its own hinge, which sits on the
 // centre of the face.
-function Arm({ art, scale }: { art: ArmArt; scale: number }) {
+function Arm({ art, scale, fill }: { art: ArmArt; scale: number; fill: string }) {
   return (
     <g transform={`scale(${scale}) translate(${-art.pivotX}, ${-art.pivotY})`}>
-      <path d={art.d} fill="#fff" />
+      <path d={art.d} fill={fill} />
     </g>
   );
 }
