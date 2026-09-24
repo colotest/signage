@@ -1,11 +1,23 @@
 "use client";
 
-import * as pdfjs from "pdfjs-dist";
+// pdf.js is loaded on first use, never at module scope: it reaches for
+// browser-only globals (DOMMatrix) the moment it's evaluated, and Next
+// still runs a client component's module through the server renderer — a
+// plain import at the top here took the whole Library page's server render
+// down with it, silently falling back to client-only rendering.
+type PdfJs = typeof import("pdfjs-dist");
+let pdfjsPromise: Promise<PdfJs> | null = null;
 
-// The same worker the player's PdfSlide uses, resolved through the bundler
-// rather than a CDN so this keeps working on a venue connection that can't
-// reach one.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+function loadPdfJs(): Promise<PdfJs> {
+  pdfjsPromise ??= import("pdfjs-dist").then((pdfjs) => {
+    // The same worker the player's PdfSlide uses, resolved through the
+    // bundler rather than a CDN so this keeps working on a venue
+    // connection that can't reach one.
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+    return pdfjs;
+  });
+  return pdfjsPromise;
+}
 
 // Long edge of a rendered page, in pixels. 1080p screens are the target and
 // a page is shown whole, so this is a comfortable margin over what any of
@@ -28,6 +40,7 @@ export type RenderedPage = {
 // onProgress reports pages finished so an upload of a long deck can say
 // where it's got to.
 export async function renderPdfPages(file: File, onProgress?: (done: number, total: number) => void): Promise<RenderedPage[]> {
+  const pdfjs = await loadPdfJs();
   const data = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data }).promise;
   const pages: RenderedPage[] = [];

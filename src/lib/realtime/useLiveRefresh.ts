@@ -15,6 +15,7 @@ const LIVE_TABLES = [
   "playlist_items",
   "folders",
   "media_items",
+  "decks",
   "playlists",
   "playlist_entries",
   "scheduled_playbacks",
@@ -28,7 +29,8 @@ const DEBOUNCE_MS = 400;
 // built from. Own edits already refresh directly — an extra refresh landing
 // on top of that is harmless, since it produces the same server render.
 //
-// Needs each table in the supabase_realtime publication (see 0015).
+// Needs each table in the supabase_realtime publication (see 0016, and
+// 0020 for decks).
 // Without that, nothing arrives and pages behave as they did before: fresh
 // on load, updated by your own edits.
 export function useLiveRefresh(channelName: string) {
