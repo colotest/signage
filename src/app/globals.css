@@ -288,20 +288,12 @@ body {
   padding-bottom: 90px;
 }
 
-/* The playlists list's own bottom clearance: safari-toolbar-inset's 90px
-   (see above) plus the 40px the list now reaches past its own bottom edge,
-   so its last card still stops where it did before that reach was added.
-   On the Library page it's also the last thing on a page running down
-   behind iOS Safari's toolbar, where 90px alone left the card crowding the
-   controls — playlists-touch-inset adds two more list gaps (2 × 12px) on
-   touch devices, on top of the same 40px. */
-.playlists-bottom-inset {
-  padding-bottom: 130px;
-}
-
+/* The Library's playlists list is the last thing on a page that runs right
+   down behind iOS Safari's toolbar, and 90px alone left its last card
+   crowding the controls — two more list gaps (2 × 12px) on touch devices. */
 @media (pointer: coarse) {
   .playlists-touch-inset {
-    padding-bottom: 154px;
+    padding-bottom: 114px;
   }
 }
 
