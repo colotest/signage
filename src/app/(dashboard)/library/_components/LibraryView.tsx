@@ -350,8 +350,18 @@ export function LibraryView({
             own content scrolling internally rather than the whole page
             growing past the viewport. On mobile the split is 3:4 (Media
             smaller, Playlists larger) rather than an even half each — sm:
-            resets that back to equal halves on desktop. */}
-        <section className="flex min-h-0 flex-[3] flex-col sm:flex-1">
+            resets that back to equal halves on desktop.
+
+            Media then takes a further 40px (about one section title's
+            height) off Playlists, via a flex-basis it keeps before the
+            ratio splits what's left: a basis of b nets Media b minus its
+            own share of it, so 70px nets 40 at the 3:4 split and 80px nets
+            40 at the even one. It's the boundary between the two that
+            moves — the band around the Playlists title can't itself be
+            tightened, since each list's own background wash would then
+            start painting over the other's fading rows (see FileTree's
+            -mb-5). */}
+        <section className="flex min-h-0 flex-[3_1_70px] flex-col sm:flex-[1_1_80px]">
           {/* relative z-10 keeps this above FileTree's own list, which now
               overlaps up underneath it (see FileTree) so scrolled-past rows
               fade away rather than popping in and out below this row. */}
