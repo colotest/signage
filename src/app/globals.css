@@ -244,34 +244,40 @@ body {
    PlaylistSection), scrolled-past rows fade away underneath the "Media"/
    "Playlists" title rows rather than popping in and out beneath them. */
 .scroll-fade-y {
+  /* Per-edge, so an edge with another list right beyond it can fade over a
+     shorter distance than one at the page's own edge — the fade is what
+     most of the empty band between two stacked lists is made of. Override
+     with [--fade-bottom:12px] / [--fade-top:12px] on the element; the 40px
+     default lives in the var() fallbacks below rather than in a declaration
+     here, which — being unlayered — would outrank those utilities. */
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0, 0, 0, 0.06) 8px,
-    rgba(0, 0, 0, 0.2) 16px,
-    rgba(0, 0, 0, 0.45) 24px,
-    rgba(0, 0, 0, 0.75) 32px,
-    black 40px,
-    black calc(100% - 40px),
-    rgba(0, 0, 0, 0.75) calc(100% - 32px),
-    rgba(0, 0, 0, 0.45) calc(100% - 24px),
-    rgba(0, 0, 0, 0.2) calc(100% - 16px),
-    rgba(0, 0, 0, 0.06) calc(100% - 8px),
+    rgba(0, 0, 0, 0.06) calc(var(--fade-top, 40px) * 0.2),
+    rgba(0, 0, 0, 0.2) calc(var(--fade-top, 40px) * 0.4),
+    rgba(0, 0, 0, 0.45) calc(var(--fade-top, 40px) * 0.6),
+    rgba(0, 0, 0, 0.75) calc(var(--fade-top, 40px) * 0.8),
+    black var(--fade-top, 40px),
+    black calc(100% - var(--fade-bottom, 40px)),
+    rgba(0, 0, 0, 0.75) calc(100% - var(--fade-bottom, 40px) * 0.8),
+    rgba(0, 0, 0, 0.45) calc(100% - var(--fade-bottom, 40px) * 0.6),
+    rgba(0, 0, 0, 0.2) calc(100% - var(--fade-bottom, 40px) * 0.4),
+    rgba(0, 0, 0, 0.06) calc(100% - var(--fade-bottom, 40px) * 0.2),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0, 0, 0, 0.06) 8px,
-    rgba(0, 0, 0, 0.2) 16px,
-    rgba(0, 0, 0, 0.45) 24px,
-    rgba(0, 0, 0, 0.75) 32px,
-    black 40px,
-    black calc(100% - 40px),
-    rgba(0, 0, 0, 0.75) calc(100% - 32px),
-    rgba(0, 0, 0, 0.45) calc(100% - 24px),
-    rgba(0, 0, 0, 0.2) calc(100% - 16px),
-    rgba(0, 0, 0, 0.06) calc(100% - 8px),
+    rgba(0, 0, 0, 0.06) calc(var(--fade-top, 40px) * 0.2),
+    rgba(0, 0, 0, 0.2) calc(var(--fade-top, 40px) * 0.4),
+    rgba(0, 0, 0, 0.45) calc(var(--fade-top, 40px) * 0.6),
+    rgba(0, 0, 0, 0.75) calc(var(--fade-top, 40px) * 0.8),
+    black var(--fade-top, 40px),
+    black calc(100% - var(--fade-bottom, 40px)),
+    rgba(0, 0, 0, 0.75) calc(100% - var(--fade-bottom, 40px) * 0.8),
+    rgba(0, 0, 0, 0.45) calc(100% - var(--fade-bottom, 40px) * 0.6),
+    rgba(0, 0, 0, 0.2) calc(100% - var(--fade-bottom, 40px) * 0.4),
+    rgba(0, 0, 0, 0.06) calc(100% - var(--fade-bottom, 40px) * 0.2),
     transparent 100%
   );
 }

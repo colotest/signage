@@ -331,7 +331,7 @@ export function FileTree({
           <div className="absolute inset-0">
             <div
               style={{ WebkitTouchCallout: "none" }}
-              className="scroll-fade-y no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-10"
+              className="scroll-fade-y [--fade-bottom:12px] no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-3"
             >
               <div>
                 <TreeLevel
@@ -376,7 +376,11 @@ export function FileTree({
               </div>
             </div>
             <ProgressiveBlurEdge side="top" />
-            <ProgressiveBlurEdge side="bottom" />
+            {/* Shallower: the playlists list (or Now Playing, in the Playback
+            Menu) starts right below, so this edge has no room for the deep
+            version — and its depth is most of the empty band between the
+            two. */}
+        <ProgressiveBlurEdge side="bottom" extent={24} />
           </div>
           {/* Desktop-only sort bar — absolutely positioned so it overlays
               the blur/fade zone instead of taking its own row above it,

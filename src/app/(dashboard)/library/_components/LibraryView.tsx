@@ -345,23 +345,22 @@ export function LibraryView({
       onDragEnd={handleDragEnd}
       onDragCancel={clearDragState}
     >
-      <div className="flex h-full min-h-0 flex-col gap-6">
+      <div className="flex h-full min-h-0 flex-col gap-4">
         {/* Two fixed sections, both always in view at once, with only their
             own content scrolling internally rather than the whole page
             growing past the viewport. On mobile the split is 3:4 (Media
             smaller, Playlists larger) rather than an even half each — sm:
             resets that back to equal halves on desktop.
 
-            Media then takes a further 40px (about one section title's
-            height) off Playlists, via a flex-basis it keeps before the
-            ratio splits what's left: a basis of b nets Media b minus its
-            own share of it, so 70px nets 40 at the 3:4 split and 80px nets
-            40 at the even one. It's the boundary between the two that
-            moves — the band around the Playlists title can't itself be
-            tightened, since each list's own background wash would then
-            start painting over the other's fading rows (see FileTree's
-            -mb-5). */}
-        <section className="flex min-h-0 flex-[3_1_70px] flex-col sm:flex-[1_1_80px]">
+            gap-4 rather than something roomier: what separates the two on
+            screen is mostly their facing fade zones (shallow there for
+            exactly this reason — see ProgressiveBlurEdge's extent), and
+            this gap only sits on top of that. It can't go much below this
+            either — the playlists list reaches 40px up past its own top
+            edge and the media list 20px down past its bottom, so a smaller
+            gap starts pushing the playlists list's own background wash over
+            the media list's last rows before they've finished fading. */}
+        <section className="flex min-h-0 flex-[3] flex-col sm:flex-1">
           {/* relative z-10 keeps this above FileTree's own list, which now
               overlaps up underneath it (see FileTree) so scrolled-past rows
               fade away rather than popping in and out below this row. */}

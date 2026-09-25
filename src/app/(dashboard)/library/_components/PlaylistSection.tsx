@@ -206,11 +206,12 @@ export function PlaylistSection({
           which is also what keeps the blur pinned in place while content
           scrolls underneath it. */}
       <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
-        {/* pt-[52px]: the 40px fade zone plus one more list gap (gap-3), so
-            the first card doesn't sit right up under the title. */}
+        {/* pt-[20px]: the (here shallower, 12px) fade zone plus a little
+            breathing room, so the first card doesn't sit right up under the
+            title. */}
         <div
           className={cn(
-            "scroll-fade-y no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[52px]",
+            "scroll-fade-y [--fade-top:12px] no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[20px]",
             listClassName,
           )}
         >
@@ -242,7 +243,9 @@ export function PlaylistSection({
             ))}
           </ul>
         </div>
-        <ProgressiveBlurEdge side="top" />
+        {/* Shallower: the media list ends right above, and this edge's
+            depth is most of the empty band between the two. */}
+        <ProgressiveBlurEdge side="top" extent={24} />
         <ProgressiveBlurEdge side="bottom" />
       </div>
     </div>
