@@ -422,7 +422,7 @@ export function PlaybackMenu({
         </div>
       }
       contentClassName="sm:max-w-3xl sm:h-[85vh]"
-      bodyClassName="flex min-h-0 flex-col overflow-hidden"
+      bodyClassName="flex min-h-0 flex-col overflow-hidden pb-15"
     >
       {/* FileTree's own draggables/droppables need a DndContext above them;
           with no sensors it never starts a drag — this tree is only ever a
@@ -444,7 +444,7 @@ export function PlaybackMenu({
           }}
         >
           <div
-            className="flex min-h-0 flex-1 flex-col pb-5 ease-out"
+            className="flex min-h-0 flex-1 flex-col pb-15 ease-out"
             style={{
               transform: picking ? "none" : "translateY(-40px)",
               transition: `transform ${FILE_PICKER_MS}ms`,

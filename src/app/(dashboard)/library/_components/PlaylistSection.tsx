@@ -199,12 +199,14 @@ export function PlaylistSection({
           matters. The scrolling div is sized via inset-0 against this div,
           which is also what keeps the blur pinned in place while content
           scrolls underneath it. */}
-      <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
-        {/* pt-[52px]: the 40px fade zone plus one more list gap (gap-3), so
-            the first card doesn't sit right up under the title. */}
+      <div className="relative -mt-20 -mb-15 mx-[-10px] min-h-0 flex-1">
+        {/* pt-[92px]: the 40px fade zone, one more list gap (gap-3), and
+            the 40px this list now reaches past its own top edge (see the
+            div above) — so the first card sits exactly where it did before
+            that reach was added, rather than up under the title. */}
         <div
           className={cn(
-            "scroll-fade-y no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[52px]",
+            "scroll-fade-y no-scrollbar playlists-bottom-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[92px]",
             listClassName,
           )}
         >

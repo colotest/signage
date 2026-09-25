@@ -291,7 +291,7 @@ export function FileTree({
         onDragOver={handleNativeDragOver}
         onDragLeave={handleNativeDragLeave}
         onDrop={handleNativeDrop}
-        className={cn("relative -mx-5 -mt-10 -mb-5 flex min-h-0 flex-col sm:pt-10", className)}
+        className={cn("relative -mx-5 -mt-20 -mb-15 flex min-h-0 flex-col sm:pt-10", className)}
       >
         {/* overflow-x-hidden (not scroll) is the point — file details and
             row actions live behind the "⋯" menu precisely so a narrow row
@@ -324,7 +324,7 @@ export function FileTree({
           <div className="absolute inset-0">
             <div
               style={{ WebkitTouchCallout: "none" }}
-              className="scroll-fade-y no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-10 pb-10"
+              className="scroll-fade-y no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-20"
             >
               <div>
                 <TreeLevel
@@ -379,7 +379,7 @@ export function FileTree({
               background, so sitting on top of the fade zone reads fine.
               Hidden on mobile — the mobile equivalent is the round "⋯" sort
               button next to the Upload pill (LibraryView). */}
-          <div className="hidden absolute inset-x-0 top-0 z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
+          <div className="hidden absolute inset-x-0 top-10 z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
             <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} className="flex-1" />
             <SortButton
               label="Kind"
