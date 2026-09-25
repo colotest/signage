@@ -280,18 +280,25 @@ export function FileTree({
           (LibraryView, which needs its own relative z-10 to stay on top) —
           on mobile, where the sort bar below is hidden, this is what lets
           scrolled-past rows fade away underneath that title instead of
-          popping in and out below it. sm:pt-10 cancels that shift back out
-          once the sort bar becomes visible, so its own position on desktop
-          is unaffected. -mb-5 does the same at the bottom edge (a smaller
-          20px, not needing any sm: compensation since nothing else sits
-          below this to protect) so the bottom fade gets a little more room
-          too, for proportion against the top. */}
+          popping in and out below it, and (with pt-20 matching it below)
+          the reach is pure fade zone — no row moves. sm:pt-10 gives back
+          40px of it once the sort bar becomes visible, so the bar and the
+          first row stay exactly where they were on desktop; the sort bar's
+          own top-10 does the rest.
+
+          -mb-5 stays at its original 20px rather than reaching as deep as
+          the top: the playlists list sits directly below, and a list's own
+          background wash (ProgressiveBlurEdge) paints over whatever is
+          behind it. Reaching further down put the playlists list's wash
+          straight over these rows as they faded, cutting them off dead
+          instead of fading them — a title can layer itself above a
+          neighbouring list's edge, another list's rows can't. */}
       <div
         onDragEnter={handleNativeDragEnter}
         onDragOver={handleNativeDragOver}
         onDragLeave={handleNativeDragLeave}
         onDrop={handleNativeDrop}
-        className={cn("relative -mx-5 -mt-20 -mb-15 flex min-h-0 flex-col sm:pt-10", className)}
+        className={cn("relative -mx-5 -mt-20 -mb-5 flex min-h-0 flex-col sm:pt-10", className)}
       >
         {/* overflow-x-hidden (not scroll) is the point — file details and
             row actions live behind the "⋯" menu precisely so a narrow row
@@ -324,7 +331,7 @@ export function FileTree({
           <div className="absolute inset-0">
             <div
               style={{ WebkitTouchCallout: "none" }}
-              className="scroll-fade-y no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-20"
+              className="scroll-fade-y no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-10"
             >
               <div>
                 <TreeLevel

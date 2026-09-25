@@ -171,11 +171,13 @@ export function PlaylistSection({
           rather than bleeding to the screen edges, just a little wider via
           the -10px side margin. Each row is its own rounded, bordered card
           (see PlaylistRow) rather than this whole list being one bordered
-          box. -mt-10/-mb-5 pull the list up 40px and down 20px past its own
-          normal top/bottom edges, overlapping the title row above (which
-          needs its own relative z-10 to stay on top) and the space below —
-          asymmetric on purpose, matching what reads well against the
-          smaller bottom fade. This is what lets scrolled-past cards fade
+          box. -mt-10/-mb-15 pull the list up 40px and down 60px past its
+          own normal top/bottom edges, overlapping the title row above
+          (which needs its own relative z-10 to stay on top) and the space
+          below. The bottom reaches deeper because nothing sits below it;
+          the top can't, since the media list ends right above and this
+          list's own background wash would paint over its fading rows and
+          cut them off dead (see FileTree's -mb-5). This is what lets scrolled-past cards fade
           away underneath the title, top and bottom, instead of popping in
           and out at a hard edge. pt-[52px]/safari-toolbar-inset (padding on
           this scrolling element itself, not on the <ul> it wraps —
@@ -199,14 +201,12 @@ export function PlaylistSection({
           matters. The scrolling div is sized via inset-0 against this div,
           which is also what keeps the blur pinned in place while content
           scrolls underneath it. */}
-      <div className="relative -mt-20 -mb-15 mx-[-10px] min-h-0 flex-1">
-        {/* pt-[92px]: the 40px fade zone, one more list gap (gap-3), and
-            the 40px this list now reaches past its own top edge (see the
-            div above) — so the first card sits exactly where it did before
-            that reach was added, rather than up under the title. */}
+      <div className="relative -mt-10 -mb-15 mx-[-10px] min-h-0 flex-1">
+        {/* pt-[52px]: the 40px fade zone plus one more list gap (gap-3), so
+            the first card doesn't sit right up under the title. */}
         <div
           className={cn(
-            "scroll-fade-y no-scrollbar playlists-bottom-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[92px]",
+            "scroll-fade-y no-scrollbar playlists-bottom-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[52px]",
             listClassName,
           )}
         >

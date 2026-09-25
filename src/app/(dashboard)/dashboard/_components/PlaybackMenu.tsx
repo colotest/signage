@@ -444,7 +444,7 @@ export function PlaybackMenu({
           }}
         >
           <div
-            className="flex min-h-0 flex-1 flex-col pb-15 ease-out"
+            className="flex min-h-0 flex-1 flex-col pb-5 ease-out"
             style={{
               transform: picking ? "none" : "translateY(-40px)",
               transition: `transform ${FILE_PICKER_MS}ms`,
