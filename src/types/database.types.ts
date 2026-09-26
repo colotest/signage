@@ -17,6 +17,8 @@ export type ScreenBackground = "black" | "white";
 export type ScreenTransition = "cut" | "dip" | "crossfade" | "slide";
 // How long that transition runs — the player maps these to milliseconds.
 export type ScreenTransitionSpeed = "fast" | "normal" | "slow";
+// Which edge a sliding transition enters from — see 0021.
+export type ScreenSlideDirection = "right" | "left" | "top" | "bottom";
 
 export type Database = {
   public: {
@@ -30,6 +32,7 @@ export type Database = {
           background: ScreenBackground;
           transition: ScreenTransition;
           transition_speed: ScreenTransitionSpeed;
+          slide_direction: ScreenSlideDirection;
           position: number;
           created_at: string;
           updated_at: string;
@@ -42,6 +45,7 @@ export type Database = {
           background?: ScreenBackground;
           transition?: ScreenTransition;
           transition_speed?: ScreenTransitionSpeed;
+          slide_direction?: ScreenSlideDirection;
           position?: number;
           created_at?: string;
           updated_at?: string;
@@ -54,6 +58,7 @@ export type Database = {
           background?: ScreenBackground;
           transition?: ScreenTransition;
           transition_speed?: ScreenTransitionSpeed;
+          slide_direction?: ScreenSlideDirection;
           position?: number;
           created_at?: string;
           updated_at?: string;

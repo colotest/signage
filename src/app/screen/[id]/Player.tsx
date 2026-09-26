@@ -12,6 +12,7 @@ import type {
   MediaItem,
   PlaylistItemWithMedia,
   Screen,
+  ScreenSlideDirection,
   ScreenTransition,
   ScreenTransitionSpeed,
 } from "@/types/domain";
@@ -60,9 +61,26 @@ const TRANSITION_MS: Record<ScreenTransitionSpeed, number> = { fast: 200, normal
 
 function noop() {}
 
+// Where the incoming slide starts and the outgoing one ends, as the
+// offsets the slide keyframes read. Named for the incoming slide's origin:
+// entering from the right means the one it replaces leaves to the left.
+function slideOffsets(direction: ScreenSlideDirection): CSSProperties {
+  switch (direction) {
+    case "left":
+      return { "--slide-in-x": "-100%", "--slide-in-y": "0", "--slide-out-x": "100%", "--slide-out-y": "0" } as CSSProperties;
+    case "top":
+      return { "--slide-in-x": "0", "--slide-in-y": "-100%", "--slide-out-x": "0", "--slide-out-y": "100%" } as CSSProperties;
+    case "bottom":
+      return { "--slide-in-x": "0", "--slide-in-y": "100%", "--slide-out-x": "0", "--slide-out-y": "-100%" } as CSSProperties;
+    case "right":
+      return { "--slide-in-x": "100%", "--slide-in-y": "0", "--slide-out-x": "-100%", "--slide-out-y": "0" } as CSSProperties;
+  }
+}
+
 function transitionStyles(
   transition: Exclude<ScreenTransition, "cut">,
   duration: number,
+  direction: ScreenSlideDirection,
 ): {
   outgoing: CSSProperties;
   incoming: CSSProperties;
@@ -79,11 +97,13 @@ function transitionStyles(
         outgoing: { animation: `screen-fade-out ${duration}ms ease-in both` },
         incoming: { animation: `screen-fade-in ${duration}ms ease-out both` },
       };
-    case "slide":
+    case "slide": {
+      const offsets = slideOffsets(direction);
       return {
-        outgoing: { animation: `screen-slide-out ${duration}ms cubic-bezier(0.4, 0, 0.2, 1) both` },
-        incoming: { animation: `screen-slide-in ${duration}ms cubic-bezier(0.4, 0, 0.2, 1) both` },
+        outgoing: { ...offsets, animation: `screen-slide-out ${duration}ms cubic-bezier(0.4, 0, 0.2, 1) both` },
+        incoming: { ...offsets, animation: `screen-slide-in ${duration}ms cubic-bezier(0.4, 0, 0.2, 1) both` },
       };
+    }
   }
 }
 
@@ -621,6 +641,7 @@ export function Player({
       ? transitionStyles(
           effectiveTransition(transition, outgoing, current) as Exclude<ScreenTransition, "cut">,
           transitionMs,
+          screen.slide_direction ?? "right",
         )
       : { outgoing: undefined, incoming: undefined };
 

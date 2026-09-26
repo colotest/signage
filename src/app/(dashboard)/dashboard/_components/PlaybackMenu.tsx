@@ -15,7 +15,7 @@ import {
   updateItemDuration,
 } from "@/lib/actions/playlist";
 import { cancelScheduledPlayback, schedulePlaylist } from "@/lib/actions/schedules";
-import { setScreenTransition, setScreenTransitionSpeed } from "@/lib/actions/screens";
+import { setScreenSlideDirection, setScreenTransition, setScreenTransitionSpeed } from "@/lib/actions/screens";
 import type {
   DeckWithPages,
   Folder,
@@ -23,6 +23,7 @@ import type {
   PlaylistItemWithMedia,
   ScheduledPlayback,
   Screen,
+  ScreenSlideDirection,
   ScreenTransition,
   ScreenTransitionSpeed,
 } from "@/types/domain";
@@ -372,6 +373,24 @@ export function PlaybackMenu({
     router.refresh();
   }
 
+  const [slideDirection, setSlideDirection] = useState<ScreenSlideDirection>(screen.slide_direction ?? "right");
+  const [prevDirection, setPrevDirection] = useState(screen.slide_direction);
+  if (screen.slide_direction !== prevDirection) {
+    setPrevDirection(screen.slide_direction);
+    setSlideDirection(screen.slide_direction ?? "right");
+  }
+
+  async function handleSelectSlideDirection(next: ScreenSlideDirection) {
+    if (next === slideDirection) return;
+    setSlideDirection(next);
+    try {
+      await setScreenSlideDirection(screen.id, next);
+    } catch (err) {
+      console.error("Failed to set slide direction", err);
+    }
+    router.refresh();
+  }
+
   async function handleSelectTransition(next: ScreenTransition) {
     if (next === transition) return;
     setTransition(next);
@@ -409,6 +428,8 @@ export function PlaybackMenu({
             onSelect={handleSelectTransition}
             speed={speed}
             onSelectSpeed={handleSelectSpeed}
+            slideDirection={slideDirection}
+            onSelectSlideDirection={handleSelectSlideDirection}
           />
           <button
             type="button"

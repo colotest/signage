@@ -4,11 +4,20 @@ import type {
   MediaType,
   ScreenBackground,
   ScreenRotation,
+  ScreenSlideDirection,
   ScreenTransition,
   ScreenTransitionSpeed,
 } from "./database.types";
 
-export type { FitMode, MediaType, ScreenBackground, ScreenRotation, ScreenTransition, ScreenTransitionSpeed };
+export type {
+  FitMode,
+  MediaType,
+  ScreenBackground,
+  ScreenRotation,
+  ScreenSlideDirection,
+  ScreenTransition,
+  ScreenTransitionSpeed,
+};
 
 export type Screen = Database["public"]["Tables"]["screens"]["Row"];
 export type Folder = Database["public"]["Tables"]["folders"]["Row"];

@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { FitMode, ScreenBackground, ScreenRotation, ScreenTransition, ScreenTransitionSpeed } from "@/types/domain";
+import type {
+  FitMode,
+  ScreenBackground,
+  ScreenRotation,
+  ScreenSlideDirection,
+  ScreenTransition,
+  ScreenTransitionSpeed,
+} from "@/types/domain";
 
 export async function createScreen() {
   await requireSession();
@@ -74,6 +81,14 @@ export async function setScreenTransitionSpeed(id: number, speed: ScreenTransiti
   await requireSession();
   const admin = createAdminClient();
   const { error } = await admin.from("screens").update({ transition_speed: speed }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
+
+export async function setScreenSlideDirection(id: number, direction: ScreenSlideDirection) {
+  await requireSession();
+  const admin = createAdminClient();
+  const { error } = await admin.from("screens").update({ slide_direction: direction }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
 }

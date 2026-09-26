@@ -439,14 +439,17 @@ button.press-ghost::after {
   }
 }
 
+/* One pair for all four directions: the offsets come in as custom
+   properties set on the layer itself (see Player's slideOffsets), which
+   default to the original right-to-left slide. */
 @keyframes screen-slide-in {
   from {
-    transform: translateX(100%);
+    transform: translate(var(--slide-in-x, 100%), var(--slide-in-y, 0));
   }
 }
 
 @keyframes screen-slide-out {
   to {
-    transform: translateX(-100%);
+    transform: translate(var(--slide-out-x, -100%), var(--slide-out-y, 0));
   }
 }
