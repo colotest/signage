@@ -38,7 +38,10 @@ export function Sheet({
         <Dialog.Overlay className="sheet-overlay fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
         <Dialog.Content
           className={cn(
-            "sheet-content fixed z-50 flex flex-col bg-surface shadow-[var(--shadow-sheet)] outline-none",
+            // --edge-scrim: lists inside a popup (the Playback Menu's media
+            // and playlists lists) fade out against the popup's own surface
+            // rather than the page colour behind it — see ProgressiveBlurEdge.
+            "sheet-content fixed z-50 flex flex-col bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
             "inset-0 rounded-none",
             "sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md sm:max-h-[85vh] sm:rounded-[var(--radius-lg)]",

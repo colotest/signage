@@ -43,6 +43,11 @@ const LAYERS = [
 // colour is what makes a flat fill fade at the same rate as everything
 // else. Note this only works from OUTSIDE the content's mask — a scrim
 // inside it gets faded away by that same mask exactly where it's needed.
+//
+// "The background" means whatever these lists actually sit on, which isn't
+// always the page: inside the Playback Menu it's the popup's own surface.
+// Anything rendering them on something other than the page says so by
+// setting --edge-scrim on an ancestor (see Sheet).
 const SCRIM_FRACTION = 64 / BLUR_EXTENT;
 const SCRIM_STOPS: [number, number][] = [
   [0, 100],
@@ -67,7 +72,7 @@ export function ProgressiveBlurEdge({
   const scrimExtent = Math.round(extent * SCRIM_FRACTION);
   const scrim = `linear-gradient(${direction}, ${SCRIM_STOPS.map(
     ([fraction, percent]) =>
-      `color-mix(in srgb, var(--background) ${percent}%, transparent) ${Math.round(fraction * scrimExtent)}px`,
+      `color-mix(in srgb, var(--edge-scrim, var(--background)) ${percent}%, transparent) ${Math.round(fraction * scrimExtent)}px`,
   ).join(", ")})`;
 
   return (
