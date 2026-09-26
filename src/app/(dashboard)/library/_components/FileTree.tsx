@@ -331,7 +331,7 @@ export function FileTree({
           <div className="absolute inset-0">
             <div
               style={{ WebkitTouchCallout: "none" }}
-              className="scroll-fade-y [--fade-bottom:24px] no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-3"
+              className="scroll-fade-y [--fade-bottom:24px] no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-3 sm:pt-[92px]"
             >
               <div>
                 <TreeLevel
@@ -386,11 +386,18 @@ export function FileTree({
               the blur/fade zone instead of taking its own row above it,
               which used to leave a visible gap (its own height, plus the
               list's separate pt-10 fade reservation below that) between it
-              and the first real row. It already has an opaque/blurred
-              background, so sitting on top of the fade zone reads fine.
+              and the first real row. Its own (translucent, blurred)
+              background is what lets it sit on top of the fade zone and
+              still read — thinned further here so the rows passing behind
+              it stay visible through it. top-[52px] rather than flush with
+              the list's own top edge: 40px of that is the reach this list
+              takes past that edge (see -mt-20 above), and the remaining
+              12px — one of its own font sizes — keeps it off the Media
+              title above, with sm:pt-[92px] on the list below matching so
+              the first row still clears it.
               Hidden on mobile — the mobile equivalent is the round "⋯" sort
               button next to the Upload pill (LibraryView). */}
-          <div className="hidden absolute inset-x-0 top-10 z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)] px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
+          <div className="hidden absolute inset-x-0 top-[52px] z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)]/65 px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
             <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} className="flex-1" />
             <SortButton
               label="Kind"
