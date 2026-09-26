@@ -424,7 +424,10 @@ export function PlaybackMenu({
       titleClassName="text-[28px] font-semibold tracking-tight"
       // No rule under the header, and the button's own height carries the
       // row: together that brings Now Playing up close under the title.
-      headerClassName="border-b-0 py-3"
+      // pr-3 matches py-3, so the tick sits the same distance from the
+      // popup's top edge as from its right one; the title keeps the
+      // regular px-5 inset on the left.
+      headerClassName="border-b-0 py-3 pr-3"
       actions={
         <button
           type="button"

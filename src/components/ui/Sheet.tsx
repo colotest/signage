@@ -41,7 +41,11 @@ export function Sheet({
             // --edge-scrim: lists inside a popup (the Playback Menu's media
             // and playlists lists) fade out against the popup's own surface
             // rather than the page colour behind it — see ProgressiveBlurEdge.
-            "sheet-content fixed z-50 flex flex-col bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
+            // overflow-hidden: the lists inside end in full-width blur/scrim
+            // strips, which otherwise paint straight over the popup's own
+            // rounded corners and square them off. Clipping to this box's
+            // shape keeps the corners round whatever sits at the edges.
+            "sheet-content fixed z-50 flex flex-col overflow-hidden bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
             "inset-0 rounded-none",
             "sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md sm:max-h-[85vh] sm:rounded-[var(--radius-lg)]",
