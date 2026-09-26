@@ -1220,17 +1220,6 @@ function DeckRow({
         collapsedClassName="-mr-2.5"
       />
       <div style={{ width: depth * 20 }} className="shrink-0" />
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleExpanded();
-        }}
-        aria-label={isExpanded ? `Collapse ${deck.name}` : `Expand ${deck.name}`}
-        className="press-ghost -m-1 shrink-0 p-1 text-muted"
-      >
-        <Chevron open={isExpanded} />
-      </button>
       {/* The first page stands in for the deck, the way a cover does. */}
       <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
         {cover && <MediaThumb item={cover} />}
@@ -1238,13 +1227,29 @@ function DeckRow({
 
       <RowInfo
         title={
-          <RenameableTitle
-            id={deck.id}
-            name={deck.name}
-            selecting={selectionMode}
-            onRename={renameDeck}
-            className="truncate text-[13px] font-medium"
-          />
+          // The chevron rides along after the name rather than sitting out
+          // in front of the cover, so what it opens reads left to right:
+          // this deck, then its pages.
+          <span className="flex min-w-0 items-center gap-0.5">
+            <RenameableTitle
+              id={deck.id}
+              name={deck.name}
+              selecting={selectionMode}
+              onRename={renameDeck}
+              className="truncate text-[13px] font-medium"
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpanded();
+              }}
+              aria-label={isExpanded ? `Collapse ${deck.name}` : `Expand ${deck.name}`}
+              className="press-ghost -m-1 shrink-0 p-1 text-muted"
+            >
+              <Chevron open={isExpanded} />
+            </button>
+          </span>
         }
         date={formatDate(deck.created_at)}
       />
