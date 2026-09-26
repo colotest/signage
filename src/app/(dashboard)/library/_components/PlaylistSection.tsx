@@ -206,15 +206,15 @@ export function PlaylistSection({
           which is also what keeps the blur pinned in place while content
           scrolls underneath it. */}
       <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
-        {/* pt-[62px]: 40px of it pays back the reach this list takes past
+        {/* pt-[47px]: 40px of it pays back the reach this list takes past
             its own top edge (the -mt-10 above), which is what tucks
             scrolled cards under the title — without it the FIRST card
             starts up there too, half behind the title before you've
-            scrolled at all. The remaining ~22px sits it just clear of the
+            scrolled at all. The remaining 7px sits it just clear of the
             title's own baseline. */}
         <div
           className={cn(
-            "scroll-fade-y [--fade-top:24px] no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[62px]",
+            "scroll-fade-y [--fade-top:24px] no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[47px]",
             listClassName,
           )}
         >
