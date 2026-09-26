@@ -71,7 +71,12 @@ export function TransitionMenu({
   const active = OPTIONS.find((o) => o.value === transition) ?? OPTIONS[0];
 
   return (
-    <div ref={containerRef} className="relative shrink-0">
+    // Deliberately NOT the dropdown's positioning anchor: this button sits
+    // mid-row now, and a 256px menu hanging off its own right edge ran
+    // straight off a phone's screen. The nearest positioned ancestor (the
+    // Now Playing header row) is the anchor instead, so the menu lines up
+    // with that row's right edge and stays inside the card.
+    <div ref={containerRef} className="shrink-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

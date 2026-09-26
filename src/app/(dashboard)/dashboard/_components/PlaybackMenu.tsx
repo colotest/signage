@@ -418,32 +418,26 @@ export function PlaybackMenu({
       onOpenChange={handleOpenChange}
       title={screen.name}
       // The screen's name as a page-sized heading, matching "Playlists"
-      // below it, with the plain "Done" link replaced by the "⋯" playback
-      // settings and a blue tick that closes the menu.
+      // below it, with the plain "Done" link replaced by a blue tick the
+      // size of the tile's own playback button — the one that opened this
+      // menu, in the same corner of the same card.
       titleClassName="text-[28px] font-semibold tracking-tight"
+      // No rule under the header, and the button's own height carries the
+      // row: together that brings Now Playing up close under the title.
+      headerClassName="border-b-0 py-3"
       actions={
-        <div className="flex shrink-0 items-center gap-2">
-          <TransitionMenu
-            transition={transition}
-            onSelect={handleSelectTransition}
-            speed={speed}
-            onSelectSpeed={handleSelectSpeed}
-            slideDirection={slideDirection}
-            onSelectSlideDirection={handleSelectSlideDirection}
-          />
-          <button
-            type="button"
-            onClick={() => handleOpenChange(false)}
-            title="Done"
-            aria-label="Done"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast hover:opacity-90"
-          >
-            <CheckIcon className="h-4 w-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => handleOpenChange(false)}
+          title="Done"
+          aria-label="Done"
+          className="flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm hover:opacity-90"
+        >
+          <CheckIcon className="h-9 w-9" />
+        </button>
       }
       contentClassName="sm:max-w-3xl sm:h-[85vh]"
-      bodyClassName="flex min-h-0 flex-col overflow-hidden"
+      bodyClassName="flex min-h-0 flex-col overflow-hidden pt-0"
     >
       {/* FileTree's own draggables/droppables need a DndContext above them;
           with no sensors it never starts a drag — this tree is only ever a
@@ -511,10 +505,25 @@ export function PlaybackMenu({
         {/* Now Playing — styled like a Library playlist card, but always
             expanded and never going anywhere. Its own list scrolls once it
             outgrows its share of the popup. */}
-        <section className="flex max-h-[45%] min-h-0 shrink-0 flex-col rounded-[var(--radius-md)] border border-border bg-surface p-3">
-          <div className="flex items-center gap-3">
+        {/* -mx-[10px] matches the playlists list below, which sits that
+            much wider than the popup's own padding (see PlaylistSection),
+            so Now Playing and the cards under it line up. */}
+        <section className="-mx-[10px] flex max-h-[45%] min-h-0 shrink-0 flex-col rounded-[var(--radius-md)] border border-border bg-surface p-3">
+          {/* relative: the anchor TransitionMenu's dropdown hangs off (see
+              there) so it can't run off a narrow screen's edge. */}
+          <div className="relative flex items-center gap-3">
             <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold">Now Playing</h3>
             <span className="hidden shrink-0 text-[12px] text-muted sm:block">{formatDuration(totalSeconds)}</span>
+            {/* Playback settings sit with the list they act on rather than
+                up in the header, where the tick now needs the room. */}
+            <TransitionMenu
+              transition={transition}
+              onSelect={handleSelectTransition}
+              speed={speed}
+              onSelectSpeed={handleSelectSpeed}
+              slideDirection={slideDirection}
+              onSelectSlideDirection={handleSelectSlideDirection}
+            />
             <span className="shrink-0 text-[12px] text-muted">
               {items.length} file{items.length === 1 ? "" : "s"}
             </span>
