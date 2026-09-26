@@ -418,9 +418,9 @@ export function PlaybackMenu({
       onOpenChange={handleOpenChange}
       title={screen.name}
       // The screen's name as a page-sized heading, matching "Playlists"
-      // below it, with the plain "Done" link replaced by a blue tick the
-      // size of the tile's own playback button — the one that opened this
-      // menu, in the same corner of the same card.
+      // below it, with the plain "Done" link replaced by a blue tick —
+      // two thirds the size of the tile's own playback button, the one
+      // that opened this menu from the same corner of the same card.
       titleClassName="text-[28px] font-semibold tracking-tight"
       // No rule under the header, and the button's own height carries the
       // row: together that brings Now Playing up close under the title.
@@ -431,9 +431,9 @@ export function PlaybackMenu({
           onClick={() => handleOpenChange(false)}
           title="Done"
           aria-label="Done"
-          className="flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm hover:opacity-90"
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm hover:opacity-90"
         >
-          <CheckIcon className="h-9 w-9" />
+          <CheckIcon className="h-6 w-6" />
         </button>
       }
       contentClassName="sm:max-w-3xl sm:h-[85vh]"
