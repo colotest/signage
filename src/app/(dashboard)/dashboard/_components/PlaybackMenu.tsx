@@ -592,6 +592,15 @@ export function PlaybackMenu({
         <PlaylistSection
           className="mt-6 min-h-0 flex-1"
           playlists={localPlaylists}
+          // Desktop only: the list runs 70px — one collapsed card (62px)
+          // plus its gap — past the popup's bottom edge, which clips it, so
+          // the list gets that row's worth of scrolling space back. The
+          // bottom fade deepens to match (70px clipped away + 40px still
+          // showing inside), and the content mask below follows it. On
+          // mobile the sheet is full-screen, so it keeps the usual edge.
+          bottomBleedClassName="-mb-5 sm:mb-[-90px]"
+          bottomExtentSm={110}
+          listClassName="sm:[--fade-bottom:110px]"
           showCreate={false}
           editable={false}
           // Playlists with a timer running lead the list, soonest first, so

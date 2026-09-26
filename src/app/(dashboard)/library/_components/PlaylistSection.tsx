@@ -60,10 +60,22 @@ export function PlaylistSection({
   renderActions,
   pinOrder,
   listClassName,
+  bottomBleedClassName = "-mb-5",
+  bottomExtentSm,
 }: {
   className?: string;
   // Extra classes for the scrolling list itself (e.g. more bottom clearance).
   listClassName?: string;
+  // How far past its own bottom edge the list reaches — which is also where
+  // the bottom blur/fade sits. The page can't go past 20px without turning
+  // the whole page into a scrolling one, but a popup clips its own rounded
+  // box (see Sheet), so the Playback Menu pushes it a collapsed card further
+  // down on desktop and gets that row back as scrolling space.
+  bottomBleedClassName?: string;
+  // A deeper bottom fade on desktop only, for a list pushed past its
+  // container's edge: the extra depth is what still shows inside it, since
+  // the rest is clipped away. Left out, both breakpoints use the default.
+  bottomExtentSm?: number;
   playlists: PlaylistWithEntries[];
   activePlaylistId?: string | null;
   selectedCount?: number;
@@ -205,7 +217,7 @@ export function PlaylistSection({
           matters. The scrolling div is sized via inset-0 against this div,
           which is also what keeps the blur pinned in place while content
           scrolls underneath it. */}
-      <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
+      <div className={cn("relative -mt-10 mx-[-10px] min-h-0 flex-1", bottomBleedClassName)}>
         {/* pt-[47px]: 40px of it pays back the reach this list takes past
             its own top edge (the -mt-10 above), which is what tucks
             scrolled cards under the title — without it the FIRST card
@@ -249,7 +261,22 @@ export function PlaylistSection({
         {/* Shallower: the media list ends right above, and this edge's
             depth is most of the empty band between the two. */}
         <ProgressiveBlurEdge side="top" extent={48} />
-        <ProgressiveBlurEdge side="bottom" />
+        {bottomExtentSm ? (
+          // Two of them rather than one responsive depth: the gradients are
+          // computed from the extent in JS, so a breakpoint can only pick
+          // between whole edges. The wrappers carry no position of their
+          // own, so each edge still anchors to the container above.
+          <>
+            <div className="sm:hidden">
+              <ProgressiveBlurEdge side="bottom" />
+            </div>
+            <div className="hidden sm:block">
+              <ProgressiveBlurEdge side="bottom" extent={bottomExtentSm} />
+            </div>
+          </>
+        ) : (
+          <ProgressiveBlurEdge side="bottom" />
+        )}
       </div>
     </div>
   );
