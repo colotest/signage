@@ -200,7 +200,7 @@ export function UploadWindow({ token, folderName, files }: { token: string; fold
         </p>
         <p className="mt-2 text-muted">
           <span className="font-medium text-foreground">Presentations</span> (PowerPoint, Keynote, Google Slides): export
-          them as a PDF first — File → Export (or Download) → PDF — then upload the PDF.
+          them as a PDF first: &apos;File&apos; → &apos;Export&apos; (or &apos;Download&apos;) → &apos;PDF&apos; — then upload the PDF.
         </p>
       </div>
     </div>
