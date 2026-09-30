@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
-import type { ScreenSlideDirection, ScreenTransition, ScreenTransitionSpeed } from "@/types/domain";
+import type { ScreenBackground, ScreenSlideDirection, ScreenTransition, ScreenTransitionSpeed } from "@/types/domain";
 import { ThreeDotIcon } from "../../library/_components/FileTree";
 
 // Wording sticks to what each one looks like rather than naming the
@@ -31,6 +31,13 @@ const DIRECTIONS: { value: ScreenSlideDirection; label: string }[] = [
   { value: "bottom", label: "From the bottom" },
 ];
 
+// What shows around media that doesn't fill the screen — letterbox bars,
+// the clock page's face, the QR placeholder.
+const BACKGROUNDS: { value: ScreenBackground; label: string }[] = [
+  { value: "black", label: "Black" },
+  { value: "white", label: "White" },
+];
+
 // The Playback Menu's "⋯" — playback settings for the screen itself rather
 // than its content. Same popup mechanics as the Library's sort menus: click
 // outside or press Escape to close.
@@ -41,6 +48,8 @@ export function TransitionMenu({
   onSelectSpeed,
   slideDirection,
   onSelectSlideDirection,
+  background,
+  onSelectBackground,
 }: {
   transition: ScreenTransition;
   onSelect: (transition: ScreenTransition) => void;
@@ -48,6 +57,8 @@ export function TransitionMenu({
   onSelectSpeed: (speed: ScreenTransitionSpeed) => void;
   slideDirection: ScreenSlideDirection;
   onSelectSlideDirection: (direction: ScreenSlideDirection) => void;
+  background: ScreenBackground;
+  onSelectBackground: (background: ScreenBackground) => void;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -72,10 +83,10 @@ export function TransitionMenu({
 
   return (
     // Deliberately NOT the dropdown's positioning anchor: this button sits
-    // mid-row now, and a 256px menu hanging off its own right edge ran
-    // straight off a phone's screen. The nearest positioned ancestor (the
-    // Now Playing header row) is the anchor instead, so the menu lines up
-    // with that row's right edge and stays inside the card.
+    // mid-row, and a 256px menu hanging off its own right edge ran straight
+    // off a phone's screen. The nearest positioned ancestor (the popup's
+    // title group, see Sheet) is the anchor instead, so the menu starts at
+    // the title's left edge and stays inside the popup.
     <div ref={containerRef} className="shrink-0">
       <button
         type="button"
@@ -89,8 +100,27 @@ export function TransitionMenu({
       </button>
 
       {open && (
-        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-64 origin-top-right rounded-[var(--radius-md)] border border-border bg-surface p-3 shadow-[var(--shadow-card)]">
-          <p className="mb-1.5 text-[11px] text-muted">Transition</p>
+        <div className="menu-pop absolute left-0 top-full z-20 mt-1 w-64 origin-top-left rounded-[var(--radius-md)] border border-border bg-surface p-3 shadow-[var(--shadow-card)]">
+          <p className="mb-1.5 text-[11px] text-muted">Background</p>
+          <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[12px]">
+            {BACKGROUNDS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onSelectBackground(option.value)}
+                className={cn(
+                  "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
+                  background === option.value
+                    ? "bg-surface text-foreground font-medium shadow-sm"
+                    : "text-muted hover:text-foreground",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <p className="mb-1.5 mt-3 border-t border-border pt-3 text-[11px] text-muted">Transition</p>
           <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[12px]">
             {OPTIONS.map((option) => (
               <button

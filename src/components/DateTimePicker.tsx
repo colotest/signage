@@ -1,26 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { MonthCalendar } from "./MonthCalendar";
 
 const pad = (n: number) => String(n).padStart(2, "0");
-
-function weekStartsOn(): number {
-  // 0 = Sunday … 6 = Saturday. Intl's weekInfo reports Sunday as 7.
-  try {
-    const locale = new Intl.Locale(navigator.language) as Intl.Locale & {
-      weekInfo?: { firstDay: number };
-      getWeekInfo?: () => { firstDay: number };
-    };
-    const firstDay = (locale.getWeekInfo?.() ?? locale.weekInfo)?.firstDay;
-    if (firstDay) return firstDay % 7;
-  } catch {}
-  return 1;
-}
-
-function sameDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
 
 // Modelled on iOS's inline date picker: a month grid with past days greyed
 // out, then a time pill that opens hour/minute wheels. Used on every
@@ -30,35 +14,7 @@ function sameDay(a: Date, b: Date) {
 // globals.css) — across a whole grid of dates and wheel rows it was more
 // distracting than helpful.
 export function DateTimePicker({ value, onChange }: { value: Date; onChange: (next: Date) => void }) {
-  const [viewMonth, setViewMonth] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1));
   const [timeOpen, setTimeOpen] = useState(false);
-  const firstDay = useMemo(() => weekStartsOn(), []);
-  const today = useMemo(() => new Date(), []);
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-  const weekdays = useMemo(() => {
-    const fmt = new Intl.DateTimeFormat(undefined, { weekday: "short" });
-    // 2023-01-01 was a Sunday.
-    return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(2023, 0, 1 + ((firstDay + i) % 7))).toUpperCase());
-  }, [firstDay]);
-
-  const cells = useMemo(() => {
-    const year = viewMonth.getFullYear();
-    const month = viewMonth.getMonth();
-    const leading = (viewMonth.getDay() - firstDay + 7) % 7;
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    return [
-      ...Array.from({ length: leading }, () => null),
-      ...Array.from({ length: daysInMonth }, (_, i) => new Date(year, month, i + 1)),
-    ];
-  }, [viewMonth, firstDay]);
-
-  const monthLabel = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(viewMonth);
-  const canGoBack = viewMonth > new Date(today.getFullYear(), today.getMonth(), 1);
-
-  function shiftMonth(delta: number) {
-    setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1));
-  }
 
   function pickDay(day: Date) {
     onChange(new Date(day.getFullYear(), day.getMonth(), day.getDate(), value.getHours(), value.getMinutes()));
@@ -72,57 +28,7 @@ export function DateTimePicker({ value, onChange }: { value: Date; onChange: (ne
 
   return (
     <div className="select-none">
-      <div className="flex items-center justify-between px-1 pb-2">
-        <span className="text-[17px] font-semibold">{monthLabel}</span>
-        <div className="flex items-center gap-1 text-accent">
-          <button
-            type="button"
-            onClick={() => shiftMonth(-1)}
-            disabled={!canGoBack}
-            aria-label="Previous month"
-            className="no-press rounded-full p-1.5 disabled:opacity-30"
-          >
-            <Chevron className="h-5 w-5 rotate-180" />
-          </button>
-          <button type="button" onClick={() => shiftMonth(1)} aria-label="Next month" className="no-press rounded-full p-1.5">
-            <Chevron className="h-5 w-5" />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 text-center">
-        {weekdays.map((d, i) => (
-          <span key={i} className="pb-1 text-[11px] font-semibold text-muted">
-            {d}
-          </span>
-        ))}
-        {cells.map((day, i) => {
-          if (!day) return <span key={`blank-${i}`} />;
-          const isPast = day < startOfToday;
-          const isSelected = sameDay(day, value);
-          const isToday = sameDay(day, today);
-          return (
-            <button
-              key={day.getDate()}
-              type="button"
-              disabled={isPast}
-              onClick={() => pickDay(day)}
-              className="no-press flex h-10 items-center justify-center disabled:cursor-default"
-            >
-              <span
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-full text-[17px] tabular-nums transition-colors",
-                  isPast && "text-muted opacity-50",
-                  !isPast && !isSelected && (isToday ? "text-accent" : "text-foreground"),
-                  isSelected && (isToday ? "bg-accent font-semibold text-accent-contrast" : "bg-accent/15 font-semibold text-accent"),
-                )}
-              >
-                {day.getDate()}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <MonthCalendar value={value} onSelect={pickDay} />
 
       <div className="mt-3 flex items-center justify-between border-t border-border px-1 pt-3">
         <span className="text-[17px]">Time</span>
@@ -224,13 +130,5 @@ function Wheel({
         </button>
       ))}
     </div>
-  );
-}
-
-function Chevron({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5">
-      <polyline points="9 6 15 12 9 18" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

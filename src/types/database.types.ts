@@ -312,6 +312,10 @@ export type Database = {
           screen_id: number;
           playlist_id: string;
           run_at: string;
+          // End of the window this timer reserves its screen for (0022).
+          ends_at: string;
+          // Set once it has fired; kept until ends_at so the reservation holds.
+          fired_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -319,6 +323,8 @@ export type Database = {
           screen_id: number;
           playlist_id: string;
           run_at: string;
+          ends_at: string;
+          fired_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -326,6 +332,8 @@ export type Database = {
           screen_id?: number;
           playlist_id?: string;
           run_at?: string;
+          ends_at?: string;
+          fired_at?: string | null;
           created_at?: string;
         };
         Relationships: [

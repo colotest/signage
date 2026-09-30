@@ -64,25 +64,30 @@ export function ProgressiveBlurEdge({
   // version is most of the empty band between two stacked lists, and only
   // an edge with the page beyond it has room for it.
   extent = BLUR_EXTENT,
+  // How far the edge holds at full strength before it starts fading — for
+  // something that has to be hidden right behind it (a docked heading's
+  // text), where fading from the very edge would let content show through.
+  hold = 0,
 }: {
   side: "top" | "bottom";
   extent?: number;
+  hold?: number;
 }) {
   const direction = side === "top" ? "to bottom" : "to top";
   const scrimExtent = Math.round(extent * SCRIM_FRACTION);
   const scrim = `linear-gradient(${direction}, ${SCRIM_STOPS.map(
     ([fraction, percent]) =>
-      `color-mix(in srgb, var(--edge-scrim, var(--background)) ${percent}%, transparent) ${Math.round(fraction * scrimExtent)}px`,
+      `color-mix(in srgb, var(--edge-scrim, var(--background)) ${percent}%, transparent) ${hold + Math.round(fraction * scrimExtent)}px`,
   ).join(", ")})`;
 
   return (
     <div
       aria-hidden
       className={cn("pointer-events-none absolute inset-x-0 z-[5]", side === "top" ? "top-0" : "bottom-0")}
-      style={{ height: extent }}
+      style={{ height: hold + extent }}
     >
       {LAYERS.map(({ blur, solid, stop }, i) => {
-        const gradient = `linear-gradient(${direction}, black 0, black ${(solid * extent).toFixed(1)}px, transparent ${(stop * extent).toFixed(1)}px)`;
+        const gradient = `linear-gradient(${direction}, black 0, black ${(hold + solid * extent).toFixed(1)}px, transparent ${(hold + stop * extent).toFixed(1)}px)`;
         const radius = (blur * extent).toFixed(2);
         return (
           <div
@@ -99,7 +104,7 @@ export function ProgressiveBlurEdge({
       })}
       <div
         className={cn("absolute inset-x-0", side === "top" ? "top-0" : "bottom-0")}
-        style={{ height: scrimExtent, background: scrim }}
+        style={{ height: hold + scrimExtent, background: scrim }}
       />
     </div>
   );

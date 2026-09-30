@@ -25,7 +25,7 @@ export type PlaylistWithEntries = Playlist & { entries: PlaylistEntryWithMedia[]
 // always shown in a deterministic order instead, so a newly-created playlist
 // automatically lands in the right spot under whichever criterion is active
 // rather than needing to be dragged there.
-type PlaylistSortKey = "name" | "date";
+export type PlaylistSortKey = "name" | "date";
 
 function playlistSortValue(playlist: PlaylistWithEntries, key: PlaylistSortKey): string | number {
   switch (key) {
@@ -60,22 +60,16 @@ export function PlaylistSection({
   renderActions,
   pinOrder,
   listClassName,
-  bottomBleedClassName = "-mb-5",
-  bottomExtentSm,
+  embedded,
 }: {
   className?: string;
   // Extra classes for the scrolling list itself (e.g. more bottom clearance).
   listClassName?: string;
-  // How far past its own bottom edge the list reaches — which is also where
-  // the bottom blur/fade sits. The page can't go past 20px without turning
-  // the whole page into a scrolling one, but a popup clips its own rounded
-  // box (see Sheet), so the Playback Menu pushes it a collapsed card further
-  // down on desktop and gets that row back as scrolling space.
-  bottomBleedClassName?: string;
-  // A deeper bottom fade on desktop only, for a list pushed past its
-  // container's edge: the extra depth is what still shows inside it, since
-  // the rest is clipped away. Left out, both breakpoints use the default.
-  bottomExtentSm?: number;
+  // The Playback Menu: just the rows, for it to place in its own scrolling
+  // layout, with no heading of this component's own — the menu draws that
+  // itself (docked at its scroll view's edges, see there) along with the
+  // sort button, so the sort is handed in from outside too.
+  embedded?: { sortKey: PlaylistSortKey; sortDir: SortDir };
   playlists: PlaylistWithEntries[];
   activePlaylistId?: string | null;
   selectedCount?: number;
@@ -115,12 +109,14 @@ export function PlaylistSection({
   }
 
   function sortPlaylists(items: PlaylistWithEntries[]) {
+    const key = embedded?.sortKey ?? sortKey;
+    const dir = embedded?.sortDir ?? sortDir;
     const copy = [...items];
     copy.sort((a, b) => {
-      const av = playlistSortValue(a, sortKey);
-      const bv = playlistSortValue(b, sortKey);
+      const av = playlistSortValue(a, key);
+      const bv = playlistSortValue(b, key);
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-      return sortDir === "asc" ? cmp : -cmp;
+      return dir === "asc" ? cmp : -cmp;
     });
     // The playlist currently armed for adding files jumps to the front,
     // regardless of the active sort — it's what you're actively working
@@ -168,6 +164,29 @@ export function PlaylistSection({
       setExpanded((current) => new Set(current).add(playlist.id));
     });
   }
+
+  const rows = sortPlaylists(playlists).map((playlist) => (
+    <PlaylistRow
+      key={playlist.id}
+      playlist={playlist}
+      isExpanded={expanded.has(playlist.id)}
+      onToggleExpanded={() => toggleExpanded(playlist.id)}
+      startInRename={creatingId === playlist.id}
+      onDoneRenaming={() => setCreatingId(null)}
+      isActive={activePlaylistId === playlist.id}
+      selectedCount={selectedCount}
+      onArmSelection={() => onArmSelection?.(playlist.id)}
+      onCancelSelection={() => onCancelSelection?.()}
+      onConfirmAdd={() => onConfirmAdd?.(playlist.id)}
+      onReorderEntries={(next) => onReorderEntries?.(playlist.id, next)}
+      onRemoveEntry={(entryId) => onRemoveEntry?.(playlist.id, entryId)}
+      isDropTarget={dropTargetPlaylistId === playlist.id}
+      actions={renderActions?.(playlist)}
+      editable={editable}
+    />
+  ));
+
+  if (embedded) return <ul className={cn("flex flex-col gap-3", className)}>{rows}</ul>;
 
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
@@ -217,7 +236,7 @@ export function PlaylistSection({
           matters. The scrolling div is sized via inset-0 against this div,
           which is also what keeps the blur pinned in place while content
           scrolls underneath it. */}
-      <div className={cn("relative -mt-10 mx-[-10px] min-h-0 flex-1", bottomBleedClassName)}>
+      <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
         {/* pt-[47px]: 40px of it pays back the reach this list takes past
             its own top edge (the -mt-10 above), which is what tucks
             scrolled cards under the title — without it the FIRST card
@@ -236,47 +255,13 @@ export function PlaylistSection({
                 rest of the list, and its spacing (same card padding as
                 PlaylistRow) matches the playlist it's about to create. */}
             {showCreate && <CreatePlaylistRow onCreate={handleCreate} pending={pending} />}
-            {sortPlaylists(playlists).map((playlist) => (
-              <PlaylistRow
-                key={playlist.id}
-                playlist={playlist}
-                isExpanded={expanded.has(playlist.id)}
-                onToggleExpanded={() => toggleExpanded(playlist.id)}
-                startInRename={creatingId === playlist.id}
-                onDoneRenaming={() => setCreatingId(null)}
-                isActive={activePlaylistId === playlist.id}
-                selectedCount={selectedCount}
-                onArmSelection={() => onArmSelection?.(playlist.id)}
-                onCancelSelection={() => onCancelSelection?.()}
-                onConfirmAdd={() => onConfirmAdd?.(playlist.id)}
-                onReorderEntries={(next) => onReorderEntries?.(playlist.id, next)}
-                onRemoveEntry={(entryId) => onRemoveEntry?.(playlist.id, entryId)}
-                isDropTarget={dropTargetPlaylistId === playlist.id}
-                actions={renderActions?.(playlist)}
-                editable={editable}
-              />
-            ))}
+            {rows}
           </ul>
         </div>
         {/* Shallower: the media list ends right above, and this edge's
             depth is most of the empty band between the two. */}
         <ProgressiveBlurEdge side="top" extent={48} />
-        {bottomExtentSm ? (
-          // Two of them rather than one responsive depth: the gradients are
-          // computed from the extent in JS, so a breakpoint can only pick
-          // between whole edges. The wrappers carry no position of their
-          // own, so each edge still anchors to the container above.
-          <>
-            <div className="sm:hidden">
-              <ProgressiveBlurEdge side="bottom" />
-            </div>
-            <div className="hidden sm:block">
-              <ProgressiveBlurEdge side="bottom" extent={bottomExtentSm} />
-            </div>
-          </>
-        ) : (
-          <ProgressiveBlurEdge side="bottom" />
-        )}
+        <ProgressiveBlurEdge side="bottom" />
       </div>
     </div>
   );
@@ -535,7 +520,7 @@ function Chevron({ open }: { open: boolean }) {
 // every viewport — playlists have no separate desktop sort bar to fall back
 // on, so this is the only way to control their order. Stays open after
 // picking an option, same as FileTree's menu.
-function PlaylistSortMenuButton({
+export function PlaylistSortMenuButton({
   sortKey,
   sortDir,
   onToggleSort,

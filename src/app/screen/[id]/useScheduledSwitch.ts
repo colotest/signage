@@ -64,6 +64,9 @@ async function fetchTimers(supabase: Supabase, screenId: number): Promise<Pendin
     .from("scheduled_playbacks")
     .select("id, playlist_id, run_at")
     .eq("screen_id", screenId)
+    // Fired timers stay in the table until their window ends (0022) — only
+    // the ones still waiting to fire matter here.
+    .is("fired_at", null)
     .order("run_at", { ascending: true });
   if (error) return null;
   if (!rows || rows.length === 0) return [];

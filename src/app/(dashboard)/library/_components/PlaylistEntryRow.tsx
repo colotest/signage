@@ -159,6 +159,7 @@ function PlaylistEntryRow({
         rowRef.current = node;
       }}
       style={style}
+      data-entry-id={entry.id}
       className="flex items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface p-2"
     >
       {editable && (

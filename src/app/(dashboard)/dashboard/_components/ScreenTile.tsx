@@ -300,8 +300,6 @@ export function ScreenTile({
                   playerPath={playerPath}
                   rotation={(step * 90) as ScreenRotation}
                   onSelectRotation={handleSelectRotation}
-                  background={background}
-                  onSelectBackground={handleSelectBackground}
                   onRename={() => setRenaming(true)}
                   onReload={() => send({ type: "reload" })}
                 />
@@ -338,6 +336,10 @@ export function ScreenTile({
         playlist={playlist}
         library={library}
         schedules={schedules}
+        // Owned here rather than in the menu, so the preview above switches
+        // colour the moment it's picked.
+        background={background}
+        onSelectBackground={handleSelectBackground}
         open={menuOpen}
         onOpenChange={setMenuOpen}
       />

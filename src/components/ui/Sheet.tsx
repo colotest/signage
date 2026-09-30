@@ -18,6 +18,8 @@ export function Sheet({
   titleClassName,
   headerClassName,
   actions,
+  titleLeading,
+  titleAddon,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -31,6 +33,11 @@ export function Sheet({
   titleClassName?: string;
   headerClassName?: string;
   actions?: ReactNode;
+  // Sit immediately before/after the title rather than across from it —
+  // the Playback Menu puts its collapse chevron ahead of the screen's name
+  // and its counters and "⋯" right after it.
+  titleLeading?: ReactNode;
+  titleAddon?: ReactNode;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -53,9 +60,16 @@ export function Sheet({
           )}
         >
           <div className={cn("flex items-center justify-between gap-3 border-b border-border px-5 py-4", headerClassName)}>
-            <Dialog.Title className={cn("min-w-0 truncate text-[17px] font-semibold", titleClassName)}>
-              {title}
-            </Dialog.Title>
+            {/* relative: what a dropdown opened from the title's addons
+                (the Playback Menu's "⋯") hangs off, left-aligned with the
+                title so it can't run off a narrow screen. */}
+            <div className="relative flex min-w-0 items-center gap-3">
+              {titleLeading}
+              <Dialog.Title className={cn("min-w-0 truncate text-[17px] font-semibold", titleClassName)}>
+                {title}
+              </Dialog.Title>
+              {titleAddon}
+            </div>
             {actions ?? <Dialog.Close className="press-ghost text-accent text-[15px]">Done</Dialog.Close>}
           </div>
           <div className={cn("flex-1 overflow-y-auto p-5", bodyClassName)}>{children}</div>

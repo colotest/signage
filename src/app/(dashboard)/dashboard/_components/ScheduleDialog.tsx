@@ -6,6 +6,9 @@ import { DateTimePicker } from "@/components/DateTimePicker";
 import { AlarmClockIcon } from "@/components/icons/PlaybackIcons";
 import { cn } from "@/lib/utils/cn";
 
+// How long a new timer reserves its screen for, unless changed.
+const DEFAULT_HOURS = 4;
+
 // The next full hour — a sensible "later today" starting point that's
 // always in the future.
 function nextFullHour() {
@@ -28,6 +31,7 @@ export function ScheduleDialog({
   onOpenChange,
   playlistName,
   runAt,
+  hours,
   onSchedule,
   onCancelTimer,
 }: {
@@ -35,7 +39,11 @@ export function ScheduleDialog({
   onOpenChange: (open: boolean) => void;
   playlistName: string;
   runAt: Date | null;
-  onSchedule: (runAt: Date) => void;
+  // The existing timer's window, when editing one.
+  hours: number | null;
+  // Resolves to an error message (an overlapping schedule, say) to show
+  // while the popup stays open, or null once it's saved.
+  onSchedule: (runAt: Date, hours: number) => Promise<string | null>;
   onCancelTimer: () => void;
 }) {
   return (
@@ -52,6 +60,7 @@ export function ScheduleDialog({
           <ScheduleForm
             playlistName={playlistName}
             runAt={runAt}
+            hours={hours}
             onSchedule={onSchedule}
             onCancelTimer={onCancelTimer}
           />
@@ -64,17 +73,34 @@ export function ScheduleDialog({
 function ScheduleForm({
   playlistName,
   runAt,
+  hours,
   onSchedule,
   onCancelTimer,
 }: {
   playlistName: string;
   runAt: Date | null;
-  onSchedule: (runAt: Date) => void;
+  hours: number | null;
+  onSchedule: (runAt: Date, hours: number) => Promise<string | null>;
   onCancelTimer: () => void;
 }) {
   const [value, setValue] = useState(() => runAt ?? nextFullHour());
+  // Kept as the raw text, so clearing the field to type a new number
+  // doesn't snap it straight back to something.
+  const [hoursText, setHoursText] = useState(() => String(hours ?? DEFAULT_HOURS));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const now = useNow();
   const inFuture = value.getTime() > now;
+  const parsedHours = Number(hoursText);
+  const hoursValid = Number.isInteger(parsedHours) && parsedHours >= 1;
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    const message = await onSchedule(value, parsedHours);
+    setSaving(false);
+    if (message) setError(message);
+  }
 
   return (
     <>
@@ -85,12 +111,44 @@ function ScheduleForm({
         </Dialog.Title>
       </div>
 
-      <DateTimePicker value={value} onChange={setValue} />
+      <DateTimePicker
+        value={value}
+        onChange={(next) => {
+          setValue(next);
+          setError(null);
+        }}
+      />
 
-      <p className="mt-3 text-[12px] text-muted">
-        {inFuture
-          ? "Now Playing will be emptied and replaced with this playlist at that time."
-          : "Pick a time in the future."}
+      {/* The window the screen is reserved for: nothing else can be
+          scheduled on it until this ends, but the playlist keeps playing
+          afterwards until something replaces it. */}
+      <div className="mt-3 flex items-center justify-between border-t border-border px-1 pt-3">
+        <span className="text-[17px]">For</span>
+        <label className="flex items-center gap-2 text-[17px] text-muted">
+          <input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="numeric"
+            value={hoursText}
+            onChange={(e) => {
+              setHoursText(e.target.value);
+              setError(null);
+            }}
+            aria-label="Hours"
+            className="w-16 rounded-[8px] bg-black/[.05] px-2 py-1.5 text-right tabular-nums text-foreground outline-none focus:ring-1 focus:ring-accent dark:bg-white/[.08]"
+          />
+          hour{parsedHours === 1 ? "" : "s"}
+        </label>
+      </div>
+
+      <p className={cn("mt-3 text-[12px]", error ? "text-danger" : "text-muted")}>
+        {error ??
+          (!inFuture
+            ? "Pick a time in the future."
+            : !hoursValid
+              ? "Play it for at least 1 whole hour."
+              : "Now Playing will be replaced with this playlist at that time, and the screen reserved for it until the window ends.")}
       </p>
 
       <div className="mt-4 flex items-center gap-3">
@@ -107,8 +165,8 @@ function ScheduleForm({
         <Dialog.Close className="press-ghost text-[15px] text-muted hover:opacity-70">Close</Dialog.Close>
         <button
           type="button"
-          disabled={!inFuture}
-          onClick={() => onSchedule(value)}
+          disabled={!inFuture || !hoursValid || saving}
+          onClick={save}
           className={cn(
             "rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast transition-opacity hover:opacity-90",
             "disabled:pointer-events-none disabled:opacity-40",
@@ -122,7 +180,7 @@ function ScheduleForm({
 }
 
 // Ticks once a second.
-function useNow() {
+export function useNow() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);

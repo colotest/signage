@@ -91,7 +91,9 @@ export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]
   // dashboard as they happen.
   useLiveRefresh("live-dashboard");
 
-  useFireTimersOnTime(screens.flatMap((s) => s.schedules.map((t) => t.run_at)));
+  // Only timers still waiting to fire — a fired one stays listed until its
+  // window ends (0022), but has nothing left to trigger.
+  useFireTimersOnTime(screens.flatMap((s) => s.schedules.filter((t) => !t.fired_at).map((t) => t.run_at)));
 
   return (
     // safari-toolbar-inset: this page scrolls via the shared dashboard
