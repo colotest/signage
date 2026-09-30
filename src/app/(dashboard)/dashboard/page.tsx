@@ -7,11 +7,9 @@ import { decksWithPages } from "../library/page";
 export default async function DashboardPage() {
   const admin = createAdminClient();
 
-  // Previews used to come from realtime presence — what the live player
-  // last reported. That turned out to be unreliable enough (a screen could
-  // sit reported "offline" for no real reason) that it's simpler and more
-  // trustworthy to just show what's actually assigned, straight from the
-  // database, rather than depending on a connected player to say so.
+  // Previews show what each screen's player last reported it was showing
+  // (screen_status, see 0025) — this is the snapshot for the first paint,
+  // which useScreenStatuses keeps live from there.
   //
   // The folders/media/playlists below feed each screen's Playback Menu,
   // which shows the same file tree and playlists as the Library page.
@@ -24,6 +22,7 @@ export default async function DashboardPage() {
     { data: playlistEntries, error: entriesError },
     { data: schedules, error: schedulesError },
     { data: decks, error: decksError },
+    { data: statuses, error: statusesError },
   ] = await Promise.all([
     admin
       .from("screens")
@@ -45,6 +44,7 @@ export default async function DashboardPage() {
       .order("position", { ascending: true }),
     admin.from("scheduled_playbacks").select("*").order("run_at", { ascending: true }),
     admin.from("decks").select("*").order("created_at", { ascending: false }),
+    admin.from("screen_status_live").select("*"),
   ]);
 
   if (screensError) throw new Error(screensError.message);
@@ -59,6 +59,13 @@ export default async function DashboardPage() {
   if (schedulesError) {
     if (schedulesError.code !== "PGRST205" && schedulesError.code !== "42P01") throw new Error(schedulesError.message);
     console.warn("scheduled_playbacks unavailable — has migration 0011 been run?", schedulesError.message);
+  }
+
+  // Tolerated the same way until 0025_screen_status.sql has been run — the
+  // tiles then just show what's assigned, as before.
+  if (statusesError) {
+    if (statusesError.code !== "PGRST205" && statusesError.code !== "42P01") throw new Error(statusesError.message);
+    console.warn("screen_status unavailable — has migration 0025 been run?", statusesError.message);
   }
 
   const playlistsByScreen = new Map<number, PlaylistItemWithMedia[]>();
@@ -96,6 +103,7 @@ export default async function DashboardPage() {
   return (
     <ScreenGrid
       screens={screensWithPlaylists}
+      statuses={statusesError ? null : (statuses ?? [])}
       library={{
         folders: folders ?? [],
         media: media ?? [],

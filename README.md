@@ -8,7 +8,7 @@ A free (at base scale) web-based digital signage system for a single event venue
 
 - **Dashboard** (`/dashboard`, `/library`, `/users`) — login-gated. Register screens, manage the media library, assign content to screens.
 - **Users** — everyone signs in with their own email and password, and every change they make is recorded against them. Three tiers: **super admin** > **admin** > **default**. Admins additionally get each screen's wrench menu (rename, rotation, reload, delete), **+ Add Screen**, and the **Users** page (under the avatar menu): every account, its change history, deleting accounts ranked below theirs, and single-use signup links (7 days) for new default users. The Server Actions enforce all of this themselves; hiding the controls is just the UI side.
-- **Player** (`/screen/{id}`) — no login, meant to be opened fullscreen on a TV/Fire Stick/kiosk browser. Subscribes to Supabase Realtime so playlist changes appear within about a second, and caches its last-known content so it keeps showing something if the network drops.
+- **Player** (`/screen/{id}`) — no login, meant to be opened fullscreen on a TV/Fire Stick/kiosk browser. Subscribes to Supabase Realtime so playlist changes appear within about a second, and caches its last-known content so it keeps showing something if the network drops. It reports what it's showing (on every change, plus a 20-second heartbeat) to `screen_status`, which is where each dashboard tile's live preview and Online/Offline dot come from — a screen that stops reporting for 75 seconds (power cut, network gone) shows as Offline.
 - **Supabase** holds all persistent data (`screens`, `folders`, `media_items`, `playlist_items`) and the `media` storage bucket. Row-Level Security allows public reads (needed by the unauthenticated player) but denies all writes — every mutation goes through a Server Action using the `service_role` key, which checks the dashboard's session cookie itself first.
 
 ## One-time Supabase setup
@@ -68,7 +68,7 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 - `src/lib/supabase/` — `client.ts` (anon key, safe in the browser) and `admin.ts` (service_role key, server-only).
 - `src/lib/auth/` — session cookie signing/verification, the current user and their role, password hashing.
 - `src/lib/activity.ts` — records each change against the user who made it (shown on the Users page).
-- `src/lib/realtime/` — Realtime channel-name helpers and the dashboard's live-preview presence hook.
+- `src/lib/realtime/` — Realtime channel-name helpers, live refresh, and the dashboard's live screen status (`useScreenStatuses`).
 - `supabase/migrations/` — the SQL schema.
 
 ## PDFs

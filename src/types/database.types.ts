@@ -463,8 +463,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      // Written only through report_screen_status/report_screen_offline
+      // (see 0025_screen_status.sql).
+      screen_status: {
+        Row: {
+          screen_id: number;
+          session_id: string;
+          media_item_id: string | null;
+          paused: boolean;
+          last_seen_at: string;
+          disconnected_at: string | null;
+        };
+        Insert: {
+          screen_id: number;
+          session_id: string;
+          media_item_id?: string | null;
+          paused?: boolean;
+          last_seen_at?: string;
+          disconnected_at?: string | null;
+        };
+        Update: {
+          screen_id?: number;
+          session_id?: string;
+          media_item_id?: string | null;
+          paused?: boolean;
+          last_seen_at?: string;
+          disconnected_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      screen_status_live: {
+        Row: {
+          screen_id: number;
+          media_item_id: string | null;
+          paused: boolean;
+          disconnected: boolean;
+          age_ms: number;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       reorder_playlist_items: {
         Args: { p_screen_id: number; p_ids: string[] };
@@ -500,6 +540,14 @@ export type Database = {
       };
       log_activity: {
         Args: { p_user_id: string; p_user_email: string; p_action: string; p_target: string | null; p_summary: string };
+        Returns: undefined;
+      };
+      report_screen_status: {
+        Args: { p_screen_id: number; p_session_id: string; p_media_item_id: string | null; p_paused: boolean };
+        Returns: undefined;
+      };
+      report_screen_offline: {
+        Args: { p_screen_id: number; p_session_id: string };
         Returns: undefined;
       };
       redeem_signup_invite: {

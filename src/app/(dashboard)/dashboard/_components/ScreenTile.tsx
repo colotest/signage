@@ -7,7 +7,15 @@ import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
 import { setScreenBackground, setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
-import type { PlaylistItemWithMedia, ScheduledPlayback, Screen, ScreenBackground, ScreenRotation } from "@/types/domain";
+import type {
+  MediaItem,
+  PlaylistItemWithMedia,
+  ScheduledPlayback,
+  Screen,
+  ScreenBackground,
+  ScreenRotation,
+} from "@/types/domain";
+import type { ScreenLiveStatus } from "@/lib/realtime/useScreenStatuses";
 import { PauseIcon, PlaylistPlayIcon } from "@/components/icons/PlaybackIcons";
 import { ScreenTitle } from "./ScreenTitle";
 import { FitModeToggle } from "./FitModeToggle";
@@ -56,11 +64,18 @@ export function ScreenTile({
   playlist,
   library,
   schedules,
+  status,
+  mediaById,
 }: {
   screen: Screen;
   playlist: PlaylistItemWithMedia[];
   library: LibraryData;
   schedules: ScheduledPlayback[];
+  // What the screen's player last reported (see useScreenStatuses); null
+  // until migration 0025 has run, in which case the preview falls back to
+  // the first assigned item.
+  status: ScreenLiveStatus | null;
+  mediaById: Map<string, MediaItem>;
 }) {
   const router = useRouter();
   const viewer = useViewer();
@@ -86,11 +101,24 @@ export function ScreenTile({
       router.refresh();
     });
   }
-  // Purely local and optimistic — there's no reliable way to confirm a
-  // screen actually received and applied a command (that used to come from
-  // realtime presence, which proved unreliable enough to remove entirely),
-  // so this just reflects the last thing asked of it from this dashboard.
-  const [paused, setPaused] = useState(false);
+  // While the screen is online, paused is whatever its player reports —
+  // with the button's own press shown straight away on top, until the
+  // player's report of it (or anything newer) arrives. Offline or without
+  // status reports, it's just the last thing asked of it from here.
+  const [localPaused, setLocalPaused] = useState(false);
+  const [pausedOverride, setPausedOverride] = useState<boolean | null>(null);
+  const reportedPaused = status?.online ? status.paused : null;
+  const [prevReportedPaused, setPrevReportedPaused] = useState(reportedPaused);
+  if (reportedPaused !== prevReportedPaused) {
+    setPrevReportedPaused(reportedPaused);
+    setPausedOverride(null);
+  }
+  const paused = pausedOverride ?? reportedPaused ?? localPaused;
+
+  function handleTogglePaused() {
+    setPausedOverride(!paused);
+    setLocalPaused(!paused);
+  }
   // Seeded straight from the server-persisted value — no hydration-mismatch
   // risk the way a localStorage-sourced value would have, since this is
   // part of the SSR'd props rather than something only available post-mount.
@@ -108,7 +136,15 @@ export function ScreenTile({
   // Shared by the Fit/Fill pill and the preview, so both switch the moment
   // the pill is pressed (see FitModeToggle).
   const [fitMode, setOptimisticFitMode] = useOptimistic(screen.fit_mode);
-  const firstItem = playlist[0];
+  // The live preview: what the player says is on screen right now. A
+  // reported id that's no longer in the library (deleted a moment ago)
+  // shows as nothing rather than guessing.
+  const shownItem = status
+    ? status.online && status.mediaItemId
+      ? (mediaById.get(status.mediaItemId) ?? null)
+      : null
+    : (playlist[0]?.media_item ?? null);
+  const offline = status !== null && !status.online;
 
   const playerPath = `/screen/${screen.id}`;
 
@@ -266,12 +302,23 @@ export function ScreenTile({
                 } as CSSProperties
               }
             >
-              {firstItem ? (
-                <MediaThumb fit={fitMode} live item={firstItem.media_item} sizes={`${PREVIEW_LONG}px`} />
+              {shownItem ? (
+                <MediaThumb fit={fitMode} live item={shownItem} sizes={`${PREVIEW_LONG}px`} />
+              ) : offline ? (
+                <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-black text-center">
+                  <span className="text-[12px] font-medium text-white/70">Offline</span>
+                  {status.seenAt !== null && (
+                    // Server and browser can sit in different time zones,
+                    // so the first paint's time may differ from the SSR's.
+                    <span suppressHydrationWarning className="text-[11px] text-white/40">
+                      Last seen {formatSeenAt(status.seenAt)}
+                    </span>
+                  )}
+                </span>
               ) : (
                 <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
               )}
-              {paused && (
+              {paused && !offline && (
                 <span className="absolute inset-0 flex items-center justify-center bg-black/40">
                   <PauseIcon className="h-8 w-8 text-white" />
                 </span>
@@ -290,6 +337,14 @@ export function ScreenTile({
                 the row's far end. relative: the anchor ScreenSetupMenu's
                 dropdown hangs off (see there). */}
             <div className="relative flex min-w-0 items-center gap-1">
+              {status && (
+                <span
+                  role="img"
+                  aria-label={status.online ? "Online" : "Offline"}
+                  title={status.online ? "Online" : "Offline"}
+                  className={cn("mr-1 h-2 w-2 shrink-0 rounded-full", status.online ? "bg-accent" : "bg-danger")}
+                />
+              )}
               <ScreenTitle
                 screenId={screen.id}
                 name={screen.name}
@@ -315,7 +370,7 @@ export function ScreenTile({
               <PlaybackControls
                 send={send}
                 paused={paused}
-                onTogglePaused={() => setPaused((p) => !p)}
+                onTogglePaused={handleTogglePaused}
               />
             </div>
           </div>
@@ -349,4 +404,14 @@ export function ScreenTile({
       />
     </>
   );
+}
+
+// "14:32" today, "Mon 14:32" within the week, a date beyond that.
+function formatSeenAt(ms: number) {
+  const date = new Date(ms);
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const ageDays = (new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 86_400_000;
+  if (ageDays < 1) return time;
+  if (ageDays < 7) return `${date.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  return date.toLocaleDateString([], { day: "numeric", month: "short" });
 }

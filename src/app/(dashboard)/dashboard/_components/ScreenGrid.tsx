@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type MouseEvent, type SyntheticEvent, type TouchEvent } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type SyntheticEvent, type TouchEvent } from "react";
 import {
   DndContext,
   MouseSensor,
@@ -16,8 +16,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { reorderScreens } from "@/lib/actions/screens";
 import { runDueScheduledPlaybacks } from "@/lib/actions/schedules";
 import { useLiveRefresh } from "@/lib/realtime/useLiveRefresh";
+import { useScreenStatuses, type ScreenLiveStatus, type ScreenStatusRow } from "@/lib/realtime/useScreenStatuses";
 import { cn } from "@/lib/utils/cn";
-import type { PlaylistItemWithMedia, ScheduledPlayback, Screen } from "@/types/domain";
+import type { MediaItem, PlaylistItemWithMedia, ScheduledPlayback, Screen } from "@/types/domain";
 import { ScreenTile } from "./ScreenTile";
 import { AddScreenButton } from "./AddScreenButton";
 import { useViewer } from "@/lib/auth/ViewerContext";
@@ -60,8 +61,22 @@ class TileTouchSensor extends TouchSensor {
   ];
 }
 
-export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]; library: LibraryData }) {
+export function ScreenGrid({
+  screens,
+  statuses,
+  library,
+}: {
+  screens: ScreenWithPlaylist[];
+  statuses: ScreenStatusRow[] | null;
+  library: LibraryData;
+}) {
   const viewer = useViewer();
+  // One subscription for the whole grid rather than one per tile.
+  const statusOf = useScreenStatuses(statuses);
+  // A player reports only the id of what it's showing — which may not be in
+  // the screen's own playlist (a timed switch it made ahead of the
+  // database), so it's looked up across the whole library.
+  const mediaById = useMemo(() => new Map(library.media.map((m) => [m.id, m])), [library.media]);
   // Reordered locally the moment a tile is dropped, so it doesn't snap back
   // while the new order is saved.
   const [ordered, setOrdered] = useState(screens);
@@ -124,7 +139,13 @@ export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]
           <SortableContext items={ordered.map((s) => s.id)} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
               {ordered.map((screen) => (
-                <SortableScreenTile key={screen.id} screen={screen} library={library} />
+                <SortableScreenTile
+                  key={screen.id}
+                  screen={screen}
+                  library={library}
+                  status={statusOf(screen.id)}
+                  mediaById={mediaById}
+                />
               ))}
             </div>
           </SortableContext>
@@ -166,7 +187,17 @@ function useFireTimersOnTime(runAts: string[]) {
 // otherwise start a text selection or pop the image preview menu instead.
 // The rename field opts back in — iOS Safari won't edit text inside a
 // user-select: none subtree.
-function SortableScreenTile({ screen, library }: { screen: ScreenWithPlaylist; library: LibraryData }) {
+function SortableScreenTile({
+  screen,
+  library,
+  status,
+  mediaById,
+}: {
+  screen: ScreenWithPlaylist;
+  library: LibraryData;
+  status: ScreenLiveStatus | null;
+  mediaById: Map<string, MediaItem>;
+}) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: screen.id });
 
   return (
@@ -181,7 +212,14 @@ function SortableScreenTile({ screen, library }: { screen: ScreenWithPlaylist; l
       )}
     >
       <div className={cn("transition-transform duration-200 ease-[var(--ease-spring)]", isDragging && "scale-[1.03]")}>
-        <ScreenTile screen={screen} playlist={screen.playlist} library={library} schedules={screen.schedules} />
+        <ScreenTile
+          screen={screen}
+          playlist={screen.playlist}
+          library={library}
+          schedules={screen.schedules}
+          status={status}
+          mediaById={mediaById}
+        />
       </div>
     </div>
   );

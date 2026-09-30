@@ -5,10 +5,7 @@ import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon } from "@/components
 
 // paused/onTogglePaused are owned by the parent (ScreenTile) rather than
 // this component, since the preview's pause overlay needs to reflect the
-// same state. There's no way to confirm a screen actually received and
-// applied a command — realtime presence used to report that back, but it
-// proved unreliable enough to remove — so this is a local, optimistic
-// reflection of "what was last asked of it" rather than a verified status.
+// same state — which, for an online screen, is what its player reports.
 //
 // `send` comes from ScreenTile's one useScreenControl, shared with the
 // wrench menu's Reload — one channel per screen rather than one each.

@@ -21,6 +21,7 @@ import { brandFont } from "@/lib/fonts";
 import { QrCode } from "@/components/QrCode";
 import { ScreenPage } from "@/components/screenPages";
 import { useScheduledSwitch, type PendingTimer } from "./useScheduledSwitch";
+import { useStatusReport } from "./useStatusReport";
 
 // pdf.js needs browser canvas APIs, so this must never run during SSR.
 const PdfSlide = dynamic(() => import("./PdfSlide"), { ssr: false });
@@ -587,8 +588,8 @@ export function Player({
   }, [screen.id]);
 
   // Playback commands from a dashboard tile arrive here as one-off
-  // broadcasts rather than persisted state — the player applies them
-  // immediately with no report-back to the dashboard.
+  // broadcasts rather than persisted state — what they change is then
+  // reported back through useStatusReport below, like any other change.
   useEffect(() => {
     const channel = supabase.channel(controlChannelName(screen.id));
     channel
@@ -621,6 +622,9 @@ export function Player({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen.id]);
+
+  // The dashboard's live preview and Online/Offline come from this.
+  useStatusReport({ supabase, screenId: screen.id, mediaItemId: current?.media_item_id ?? null, paused });
 
   // Kicks off the playback loop, and restarts it promptly if the currently
   // shown item's own duration is edited mid-display. Once started,
