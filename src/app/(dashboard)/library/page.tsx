@@ -12,6 +12,7 @@ export default async function LibraryPage() {
     { data: playlists, error: playlistsError },
     { data: playlistEntries, error: entriesError },
     { data: decks, error: decksError },
+    { data: uploadLinks, error: uploadLinksError },
   ] = await Promise.all([
     admin.from("folders").select("*").order("name", { ascending: true }),
     admin.from("media_items").select("*").order("created_at", { ascending: false }),
@@ -22,6 +23,7 @@ export default async function LibraryPage() {
       .order("playlist_id", { ascending: true })
       .order("position", { ascending: true }),
     admin.from("decks").select("*").order("created_at", { ascending: false }),
+    admin.from("folder_upload_links").select("folder_id, token"),
   ]);
 
   if (foldersError) throw new Error(foldersError.message);
@@ -29,6 +31,7 @@ export default async function LibraryPage() {
   if (playlistsError) throw new Error(playlistsError.message);
   if (entriesError) throw new Error(entriesError.message);
   if (decksError) throw new Error(decksError.message);
+  if (uploadLinksError) throw new Error(uploadLinksError.message);
 
   const entriesByPlaylist = new Map<string, PlaylistEntryWithMedia[]>();
   for (const entry of (playlistEntries ?? []) as unknown as PlaylistEntryWithMedia[]) {
@@ -48,6 +51,7 @@ export default async function LibraryPage() {
       media={media ?? []}
       decks={decksWithPages(decks ?? [], media ?? [])}
       playlists={playlistsWithEntries}
+      uploadLinks={Object.fromEntries((uploadLinks ?? []).map((link) => [link.folder_id, link.token]))}
     />
   );
 }

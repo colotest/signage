@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { MediaThumb } from "@/components/MediaThumb";
@@ -9,6 +9,7 @@ import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
+import { createUploadLink, revokeUploadLink } from "@/lib/actions/uploadLinks";
 import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
 import { deleteDeck, moveDeck, renameDeck } from "@/lib/actions/decks";
 import { removeWithAnimation } from "@/lib/animation/listMotion";
@@ -20,6 +21,10 @@ import { ReplaceDeckButton } from "./ReplaceDeckButton";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 type Router = ReturnType<typeof useRouter>;
+
+// Folder id → upload link token (see 0024_folder_upload_links.sql). Null
+// where the tree is only a file picker, which then shows no link controls.
+const UploadLinksContext = createContext<Record<string, string> | null>(null);
 type FolderNode = Folder & { children: FolderNode[]; files: MediaItem[]; decks: DeckWithPages[] };
 
 function buildTree(folders: Folder[], media: MediaItem[], decks: DeckWithPages[]) {
@@ -108,6 +113,7 @@ export function FileTree({
   onCreatingChange,
   onUploadFiles,
   dropTargetFolderId,
+  uploadLinks,
 }: {
   className?: string;
   folders: Folder[];
@@ -132,6 +138,8 @@ export function FileTree({
   // file be dragged out of this tree and dropped onto a playlist, which a
   // DndContext scoped to this component alone could never see.
   dropTargetFolderId: string | null | undefined;
+  // Left out in the Playback Menu, like onUploadFiles.
+  uploadLinks?: Record<string, string>;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -272,7 +280,7 @@ export function FileTree({
   }
 
   return (
-    <>
+    <UploadLinksContext.Provider value={uploadLinks ?? null}>
       {/* -mx-5 bleeds this whole section — header row included, so it stays
           aligned with the rows below it — out of the page's own left/right
           inset to reach the screen edges for more row width. -mt-10 pulls
@@ -443,7 +451,7 @@ export function FileTree({
         </div>
         {isDraggingOsFile && <UploadDropOverlay folderName={uploadTargetFolderName} />}
       </div>
-    </>
+    </UploadLinksContext.Provider>
   );
 }
 
@@ -851,6 +859,40 @@ function FolderRow({
   // testing.
   const { setNodeRef } = useDroppable({ id: `folder-${folder.id}` });
   const rowRef = useRef<HTMLDivElement | null>(null);
+  const uploadLinks = useContext(UploadLinksContext);
+  const uploadLinkToken = uploadLinks?.[folder.id] ?? null;
+
+  // The link is minted server-side, so the clipboard write happens after an
+  // await — Safari only allows that through a ClipboardItem handed a
+  // promise, set up while the click still counts as the user's.
+  function handleCopyUploadLink() {
+    const url = createUploadLink(folder.id).then((token) => `${window.location.origin}/upload/${token}`);
+    const copied =
+      typeof ClipboardItem !== "undefined" && navigator.clipboard?.write
+        ? navigator.clipboard.write([
+            new ClipboardItem({ "text/plain": url.then((text) => new Blob([text], { type: "text/plain" })) }),
+          ])
+        : url.then((text) => navigator.clipboard.writeText(text));
+    startTransition(async () => {
+      try {
+        await copied;
+        window.alert(`Upload link for "${folder.name}" copied. Anyone with it can add files to this folder, and see only what's in it.`);
+      } catch {
+        // Clipboard refused (permissions, an old browser) — show the link
+        // to copy by hand instead of losing it.
+        window.prompt(`Upload link for "${folder.name}":`, await url);
+      }
+      router.refresh();
+    });
+  }
+
+  function handleRevokeUploadLink() {
+    if (!window.confirm(`Turn off the upload link for "${folder.name}"? Anyone who has it won't be able to upload any more.`)) return;
+    startTransition(async () => {
+      await revokeUploadLink(folder.id);
+      router.refresh();
+    });
+  }
 
   function handleDelete() {
     if (!window.confirm(`Delete folder "${folder.name}"? Subfolders are removed too; files inside move to Unsorted.`)) return;
@@ -918,6 +960,11 @@ function FolderRow({
         }
         date={formatDate(folder.created_at)}
       />
+      {uploadLinkToken && (
+        <span className="shrink-0 text-[12px]" title="Has an upload link" aria-label="Has an upload link">
+          🔗
+        </span>
+      )}
 
       <RowColumn width="w-28">Folder</RowColumn>
       <RowColumn width="w-24">—</RowColumn>
@@ -933,6 +980,16 @@ function FolderRow({
         </MenuInfo>
         <div className="my-1 border-t border-border" />
         <MenuItem onClick={onStartCreating}>+ New Subfolder</MenuItem>
+        {uploadLinks && (
+          <MenuItem disabled={pending} onClick={handleCopyUploadLink}>
+            {uploadLinkToken ? "Copy Upload Link" : "Create Upload Link"}
+          </MenuItem>
+        )}
+        {uploadLinkToken && (
+          <MenuItem disabled={pending} onClick={handleRevokeUploadLink}>
+            Turn Off Upload Link
+          </MenuItem>
+        )}
         <MenuItem danger disabled={pending} onClick={handleDelete}>
           Delete Folder
         </MenuItem>

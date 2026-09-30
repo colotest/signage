@@ -7,21 +7,47 @@ import { createDeckUploadUrls, finalizeDeckUpload } from "@/lib/actions/decks";
 import { inspectFile } from "@/lib/media/inspectFile";
 import { renderPdfPages } from "@/lib/media/renderPdfPages";
 import { createBrowserClient } from "@/lib/supabase/client";
+import type { MediaType } from "@/types/domain";
+
+// The Server Actions the pipeline runs on. The dashboard's own (signed-in)
+// ones by default; the public upload page swaps in ones bound to its
+// link's token, which pick the folder themselves.
+export type UploadActions = {
+  createUploadUrl: (input: Parameters<typeof createUploadUrl>[0]) => Promise<{
+    mediaItemId: string;
+    storagePath: string;
+    mediaType: MediaType;
+    token: string;
+  }>;
+  finalizeMediaUpload: (input: Parameters<typeof finalizeMediaUpload>[0]) => Promise<unknown>;
+  createDeckUploadUrls: typeof createDeckUploadUrls;
+  finalizeDeckUpload: (input: Parameters<typeof finalizeDeckUpload>[0]) => Promise<unknown>;
+};
+
+const SESSION_ACTIONS: UploadActions = {
+  createUploadUrl,
+  finalizeMediaUpload,
+  createDeckUploadUrls,
+  finalizeDeckUpload,
+};
 
 // The one upload pipeline behind every "+ Upload" button and OS file drop —
-// the Library page and the dashboard's Playback Menu file picker both use
-// it, so the two can't drift apart. `uploading` is the in-progress count.
-export function useMediaUpload(targetFolderId: string | null) {
+// the Library page, the dashboard's Playback Menu file picker and the
+// public upload page all use it, so they can't drift apart. `uploading` is
+// the in-progress count.
+export function useMediaUpload(targetFolderId: string | null, actions: UploadActions = SESSION_ACTIONS) {
   const router = useRouter();
   const [uploading, setUploading] = useState(0);
   // What a PDF is busy doing, since splitting one into pages takes long
   // enough that a bare spinner would look stuck.
   const [status, setStatus] = useState<string | null>(null);
 
+  // Resolves to how many of the files made it.
   async function uploadFiles(files: FileList | File[]) {
     const fileArray = Array.from(files);
-    if (fileArray.length === 0) return;
+    if (fileArray.length === 0) return 0;
     const supabase = createBrowserClient();
+    let succeeded = 0;
 
     setUploading((n) => n + fileArray.length);
     await Promise.all(
@@ -29,10 +55,11 @@ export function useMediaUpload(targetFolderId: string | null) {
         try {
           if (isPdf(file)) {
             await uploadDeck(file);
+            succeeded++;
             return;
           }
 
-          const { mediaItemId, storagePath, mediaType, token } = await createUploadUrl({
+          const { mediaItemId, storagePath, mediaType, token } = await actions.createUploadUrl({
             filename: file.name,
             contentType: file.type,
           });
@@ -43,7 +70,7 @@ export function useMediaUpload(targetFolderId: string | null) {
           ]);
           if (uploadError) throw uploadError;
 
-          await finalizeMediaUpload({
+          await actions.finalizeMediaUpload({
             mediaItemId,
             folderId: targetFolderId,
             name: file.name,
@@ -55,6 +82,7 @@ export function useMediaUpload(targetFolderId: string | null) {
             height: metadata.height,
             durationSeconds: metadata.durationSeconds,
           });
+          succeeded++;
         } catch (err) {
           console.error("Upload failed", file.name, err);
           alert(`Failed to upload "${file.name}": ${err instanceof Error ? err.message : "unknown error"}`);
@@ -65,6 +93,7 @@ export function useMediaUpload(targetFolderId: string | null) {
     );
     setStatus(null);
     router.refresh();
+    return succeeded;
   }
 
   // A PDF becomes a deck: the original file, plus an image per page
@@ -78,7 +107,7 @@ export function useMediaUpload(targetFolderId: string | null) {
     setStatus(`Reading ${name}…`);
     const pages = await renderPdfPages(file, (done, total) => setStatus(`Rendering page ${done} of ${total}…`));
 
-    const { original, pages: slots } = await createDeckUploadUrls({ pageCount: pages.length });
+    const { original, pages: slots } = await actions.createDeckUploadUrls({ pageCount: pages.length });
 
     setStatus(`Uploading ${name}…`);
     const { error: originalError } = await supabase.storage
@@ -97,7 +126,7 @@ export function useMediaUpload(targetFolderId: string | null) {
       }),
     );
 
-    await finalizeDeckUpload({
+    await actions.finalizeDeckUpload({
       name,
       folderId: targetFolderId,
       storagePath: original.storagePath,

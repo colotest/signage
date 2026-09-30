@@ -96,6 +96,35 @@ export type Database = {
           },
         ];
       };
+      folder_upload_links: {
+        Row: {
+          folder_id: string;
+          token: string;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          folder_id: string;
+          token: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          folder_id?: string;
+          token?: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "folder_upload_links_folder_id_fkey";
+            columns: ["folder_id"];
+            isOneToOne: true;
+            referencedRelation: "folders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       media_items: {
         Row: {
           id: string;

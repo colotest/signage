@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { folderName, plural, quote, recordActivity } from "@/lib/activity";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { insertDeck, pageName, type DeckPageInput } from "@/lib/uploads/insertDeck";
 
 // A PDF in the library is a deck: the original file, plus one image per
 // page rendered in the uploader's browser (see renderPdfPages). The pages
@@ -39,13 +40,6 @@ export async function createDeckUploadUrls({ pageCount }: { pageCount: number })
   return { original, pages };
 }
 
-export type DeckPageInput = {
-  storagePath: string;
-  width: number;
-  height: number;
-  sizeBytes: number;
-};
-
 export async function finalizeDeckUpload({
   name,
   folderId,
@@ -62,42 +56,7 @@ export async function finalizeDeckUpload({
   const user = await requireSession();
   const admin = createAdminClient();
 
-  const { data: deck, error: deckError } = await admin
-    .from("decks")
-    .insert({
-      folder_id: folderId,
-      name,
-      storage_path: storagePath,
-      mime_type: "application/pdf",
-      size_bytes: sizeBytes,
-      page_count: pages.length,
-    })
-    .select()
-    .single();
-  if (deckError) throw new Error(deckError.message);
-
-  const { error: pagesError } = await admin.from("media_items").insert(
-    pages.map((page, i) => ({
-      // Pages live in the deck, not in a folder: the deck is what sits in
-      // one, and moving it moves them with it.
-      folder_id: null,
-      deck_id: deck.id,
-      deck_position: i,
-      name: pageName(name, i),
-      storage_path: page.storagePath,
-      media_type: "image" as const,
-      mime_type: "image/jpeg",
-      size_bytes: page.sizeBytes,
-      width: page.width,
-      height: page.height,
-    })),
-  );
-  if (pagesError) {
-    // Leaves nothing half-made in the library; the uploaded objects are
-    // orphaned in storage, same as any other failed upload here.
-    await admin.from("decks").delete().eq("id", deck.id);
-    throw new Error(pagesError.message);
-  }
+  const deck = await insertDeck(admin, { name, folderId, storagePath, sizeBytes, pages });
   recordActivity(user, {
     action: "deck.upload",
     summary: `Uploaded PDF ${quote(name)} (${plural(pages.length, "page")})`,
@@ -283,8 +242,4 @@ export async function deleteDeck(id: string) {
 
   revalidatePath("/library");
   revalidatePath("/dashboard");
-}
-
-function pageName(deckName: string, index: number) {
-  return `${deckName} — Page ${index + 1}`;
 }

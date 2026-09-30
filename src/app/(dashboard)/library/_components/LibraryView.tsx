@@ -62,11 +62,14 @@ export function LibraryView({
   media,
   decks,
   playlists,
+  uploadLinks,
 }: {
   folders: Folder[];
   media: MediaItem[];
   decks: DeckWithPages[];
   playlists: PlaylistWithEntries[];
+  // Folder id → upload link token, for the folders that have one.
+  uploadLinks: Record<string, string>;
 }) {
   const router = useRouter();
   // Another person's uploads, renames, moves and playlist edits appear
@@ -386,6 +389,7 @@ export function LibraryView({
             folders={folders}
             media={localMedia}
             decks={decks}
+            uploadLinks={uploadLinks}
             selectionMode={activePlaylistId !== null}
             selectedIds={selectedMediaIds}
             onToggleMedia={toggleMedia}
