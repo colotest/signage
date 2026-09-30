@@ -42,7 +42,10 @@ export function Sheet({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="sheet-overlay fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
+        {/* h-[109lvh]: on a phone, down behind iOS Safari's floating toolbar
+            like the app shell itself (see app-shell-height in globals.css) —
+            inset-0 alone stops short above it. */}
+        <Dialog.Overlay className="sheet-overlay fixed inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 backdrop-blur-sm" />
         <Dialog.Content
           className={cn(
             // --edge-scrim: lists inside a popup (the Playback Menu's media
@@ -52,9 +55,12 @@ export function Sheet({
             // strips, which otherwise paint straight over the popup's own
             // rounded corners and square them off. Clipping to this box's
             // shape keeps the corners round whatever sits at the edges.
+            // h-[109lvh]: as the overlay — full screen on a phone means right
+            // down behind Safari's toolbar, with the content keeping its own
+            // clearance from it.
             "sheet-content fixed z-50 flex flex-col overflow-hidden bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
-            "inset-0 rounded-none",
-            "sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
+            "inset-x-0 top-0 h-[109lvh] rounded-none",
+            "sm:inset-auto sm:h-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md sm:max-h-[85vh] sm:rounded-[var(--radius-lg)]",
             contentClassName,
           )}

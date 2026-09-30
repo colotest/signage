@@ -18,9 +18,19 @@ import { cn } from "@/lib/utils/cn";
 // so without the hand-off below the page only moves on the NEXT gesture.
 // Touch keeps the browser's own chaining (the next swipe moves the page).
 //
+// The other way round, iOS gets it wrong: flick the page, and a finger put
+// down on this list while the page is still gliding goes on moving the
+// page. So a touch starting here while the page has only just moved stops
+// the page dead — its scrolling is taken away until the finger's up —
+// which leaves this list as the one thing there to scroll.
+//
 // A change of cap eases in rather than snapping — the lists' caps shift
 // whenever the layout around them does (the file browser closing, the other
 // list growing), and a jump there pushes everything below it around.
+// How recently the page has to have moved for a touch on the list to count
+// as landing mid-glide — a gliding page reports a scroll every frame.
+const PAGE_GLIDE_MS = 100;
+
 export function ListScroller({
   children,
   maxHeight,
@@ -108,10 +118,41 @@ export function ListScroller({
     }
     el.addEventListener("wheel", handleWheel, { passive: false });
 
+    // Heard from the document (scroll doesn't bubble, but it can be
+    // captured): the page's element isn't there yet when this runs — the
+    // page's ref is set only after its contents' effects.
+    let outerMovedAt = -Infinity;
+    const onOuterScroll = (e: Event) => {
+      if (e.target === outerRef?.current) outerMovedAt = performance.now();
+    };
+    let releaseOuter: (() => void) | null = null;
+    function handleTouchStart() {
+      const node = ownRef.current;
+      const outer = outerRef?.current;
+      if (!outer || !node || !scrollableRef.current || releaseOuter) return;
+      if (node.scrollHeight - node.clientHeight <= 0) return; // nothing to scroll here
+      if (performance.now() - outerMovedAt > PAGE_GLIDE_MS) return; // the page is at rest
+      outer.style.overflowY = "hidden";
+      const release = () => {
+        outer.style.overflowY = "";
+        window.removeEventListener("touchend", release);
+        window.removeEventListener("touchcancel", release);
+        releaseOuter = null;
+      };
+      releaseOuter = release;
+      window.addEventListener("touchend", release);
+      window.addEventListener("touchcancel", release);
+    }
+    document.addEventListener("scroll", onOuterScroll, { capture: true, passive: true });
+    el.addEventListener("touchstart", handleTouchStart, { passive: true });
+
     return () => {
       observer.disconnect();
       el.removeEventListener("scroll", updateEdges);
       el.removeEventListener("wheel", handleWheel);
+      document.removeEventListener("scroll", onOuterScroll, { capture: true });
+      el.removeEventListener("touchstart", handleTouchStart);
+      releaseOuter?.();
       if (scrollRef) scrollRef.current = null;
     };
   }, [outerRef, scrollRef]);

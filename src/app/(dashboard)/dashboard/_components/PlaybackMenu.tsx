@@ -81,8 +81,27 @@ const HEADER_TUCK = SECTION_TITLE_HEIGHT;
 const PLAYLISTS_FOOTER = TITLE_BAND_FADE;
 
 // How long the scroll view has to sit still (and no finger be down) before
-// a half-scrolled file browser settles open or shut.
+// a part-scrolled file browser settles open or shut.
 const PICKER_SETTLE_MS = 140;
+
+// How much of the file browser has to be scrolled away, when let go of,
+// for it to finish closing rather than spring back open — about its first
+// row going out of view.
+const PICKER_CLOSE_AT = 0.1;
+
+// iOS Safari can drop a scroll position set from script while the view is
+// still moving under its own steam — a flick's glide — and carry on from
+// where it was, which shows up as a jump once the position it was given
+// has changed the layout. Taking the view's scrolling away for a moment
+// stops any of that dead first, so the position set here is the one that
+// sticks.
+function withScrollHeld(view: HTMLElement, set: () => void) {
+  view.style.overflowY = "hidden";
+  set();
+  requestAnimationFrame(() => {
+    view.style.overflowY = "";
+  });
+}
 
 // Over how much of the file browser's last stretch, as it's scrolled shut,
 // "Done" fades out — it's sitting behind the title by then.
@@ -448,30 +467,64 @@ export function PlaybackMenu({
       list?.querySelector<HTMLElement>("[data-entry-id]") ?? playlistsAnchorRef.current ?? null;
     const before = reference?.getBoundingClientRect().top ?? 0;
     const at = view.scrollTop;
+    pickingRef.current = false;
     flushSync(() => {
       setInstantClose(true);
       stopPicking();
     });
-    view.scrollTop = Math.max(0, at - height);
-    const drift = reference ? reference.getBoundingClientRect().top - before : 0;
-    if (drift !== 0) {
-      let left = drift;
-      if (list && reference && list.contains(reference)) {
-        const from = list.scrollTop;
-        list.scrollTop = from + left;
-        left -= list.scrollTop - from;
+    withScrollHeld(view, () => {
+      view.scrollTop = Math.max(0, at - height);
+      const drift = reference ? reference.getBoundingClientRect().top - before : 0;
+      if (drift !== 0) {
+        let left = drift;
+        if (list && reference && list.contains(reference)) {
+          const from = list.scrollTop;
+          list.scrollTop = from + left;
+          left -= list.scrollTop - from;
+        }
+        view.scrollTop += left;
       }
-      view.scrollTop += left;
-    }
+    });
     requestAnimationFrame(() => setInstantClose(false));
+  }
+
+  // The file browser has been let go of partway shut, past PICKER_CLOSE_AT:
+  // it finishes closing as an animation of its own height, not a scroll —
+  // a scroll the page would have to be moved back from once the browser's
+  // gone, and on iOS that move back can get lost (see withScrollHeld).
+  //
+  // So first, in one frame and without anything on screen moving, the part
+  // already scrolled away is cut off the browser's top and the view scrolled
+  // back to its start: the browser's box loses that much height, and its
+  // content is pulled up by the same, so what's left shows exactly as
+  // before. Then it closes from there like pressing "Done".
+  const pickerInnerRef = useRef<HTMLDivElement>(null);
+  function finishClosingPicker(at: number) {
+    const view = pageRef.current;
+    const picker = pickerRef.current;
+    const inner = pickerInnerRef.current;
+    if (!view || !picker || !inner) return;
+    const transition = picker.style.transition;
+    picker.style.transition = "none";
+    picker.style.height = `${picker.offsetHeight - at}px`;
+    inner.style.marginTop = `${-at}px`;
+    withScrollHeld(view, () => {
+      view.scrollTop = 0;
+    });
+    void picker.offsetHeight; // commit that before the close animates
+    picker.style.transition = transition;
+    pickingRef.current = false;
+    stopPicking();
   }
 
   // Read from the layout effect below, which only re-runs on open.
   const pickingRef = useRef(picking);
   const closePickerInPlaceRef = useRef(closePickerInPlace);
+  const finishClosingPickerRef = useRef(finishClosingPicker);
   useEffect(() => {
     pickingRef.current = picking;
     closePickerInPlaceRef.current = closePickerInPlace;
+    finishClosingPickerRef.current = finishClosingPicker;
   });
 
   // The sheet's content only mounts while it's open, so the view's size and
@@ -536,9 +589,10 @@ export function PlaybackMenu({
       // Scrolling down while the file browser is open scrolls it shut by
       // hand. Once the view comes to rest — the wheel or trackpad has
       // stopped, or the finger's up and any momentum has run out — a
-      // browser less than halfway gone springs back open, one more than
-      // halfway finishes closing, and one scrolled right out of view is
-      // taken out of the layout without anything on screen moving.
+      // browser barely touched (under PICKER_CLOSE_AT gone) springs back
+      // open, one scrolled further finishes closing, and one scrolled right
+      // out of view is taken out of the layout without anything on screen
+      // moving.
       let touching = false;
       let settleTimer: ReturnType<typeof setTimeout> | undefined;
       const settlePicker = () => {
@@ -551,7 +605,11 @@ export function PlaybackMenu({
           closePickerInPlaceRef.current(height);
           return;
         }
-        view.scrollTo({ top: at < height / 2 ? 0 : height, behavior: "smooth" });
+        if (at >= height * PICKER_CLOSE_AT) {
+          finishClosingPickerRef.current(at);
+          return;
+        }
+        view.scrollTo({ top: 0, behavior: "smooth" });
       };
       const scheduleSettle = () => {
         clearTimeout(settleTimer);
@@ -624,6 +682,8 @@ export function PlaybackMenu({
   }
 
   function openPicker() {
+    // Whatever finishClosingPicker last cut off the browser's top is back.
+    if (pickerInnerRef.current) pickerInnerRef.current.style.marginTop = "";
     scrollPageTo(0);
     startPicking();
     scrollNowPlaying("start");
@@ -939,6 +999,7 @@ export function PlaybackMenu({
               }}
             >
               <div
+                ref={pickerInnerRef}
                 className="flex min-h-0 flex-1 flex-col pb-5 ease-out"
                 style={{
                   transform: picking ? "none" : "translateY(-40px)",
