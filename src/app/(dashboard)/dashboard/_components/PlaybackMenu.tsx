@@ -80,6 +80,10 @@ const HEADER_TUCK = SECTION_TITLE_HEIGHT;
 // same as the one above a heading.
 const PLAYLISTS_FOOTER = TITLE_BAND_FADE;
 
+// How far above the view's bottom padding "Calendar" sits at the lowest —
+// half its own 28px type.
+const CALENDAR_LIFT = 14;
+
 // How long the scroll view has to sit still (and no finger be down) before
 // a part-scrolled file browser settles open or shut.
 const PICKER_SETTLE_MS = 140;
@@ -413,11 +417,11 @@ export function PlaybackMenu({
   const room = Math.max(0, usable - SECTION_TITLE_HEIGHT * 2);
   const half = Math.floor(room / 2);
   // What the two lists share at rest: less the view's bottom padding (the
-  // iOS toolbar clearance on a phone), so "Calendar" lands right below
-  // Playlists rather than docking over the end of it. Playlists gives that
+  // iOS toolbar clearance on a phone) and CALENDAR_LIFT, so "Calendar" lands
+  // right below Playlists rather than docking over the end of it. Playlists gives that
   // up out of its half, so Now Playing's end — and the "Playlists"
   // heading — stay put.
-  const fit = Math.max(0, room - padBottom);
+  const fit = Math.max(0, room - padBottom - CALENDAR_LIFT);
   // The file browser takes half, and while it's open all the rest goes to
   // Now Playing.
   const pickerHeight = Math.round(usable / 2);
@@ -587,43 +591,62 @@ export function PlaybackMenu({
       update();
 
       // Scrolling down while the file browser is open scrolls it shut by
-      // hand. Once the view comes to rest — the wheel or trackpad has
-      // stopped, or the finger's up and any momentum has run out — a
-      // browser barely touched (under PICKER_CLOSE_AT gone) springs back
-      // open, one scrolled further finishes closing, and one scrolled right
-      // out of view is taken out of the layout without anything on screen
-      // moving.
+      // hand. Let go of while heading down, with more than PICKER_CLOSE_AT
+      // of it gone, it finishes closing — one scrolled right out of view is
+      // taken out of the layout without anything on screen moving. Let go
+      // of heading back up, or barely touched, it springs back open.
+      //
+      // A finger lifting is a clear moment to decide at: that happens right
+      // away, or as soon as the glide after it carries the browser past
+      // PICKER_CLOSE_AT — not once the glide has run out, which can be a
+      // while. A wheel or trackpad has no such moment (a trackpad's own
+      // glide is just more wheel events), so there it's decided once the
+      // view has come to rest.
       let touching = false;
+      // The finger's been lifted since it was last put down: any scrolling
+      // now is its glide.
+      let released = false;
+      let lastTop = view.scrollTop;
+      let goingDown = false;
       let settleTimer: ReturnType<typeof setTimeout> | undefined;
-      const settlePicker = () => {
+      const settlePicker = (letGo: boolean) => {
         const picker = pickerRef.current;
-        if (!pickingRef.current || touching || !picker) return;
+        if (!pickingRef.current || touching || !picker) return false;
         const height = Math.max(0, picker.offsetHeight - HEADER_TUCK);
         const at = view.scrollTop;
-        if (at <= 1 || height === 0) return;
-        if (at >= height - 1) {
-          closePickerInPlaceRef.current(height);
-          return;
-        }
-        if (at >= height * PICKER_CLOSE_AT) {
-          finishClosingPickerRef.current(at);
-          return;
-        }
-        view.scrollTo({ top: 0, behavior: "smooth" });
+        if (at <= 1 || height === 0) return false;
+        const closing = goingDown && at >= height * PICKER_CLOSE_AT;
+        // Mid-glide, only a close is decided — springing open waits until
+        // the glide's done (it may yet carry the browser past the line).
+        if (letGo && !closing) return false;
+        clearTimeout(settleTimer);
+        if (!closing) view.scrollTo({ top: 0, behavior: "smooth" });
+        else if (at >= height - 1) closePickerInPlaceRef.current(height);
+        else finishClosingPickerRef.current(at);
+        return true;
       };
       const scheduleSettle = () => {
         clearTimeout(settleTimer);
-        if (pickingRef.current) settleTimer = setTimeout(settlePicker, PICKER_SETTLE_MS);
+        if (pickingRef.current) settleTimer = setTimeout(() => settlePicker(false), PICKER_SETTLE_MS);
+      };
+      const onScroll = () => {
+        const top = view.scrollTop;
+        if (top !== lastTop) goingDown = top > lastTop;
+        lastTop = top;
+        if (released && settlePicker(true)) return;
+        scheduleSettle();
       };
       const onTouchStart = () => {
         touching = true;
+        released = false;
         clearTimeout(settleTimer);
       };
       const onTouchEnd = () => {
         touching = false;
-        scheduleSettle();
+        released = true;
+        if (!settlePicker(true)) scheduleSettle();
       };
-      view.addEventListener("scroll", scheduleSettle, { passive: true });
+      view.addEventListener("scroll", onScroll, { passive: true });
       view.addEventListener("touchstart", onTouchStart, { passive: true });
       view.addEventListener("touchend", onTouchEnd, { passive: true });
       view.addEventListener("touchcancel", onTouchEnd, { passive: true });
@@ -640,7 +663,7 @@ export function PlaybackMenu({
         observer.disconnect();
         clearTimeout(settleTimer);
         view.removeEventListener("scroll", update);
-        view.removeEventListener("scroll", scheduleSettle);
+        view.removeEventListener("scroll", onScroll);
         view.removeEventListener("touchstart", onTouchStart);
         view.removeEventListener("touchend", onTouchEnd);
         view.removeEventListener("touchcancel", onTouchEnd);
@@ -1134,7 +1157,7 @@ export function PlaybackMenu({
               <SectionTitle
                 title="Playlists"
                 className={cn("-mx-5 px-5", picking ? "relative" : "sticky")}
-                style={picking ? undefined : { top: 0, bottom: SECTION_TITLE_HEIGHT }}
+                style={picking ? undefined : { top: 0, bottom: SECTION_TITLE_HEIGHT + CALENDAR_LIFT }}
                 trailing={
                   <PlaylistSortMenuButton sortKey={playlistSortKey} sortDir={playlistSortDir} onToggleSort={togglePlaylistSort} />
                 }
@@ -1202,7 +1225,7 @@ export function PlaybackMenu({
                   style={{
                     height: PLAYLISTS_FOOTER,
                     marginTop: -PLAYLISTS_FOOTER,
-                    bottom: picking ? undefined : SECTION_TITLE_HEIGHT,
+                    bottom: picking ? undefined : SECTION_TITLE_HEIGHT + CALENDAR_LIFT,
                   }}
                 >
                   <ProgressiveBlurEdge side="bottom" extent={PLAYLISTS_FOOTER} />
@@ -1216,7 +1239,7 @@ export function PlaybackMenu({
                 onToggle={toggleCalendar}
                 bandAbove={false}
                 className={cn("-mx-5 px-5", picking ? "relative" : "sticky")}
-                style={picking ? undefined : { top: SECTION_TITLE_HEIGHT, bottom: 0 }}
+                style={picking ? undefined : { top: SECTION_TITLE_HEIGHT, bottom: CALENDAR_LIFT }}
               />
               <div ref={calendarBodyRef}>
                 <CalendarSection
