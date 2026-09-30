@@ -198,6 +198,10 @@ export function UploadWindow({ token, folderName, files }: { token: string; fold
         <p className="mt-2 text-muted">
           Up to <span className="font-medium text-foreground">{MAX_UPLOAD_BYTES / 1024 / 1024} MB</span> per file.
         </p>
+        <p className="mt-2 text-muted">
+          <span className="font-medium text-foreground">Presentations</span> (PowerPoint, Keynote, Google Slides): export
+          them as a PDF first — File → Export (or Download) → PDF — then upload the PDF.
+        </p>
       </div>
     </div>
   );

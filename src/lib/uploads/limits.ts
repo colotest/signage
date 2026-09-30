@@ -20,9 +20,17 @@ export const ACCEPTED_TYPES = [
 
 export const ACCEPT_ATTRIBUTE = "image/*,video/*,application/pdf";
 
+// Slides can't be shown as-is; they're turned away with a pointer to
+// exporting a PDF, which then uploads as a deck.
+const PRESENTATION_EXTENSIONS = [".ppt", ".pptx", ".pps", ".ppsx", ".key", ".odp"];
+
 // Why a file can't go up, or null if it can.
 export function rejectionReason(file: File): string | null {
-  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  const name = file.name.toLowerCase();
+  const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
+  if (PRESENTATION_EXTENSIONS.some((ext) => name.endsWith(ext))) {
+    return "is a presentation — export it as a PDF first, then upload the PDF";
+  }
   if (!isPdf && !file.type.startsWith("image/") && !file.type.startsWith("video/")) {
     return "isn't an image, video or PDF";
   }
