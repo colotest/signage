@@ -32,6 +32,13 @@ const LAYERS = [
   stop: stop / BLUR_EXTENT,
 }));
 
+// A layer whose blur comes to less than this, on a shallow edge, is left
+// out, the one before it fading out over its stretch instead: a sub-pixel
+// blur is next to invisible, and every backdrop-filter layer has to be
+// recomputed each frame anything moves beneath it — which, on a phone, is
+// what makes scrolling past a stack of them stutter.
+const MIN_RADIUS = 1;
+
 // A wash of the page's own background over the same edge, on top of the
 // blur. Blur alone can't make content disappear: it smears text into
 // illegibility, but a flat fill — a hovered row, a folder lit up as the
@@ -74,6 +81,8 @@ export function ProgressiveBlurEdge({
   hold?: number;
 }) {
   const direction = side === "top" ? "to bottom" : "to top";
+  const kept = LAYERS.filter((layer, i) => i === 0 || layer.blur * extent >= MIN_RADIUS);
+  const layers = kept.map((layer, i) => (i === kept.length - 1 ? { ...layer, stop: 1 } : layer));
   const scrimExtent = Math.round(extent * SCRIM_FRACTION);
   const scrim = `linear-gradient(${direction}, ${SCRIM_STOPS.map(
     ([fraction, percent]) =>
@@ -86,14 +95,17 @@ export function ProgressiveBlurEdge({
       className={cn("pointer-events-none absolute inset-x-0 z-[5]", side === "top" ? "top-0" : "bottom-0")}
       style={{ height: hold + extent }}
     >
-      {LAYERS.map(({ blur, solid, stop }, i) => {
+      {layers.map(({ blur, solid, stop }, i) => {
         const gradient = `linear-gradient(${direction}, black 0, black ${(hold + solid * extent).toFixed(1)}px, transparent ${(hold + stop * extent).toFixed(1)}px)`;
         const radius = (blur * extent).toFixed(2);
         return (
+          // Only as deep as its own mask reaches — beyond that it's fully
+          // transparent anyway, and blurring there would be wasted work.
           <div
             key={i}
-            className="absolute inset-0"
+            className={cn("absolute inset-x-0", side === "top" ? "top-0" : "bottom-0")}
             style={{
+              height: hold + stop * extent,
               backdropFilter: `blur(${radius}px)`,
               WebkitBackdropFilter: `blur(${radius}px)`,
               maskImage: gradient,

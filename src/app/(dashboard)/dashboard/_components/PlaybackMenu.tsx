@@ -411,6 +411,24 @@ export function PlaybackMenu({
   const [padBottom, setPadBottom] = useState(0);
   const [nowPlayingNatural, setNowPlayingNatural] = useState(0);
   const [playlistsNatural, setPlaylistsNatural] = useState(0);
+  // The lists' natural heights only matter up to the view's own height —
+  // anything taller gets capped just the same (both caps below come out of
+  // what fits in the view). So they're kept clamped there: a long list
+  // animating its rows (growing in, "+ Media" folding away) then leaves the
+  // state untouched, rather than re-rendering this whole menu, file
+  // browser and all, on every frame of it. The raw heights are kept too,
+  // to re-clamp against when the view's height changes (see measure).
+  const viewHeightRef = useRef(0);
+  const nowPlayingRawRef = useRef(0);
+  const playlistsRawRef = useRef(0);
+  function reportNowPlayingNatural(height: number) {
+    nowPlayingRawRef.current = height;
+    setNowPlayingNatural(Math.min(height, viewHeightRef.current));
+  }
+  function reportPlaylistsNatural(height: number) {
+    playlistsRawRef.current = height;
+    setPlaylistsNatural(Math.min(height, viewHeightRef.current));
+  }
 
   // Everything below the tuck under the popup's title.
   const usable = Math.max(0, pageHeight - HEADER_TUCK);
@@ -541,27 +559,43 @@ export function PlaybackMenu({
       if (!view) return;
       const naturalOf = (anchor: HTMLElement | null) =>
         anchor ? view.scrollTop + anchor.getBoundingClientRect().top - view.getBoundingClientRect().top : Infinity;
-      const update = () => {
+      // What following the scroll needs from the layout, measured only when
+      // something's changed size (the observer below) — never in the scroll
+      // handler itself, where reading layout after writing styles would make
+      // the browser lay the whole view out again on every frame.
+      const m = { padTop: 0, maxScroll: 0, pickerSpan: 0, calendarAt: Infinity };
+      const measure = () => {
         const h = view.clientHeight;
-        const top = view.scrollTop;
-        const maxScroll = view.scrollHeight - h;
-        setPageHeight(h);
+        const style = getComputedStyle(view);
         // Sticky offsets, like everything else here, count from inside the
         // view's padding — the tuck under the title at the top.
-        const padTop = parseFloat(getComputedStyle(view).paddingTop) || 0;
+        m.padTop = parseFloat(style.paddingTop) || 0;
+        m.maxScroll = view.scrollHeight - h;
+        const picker = pickerRef.current;
+        // The browser's share of the layout: its box reaches HEADER_TUCK up
+        // behind the popup's title, which isn't part of what scrolls away.
+        m.pickerSpan = picker ? Math.max(0, picker.offsetHeight - HEADER_TUCK) : 0;
+        m.calendarAt = naturalOf(calendarAnchorRef.current);
+        viewHeightRef.current = h;
+        setPageHeight(h);
+        setPadBottom(parseFloat(style.paddingBottom) || 0);
+        setNowPlayingNatural(Math.min(nowPlayingRawRef.current, h));
+        setPlaylistsNatural(Math.min(playlistsRawRef.current, h));
+      };
+
+      // Everything that follows the scroll position — reading nothing but
+      // that, then writing.
+      const follow = () => {
+        const top = view.scrollTop;
 
         // "Done" rides up with the file browser as it's scrolled shut, and
         // fades out as it goes in behind the popup's title — fully gone by
         // the time the browser is scrolled out and taken away, so nothing
         // pops out of sight behind the title at that moment. Set straight on
         // the element: it follows every scroll frame.
-        const picker = pickerRef.current;
-        // The browser's share of the layout: its box reaches HEADER_TUCK up
-        // behind the popup's title, which isn't part of what scrolls away.
-        const pickerSpan = picker ? Math.max(0, picker.offsetHeight - HEADER_TUCK) : 0;
         const done = doneRef.current;
-        if (picker && done) {
-          const remaining = pickerSpan - top;
+        if (pickerRef.current && done) {
+          const remaining = m.pickerSpan - top;
           done.style.opacity = String(Math.min(1, Math.max(0, remaining / DONE_FADE_DISTANCE)));
         }
 
@@ -571,24 +605,21 @@ export function PlaybackMenu({
         // settle once it's taken away. Set straight on the element, over
         // what React last rendered.
         const list = nowPlayingScrollRef.current;
-        if (pickingRef.current && picker && list) {
+        if (pickingRef.current && list) {
           const caps = capsRef.current;
-          const progress = Math.min(1, Math.max(0, top / Math.max(1, pickerSpan)));
+          const progress = Math.min(1, Math.max(0, top / Math.max(1, m.pickerSpan)));
           const cap = caps.picking + (caps.normal - caps.picking) * progress;
           list.style.maxHeight = `${cap + HEADER_TUCK}px`;
         }
 
-        const calendarAt = naturalOf(calendarAnchorRef.current);
-
         // Calendar counts as in view once it's scrolled as far up as it
-        // goes — right under the docked "Playlists" heading, or wherever the
-        // end of the view stops it short of that.
-        const calendarTarget = Math.min(calendarAt - SECTION_TITLE_HEIGHT - padTop, maxScroll);
+        // goes — right under the "Playlists" heading, or wherever the end of
+        // the view stops it short of that.
+        const calendarTarget = Math.min(m.calendarAt - SECTION_TITLE_HEIGHT - m.padTop, m.maxScroll);
         setCalendarInView(top >= calendarTarget - 24);
-
-        setPadBottom(parseFloat(getComputedStyle(view).paddingBottom) || 0);
       };
-      update();
+      measure();
+      follow();
 
       // Scrolling down while the file browser is open scrolls it shut by
       // hand. Let go of while heading down, with more than PICKER_CLOSE_AT
@@ -610,9 +641,8 @@ export function PlaybackMenu({
       let goingDown = false;
       let settleTimer: ReturnType<typeof setTimeout> | undefined;
       const settlePicker = (letGo: boolean) => {
-        const picker = pickerRef.current;
-        if (!pickingRef.current || touching || !picker) return false;
-        const height = Math.max(0, picker.offsetHeight - HEADER_TUCK);
+        if (!pickingRef.current || touching) return false;
+        const height = m.pickerSpan;
         const at = view.scrollTop;
         if (at <= 1 || height === 0) return false;
         const closing = goingDown && at >= height * PICKER_CLOSE_AT;
@@ -630,6 +660,7 @@ export function PlaybackMenu({
         if (pickingRef.current) settleTimer = setTimeout(() => settlePicker(false), PICKER_SETTLE_MS);
       };
       const onScroll = () => {
+        follow();
         const top = view.scrollTop;
         if (top !== lastTop) goingDown = top > lastTop;
         lastTop = top;
@@ -654,15 +685,16 @@ export function PlaybackMenu({
       // The view's own size, and everything in it — a list growing,
       // shrinking or getting its cap moves the headings without any
       // scrolling, and docking has to follow.
-      const observer = new ResizeObserver(update);
+      const observer = new ResizeObserver(() => {
+        measure();
+        follow();
+      });
       observer.observe(view);
       for (const child of Array.from(view.children)) observer.observe(child);
       if (calendarBodyRef.current) observer.observe(calendarBodyRef.current);
-      view.addEventListener("scroll", update, { passive: true });
       cleanup = () => {
         observer.disconnect();
         clearTimeout(settleTimer);
-        view.removeEventListener("scroll", update);
         view.removeEventListener("scroll", onScroll);
         view.removeEventListener("touchstart", onTouchStart);
         view.removeEventListener("touchend", onTouchEnd);
@@ -1018,7 +1050,14 @@ export function PlaybackMenu({
                 paddingTop: HEADER_TUCK,
                 height: (picking ? pickerHeight : 0) + HEADER_TUCK,
                 opacity: picking ? 1 : 0,
-                transition: instantClose ? "none" : `height ${FILE_PICKER_MS}ms, opacity ${FILE_PICKER_MS}ms`,
+                // Hidden once shut (visibility only switches at the end of
+                // its transition, so it's still there while it animates
+                // closed): a file browser left mounted but invisible would
+                // still cost its blur edges' work on every frame.
+                visibility: picking ? "visible" : "hidden",
+                transition: instantClose
+                  ? "none"
+                  : `height ${FILE_PICKER_MS}ms, opacity ${FILE_PICKER_MS}ms, visibility ${FILE_PICKER_MS}ms`,
               }}
             >
               <div
@@ -1099,7 +1138,7 @@ export function PlaybackMenu({
                 scrollable={!picking}
                 outerRef={pageRef}
                 scrollRef={nowPlayingScrollRef}
-                onNaturalHeight={setNowPlayingNatural}
+                onNaturalHeight={reportNowPlayingNatural}
                 // Starts right under the popup's title (its band ends where the
                 // tuck does); ends TITLE_CLEAR_ABOVE short of "Playlists", clear
                 // of its band. Its box ends at the heading's top edge, right
@@ -1176,7 +1215,7 @@ export function PlaybackMenu({
                   maxHeight={playlistsCap}
                   overlapTop={TITLE_TUCK_BELOW}
                   outerRef={pageRef}
-                  onNaturalHeight={setPlaylistsNatural}
+                  onNaturalHeight={reportPlaylistsNatural}
                   contentClassName="px-[10px]"
                   contentStyle={{ paddingTop: TITLE_CLEAR_BELOW, paddingBottom: PLAYLISTS_FOOTER }}
                 >
@@ -1237,6 +1276,7 @@ export function PlaybackMenu({
                 inView={calendarInView}
                 onToggle={toggleCalendar}
                 bandAbove={false}
+                bandBelow={false}
                 className="relative -mx-5 px-5"
               />
               <div ref={calendarBodyRef}>

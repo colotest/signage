@@ -49,8 +49,12 @@ export function Sheet({
             its toolbar with the colour of a fixed element touching the
             screen's bottom edge, blotting out whatever's behind. The page
             itself never scrolls (html/body are overflow-hidden), so
-            absolute to it sits exactly where fixed would. */}
-        <Dialog.Overlay className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 backdrop-blur-sm sm:fixed" />
+            absolute to it sits exactly where fixed would.
+            Blurred only as the desktop's centred popup: on a phone the sheet
+            covers the whole screen, and a full-screen backdrop blur under it
+            would still be recomputed for every frame of whatever's playing
+            in the screen previews behind. */}
+        <Dialog.Overlay className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 sm:fixed sm:backdrop-blur-sm" />
         <Dialog.Content
           // Focus the sheet itself on open, without scrolling anything into
           // view: by default Radix focuses the first button inside, while

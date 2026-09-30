@@ -52,14 +52,18 @@ export const TITLE_CLEAR_ABOVE = TITLE_BAND_FADE;
 // goes, docked or not.
 //
 // bandAbove={false} leaves out the upper part, for a heading whose list
-// above brings its own fade (the Playback Menu's "Calendar", under the
-// Playlists list's footer).
+// above brings its own fade; bandBelow={false} the lower one, for a heading
+// nothing ever scrolls in under (both: the Playback Menu's "Calendar",
+// which doesn't dock and sits under the Playlists list's footer). A band
+// costs something even with nothing behind it, so none is drawn for
+// nothing.
 export function SectionTitle({
   title,
   inView = false,
   onToggle,
   trailing,
   bandAbove = true,
+  bandBelow = true,
   className,
   style,
 }: {
@@ -68,6 +72,7 @@ export function SectionTitle({
   onToggle?: () => void;
   trailing?: ReactNode;
   bandAbove?: boolean;
+  bandBelow?: boolean;
   className?: string;
   style?: CSSProperties;
 }) {
@@ -82,11 +87,13 @@ export function SectionTitle({
           <ProgressiveBlurEdge side="bottom" extent={TITLE_BAND_FADE} />
         </div>
       )}
-      <ProgressiveBlurEdge
-        side="top"
-        hold={TITLE_BAND_HOLD}
-        extent={SECTION_TITLE_HEIGHT + TITLE_BAND_BELOW - TITLE_BAND_HOLD}
-      />
+      {bandBelow && (
+        <ProgressiveBlurEdge
+          side="top"
+          hold={TITLE_BAND_HOLD}
+          extent={SECTION_TITLE_HEIGHT + TITLE_BAND_BELOW - TITLE_BAND_HOLD}
+        />
+      )}
       {/* relative z-10: the text and buttons sit above the band. */}
       <div className="relative z-10 flex h-full items-center justify-between gap-3">
         {onToggle ? (
