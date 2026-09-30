@@ -145,6 +145,13 @@ export function ScreenTile({
       : null
     : (playlist[0]?.media_item ?? null);
   const offline = status !== null && !status.online;
+  // A video in the preview plays in step with the screen, or holds its
+  // paused frame. Paused here is the reported state, not the button's
+  // optimistic one — only a report says which frame it stopped on.
+  const videoSync =
+    status?.online && status.positionMs !== null && status.seenAt !== null
+      ? { positionMs: status.positionMs, reportedAt: status.seenAt, paused: status.paused, loop: playlist.length === 1 }
+      : undefined;
 
   const playerPath = `/screen/${screen.id}`;
 
@@ -303,7 +310,7 @@ export function ScreenTile({
               }
             >
               {shownItem ? (
-                <MediaThumb fit={fitMode} live item={shownItem} sizes={`${PREVIEW_LONG}px`} />
+                <MediaThumb fit={fitMode} live item={shownItem} sizes={`${PREVIEW_LONG}px`} sync={videoSync} />
               ) : offline ? (
                 <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-black text-center">
                   <span className="text-[12px] font-medium text-white/70">Offline</span>

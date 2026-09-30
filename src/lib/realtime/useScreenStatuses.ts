@@ -14,11 +14,21 @@ export type ScreenLiveStatus = {
   online: boolean;
   mediaItemId: string | null;
   paused: boolean;
-  // Local-clock ms of the last report, for "last seen …"; null if never.
+  // Where in the current video the player was as of seenAt; null if it
+  // isn't on a video (or runs a build from before 0026).
+  positionMs: number | null;
+  // Local-clock ms of the last report, for "last seen …" and for playing
+  // the preview on from positionMs; null if never.
   seenAt: number | null;
 };
 
-type Entry = { mediaItemId: string | null; paused: boolean; disconnected: boolean; seenAt: number };
+type Entry = {
+  mediaItemId: string | null;
+  paused: boolean;
+  positionMs: number | null;
+  disconnected: boolean;
+  seenAt: number;
+};
 
 // The safety net under the realtime events: a missed event, or a dashboard
 // socket that's quietly died, costs at most this long.
@@ -32,6 +42,8 @@ function fromRows(rows: ScreenStatusRow[], receivedAt: number) {
     map.set(row.screen_id, {
       mediaItemId: row.media_item_id,
       paused: row.paused,
+      // undefined until 0026 has been run.
+      positionMs: row.position_ms ?? null,
       disconnected: row.disconnected,
       seenAt: receivedAt - row.age_ms,
     });
@@ -117,6 +129,7 @@ export function useScreenStatuses(initial: ScreenStatusRow[] | null) {
           next.set(row.screen_id, {
             mediaItemId: row.media_item_id,
             paused: row.paused,
+            positionMs: row.position_ms ?? null,
             disconnected: row.disconnected_at !== null,
             seenAt: reported ? receivedAt : (prev.get(row.screen_id)?.seenAt ?? receivedAt),
           });
@@ -151,9 +164,15 @@ export function useScreenStatuses(initial: ScreenStatusRow[] | null) {
   function statusOf(screenId: number): ScreenLiveStatus | null {
     if (!available) return null;
     const entry = entries.get(screenId);
-    if (!entry) return { online: false, mediaItemId: null, paused: false, seenAt: null };
+    if (!entry) return { online: false, mediaItemId: null, paused: false, positionMs: null, seenAt: null };
     const online = !entry.disconnected && judgedAt - entry.seenAt < OFFLINE_AFTER_MS;
-    return { online, mediaItemId: entry.mediaItemId, paused: entry.paused, seenAt: entry.seenAt };
+    return {
+      online,
+      mediaItemId: entry.mediaItemId,
+      paused: entry.paused,
+      positionMs: entry.positionMs,
+      seenAt: entry.seenAt,
+    };
   }
 
   return statusOf;

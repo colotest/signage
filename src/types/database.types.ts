@@ -471,6 +471,7 @@ export type Database = {
           session_id: string;
           media_item_id: string | null;
           paused: boolean;
+          position_ms: number | null;
           last_seen_at: string;
           disconnected_at: string | null;
         };
@@ -479,6 +480,7 @@ export type Database = {
           session_id: string;
           media_item_id?: string | null;
           paused?: boolean;
+          position_ms?: number | null;
           last_seen_at?: string;
           disconnected_at?: string | null;
         };
@@ -487,6 +489,7 @@ export type Database = {
           session_id?: string;
           media_item_id?: string | null;
           paused?: boolean;
+          position_ms?: number | null;
           last_seen_at?: string;
           disconnected_at?: string | null;
         };
@@ -501,6 +504,7 @@ export type Database = {
           paused: boolean;
           disconnected: boolean;
           age_ms: number;
+          position_ms: number | null;
         };
         Relationships: [];
       };
@@ -543,7 +547,13 @@ export type Database = {
         Returns: undefined;
       };
       report_screen_status: {
-        Args: { p_screen_id: number; p_session_id: string; p_media_item_id: string | null; p_paused: boolean };
+        Args: {
+          p_screen_id: number;
+          p_session_id: string;
+          p_media_item_id: string | null;
+          p_paused: boolean;
+          p_position_ms?: number | null;
+        };
         Returns: undefined;
       };
       report_screen_offline: {

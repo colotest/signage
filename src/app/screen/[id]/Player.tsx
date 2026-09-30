@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, RefObject } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
 import type { ControlMessage } from "@/lib/realtime/channels";
@@ -623,8 +623,17 @@ export function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen.id]);
 
-  // The dashboard's live preview and Online/Offline come from this.
-  useStatusReport({ supabase, screenId: screen.id, mediaItemId: current?.media_item_id ?? null, paused });
+  // The dashboard's live preview and Online/Offline come from this. Only
+  // the incoming slide's <video> lands in currentVideoRef — an outgoing one
+  // is already on its way off screen.
+  const currentVideoRef = useRef<HTMLVideoElement | null>(null);
+  const reportStatus = useStatusReport({
+    supabase,
+    screenId: screen.id,
+    mediaItemId: current?.media_item_id ?? null,
+    paused,
+    videoRef: currentVideoRef,
+  });
 
   // Kicks off the playback loop, and restarts it promptly if the currently
   // shown item's own duration is edited mid-display. Once started,
@@ -714,6 +723,8 @@ export function Player({
                 showAutoRefreshOverlay={
                   current.id === firstVideoItemId && (autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS
                 }
+                videoRef={currentVideoRef}
+                onPlaybackChange={reportStatus}
               />
             </div>
           </>
@@ -756,6 +767,8 @@ function Slide({
   onVideoEnded,
   onVideoAutoRefresh,
   showAutoRefreshOverlay,
+  videoRef,
+  onPlaybackChange,
 }: {
   item: PlaylistItemWithMedia;
   fitMode: FitMode;
@@ -765,6 +778,9 @@ function Slide({
   onVideoEnded: () => void;
   onVideoAutoRefresh: () => void;
   showAutoRefreshOverlay: boolean;
+  // Given only to the incoming slide — see currentVideoRef in Player.
+  videoRef?: RefObject<HTMLVideoElement | null>;
+  onPlaybackChange?: () => void;
 }) {
   if (item.media_item.media_type === "page") {
     return <ScreenPage item={item.media_item} now={now} />;
@@ -783,6 +799,8 @@ function Slide({
         onVideoEnded={onVideoEnded}
         onAutoRefresh={onVideoAutoRefresh}
         showInitialOverlay={showAutoRefreshOverlay}
+        externalRef={videoRef}
+        onPlaybackChange={onPlaybackChange}
       />
     );
   }
@@ -888,6 +906,8 @@ function VideoSlide({
   onVideoEnded,
   onAutoRefresh,
   showInitialOverlay,
+  externalRef,
+  onPlaybackChange,
 }: {
   url: string;
   fitClass: string;
@@ -908,6 +928,11 @@ function VideoSlide({
   // that follows the final allowed attempt, which is presumed (not
   // confirmed — we still have no way to check) to finally be a good one.
   showInitialOverlay: boolean;
+  externalRef?: RefObject<HTMLVideoElement | null>;
+  // Playback actually starting (after any buffering), pausing, or jumping
+  // (a loop back to the start) — each one a moment where the dashboard's
+  // preview would otherwise drift out of step.
+  onPlaybackChange?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [debug] = useState(isDebugMode);
@@ -940,6 +965,7 @@ function VideoSlide({
       <video
         ref={(el) => {
           videoRef.current = el;
+          if (externalRef) externalRef.current = el;
           setVideoEl(el);
         }}
         src={url}
@@ -952,6 +978,9 @@ function VideoSlide({
         // cast-to-TV affordance (the icon in the corner) is pure noise here.
         disableRemotePlayback
         onEnded={onVideoEnded}
+        onPlaying={onPlaybackChange}
+        onPause={onPlaybackChange}
+        onSeeked={onPlaybackChange}
         className={`h-full w-full ${fitClass}`}
         // A rotated screen puts a CSS transform on this element's ancestor
         // (see rotationWrapperStyle above), which on its own tends to knock

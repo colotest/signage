@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { createBrowserClient } from "@/lib/supabase/client";
 import { HEARTBEAT_MS } from "@/lib/realtime/screenStatus";
 
@@ -21,16 +21,25 @@ function newSessionId() {
 // doesn't; a failed one is just covered by the next one, and the dashboard
 // only calls a screen offline once reports have stopped for a while. That
 // makes a power cut, which sends nothing at all, show up reliably too.
+//
+// For a video, each report also carries where in it playback is, read off
+// videoRef at the moment of sending, so the dashboard's preview can play in
+// step and hold the same frame while paused. The returned function reports
+// on demand — the player calls it from the video's own playing/pause/
+// seeked events, which is what keeps a buffering start or a loop restart
+// from leaving the preview out of step until the next heartbeat.
 export function useStatusReport({
   supabase,
   screenId,
   mediaItemId,
   paused,
+  videoRef,
 }: {
   supabase: Supabase;
   screenId: number;
   mediaItemId: string | null;
   paused: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>;
 }) {
   const [sessionId] = useState(newSessionId);
 
@@ -44,18 +53,20 @@ export function useStatusReport({
   useEffect(() => {
     reportRef.current = () => {
       const { mediaItemId, paused } = latestRef.current;
+      const video = videoRef.current;
       supabase
         .rpc("report_screen_status", {
           p_screen_id: screenId,
           p_session_id: sessionId,
           p_media_item_id: mediaItemId,
           p_paused: paused,
+          p_position_ms: video ? Math.round(video.currentTime * 1000) : null,
         })
         .then(({ error }) => {
           if (error) console.warn("Status report failed", error.message);
         });
     };
-  }, [supabase, screenId, sessionId]);
+  }, [supabase, screenId, sessionId, videoRef]);
 
   // A change on screen is reported the moment it happens.
   useEffect(() => {
@@ -95,4 +106,6 @@ export function useStatusReport({
       window.removeEventListener("pagehide", onPageHide);
     };
   }, [screenId, sessionId]);
+
+  return useCallback(() => reportRef.current(), []);
 }

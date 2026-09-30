@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScreenPage } from "@/components/screenPages";
 import { mediaPublicUrl } from "@/types/domain";
 import type { FitMode, MediaItem } from "@/types/domain";
@@ -11,6 +11,7 @@ export function MediaThumb({
   fit = "cover",
   live = false,
   sizes = "64px",
+  sync,
 }: {
   item: MediaItem;
   fit?: FitMode;
@@ -23,6 +24,9 @@ export function MediaThumb({
   // How wide the thumbnail renders, for picking a resized variant — the
   // default fits the small list thumbnails; larger callers pass their own.
   sizes?: string;
+  // For a live video: play in step with a screen's player instead of from
+  // the start — see SyncedVideo.
+  sync?: VideoSync;
 }) {
   const fitClass = fit === "contain" ? "object-contain" : "object-cover";
 
@@ -39,6 +43,9 @@ export function MediaThumb({
 
   if (item.media_type === "video") {
     const url = mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path);
+    if (live && sync) {
+      return <SyncedVideo url={url} fitClass={fitClass} sync={sync} />;
+    }
     if (live) {
       return (
         <video
@@ -114,6 +121,77 @@ function VideoThumb({ url, fitClass }: { url: string; fitClass: string }) {
       onLoadedMetadata={trySeek}
       onLoadedData={trySeek}
       onCanPlay={trySeek}
+    />
+  );
+}
+
+// Where a screen's player reported being in a video, and when (local clock).
+export type VideoSync = {
+  positionMs: number;
+  reportedAt: number;
+  paused: boolean;
+  // Whether the player loops this video (a single-item playlist) or moves
+  // on at its end — decides whether running past the end wraps or holds.
+  loop: boolean;
+};
+
+// Further out of step than this and the preview jumps to where the screen
+// is; closer, it's left alone, since every seek costs a visible stutter.
+const MAX_DRIFT_S = 0.5;
+
+// A video that follows a screen's player: on every report it works out
+// where the screen must be by now (the reported position, plus the time
+// since if it's playing) and seeks there if it's drifted, or — paused —
+// stops on exactly the reported frame.
+function SyncedVideo({ url, fitClass, sync }: { url: string; fitClass: string; sync: VideoSync }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const { positionMs, reportedAt, paused, loop } = sync;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    function align() {
+      const duration = video!.duration;
+      // Until its metadata is in, there's no duration to wrap against and
+      // nothing to seek; loadedmetadata calls back in here.
+      if (!Number.isFinite(duration) || duration <= 0) return;
+      const elapsed = paused ? 0 : (Date.now() - reportedAt) / 1000;
+      const raw = positionMs / 1000 + elapsed;
+      const target = loop ? raw % duration : Math.min(raw, duration);
+      if (paused) {
+        video!.pause();
+        if (Math.abs(video!.currentTime - target) > 0.01) video!.currentTime = target;
+        return;
+      }
+      let drift = Math.abs(video!.currentTime - target);
+      if (loop) drift = Math.min(drift, duration - drift); // either side of the wrap
+      if (drift > MAX_DRIFT_S) video!.currentTime = target;
+      video!.play().catch(() => {});
+    }
+
+    align();
+    video.addEventListener("loadedmetadata", align);
+    // A backgrounded dashboard tab may have had its video throttled.
+    function onVisible() {
+      if (document.visibilityState === "visible") align();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      video.removeEventListener("loadedmetadata", align);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [positionMs, reportedAt, paused, loop]);
+
+  return (
+    <video
+      ref={videoRef}
+      src={url}
+      muted
+      loop={loop}
+      playsInline
+      preload="auto"
+      className={`pointer-events-none h-full w-full ${fitClass}`}
     />
   );
 }
