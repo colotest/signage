@@ -52,6 +52,15 @@ export function Sheet({
             absolute to it sits exactly where fixed would. */}
         <Dialog.Overlay className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 backdrop-blur-sm sm:fixed" />
         <Dialog.Content
+          // Focus the sheet itself on open, without scrolling anything into
+          // view: by default Radix focuses the first button inside, while
+          // the sheet is still sliding in from below the screen — and iOS
+          // Safari scrolls the page (never meant to scroll; see
+          // app-shell-height) to reveal it, shifting the whole sheet with it.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).focus({ preventScroll: true });
+          }}
           className={cn(
             // --edge-scrim: lists inside a popup (the Playback Menu's media
             // and playlists lists) fade out against the popup's own surface
