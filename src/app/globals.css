@@ -201,22 +201,6 @@ body {
   height: 109lvh;
 }
 
-/* While a Radix dialog is open, Radix puts two invisible focus-guard spans
-   at the start and end of <body>, position: fixed. The end one lands right
-   at the bottom of the (109lvh) shell, behind iOS Safari's toolbar — and
-   Safari takes a fixed element at the screen's bottom edge for a bottom bar,
-   filling the strip behind its toolbar with a flat colour instead of showing
-   the content there (it only re-checks once animations finish, which is
-   why the Playback Menu's content showed through while sliding in, then
-   greyed out). Absolute at the very top instead: still invisible and out of
-   the way, and since the page itself never scrolls, focusing one doesn't
-   move anything. */
-[data-radix-focus-guard] {
-  position: absolute !important;
-  top: 0;
-  left: 0;
-}
-
 /* env(safe-area-inset-top) has the exact same problem as
    env(safe-area-inset-bottom) above — it doesn't populate in this app's
    regular (non-standalone) Safari tab context, confirmed the same way:

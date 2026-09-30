@@ -1145,26 +1145,29 @@ export function PlaybackMenu({
               </ListScroller>
             </div>
 
-            {/* Playlists and Calendar. Their headings dock to the view's top
-                and bottom edges when their section is scrolled off (sticky,
-                each offset by the other's height so they stack), so both
-                stay in reach — except while picking, when they scroll away
-                with everything else. The markers are where each heading
-                would sit undocked — what its arrow scrolls to. -mx-5/px-5:
-                the headings, and so their bands, span the popup's width. */}
+            {/* Playlists and Calendar. "Playlists" docks to the view's top
+                edge once its list scrolls up under it (sticky) — except while
+                picking, when it scrolls away with everything else.
+
+                Nothing here docks at the bottom: iOS Safari takes a sticky
+                (or fixed) element near the screen's bottom edge for a bottom
+                bar, and fills everything below it — the strip behind its
+                toolbar included — with a flat colour. Nor does anything need
+                to: the lists' caps (see fit) already keep "Calendar" in view
+                at rest, right below Playlists. The markers are where each
+                heading would sit undocked — what its arrow scrolls to.
+                -mx-5/px-5: the headings, and so their bands, span the popup's
+                width. */}
             <div>
               <div ref={playlistsAnchorRef} />
               <SectionTitle
                 title="Playlists"
                 className={cn("-mx-5 px-5", picking ? "relative" : "sticky")}
-                style={picking ? undefined : { top: 0, bottom: SECTION_TITLE_HEIGHT + CALENDAR_LIFT }}
+                style={picking ? undefined : { top: 0 }}
                 trailing={
                   <PlaylistSortMenuButton sortKey={playlistSortKey} sortDir={playlistSortDir} onToggleSort={togglePlaylistSort} />
                 }
               />
-              {/* The list's footer rides along inside this box: sticky, so
-                  it's at the list's bottom edge wherever that is on screen,
-                  but never lower than right above a docked "Calendar". */}
               <div className="-mx-[10px]">
                 {/* Tucks in under the whole "Playlists" heading, up to its
                     band's strongest line; its first row starts just clear of
@@ -1216,17 +1219,13 @@ export function PlaybackMenu({
                     )}
                   />
                 </ListScroller>
-                {/* The footer: strongest along the list's bottom edge (hiding
-                    its hard edge), fading out upwards. "Calendar" follows
-                    right below it, docked or not. */}
+                {/* The list's footer: strongest along its bottom edge (hiding
+                    its hard edge), fading out upwards, and riding along with
+                    it. "Calendar" follows right below. */}
                 <div
                   aria-hidden
-                  className={cn("pointer-events-none z-10 -mx-[10px]", picking ? "relative" : "sticky")}
-                  style={{
-                    height: PLAYLISTS_FOOTER,
-                    marginTop: -PLAYLISTS_FOOTER,
-                    bottom: picking ? undefined : SECTION_TITLE_HEIGHT + CALENDAR_LIFT,
-                  }}
+                  className="pointer-events-none relative z-10 -mx-[10px]"
+                  style={{ height: PLAYLISTS_FOOTER, marginTop: -PLAYLISTS_FOOTER }}
                 >
                   <ProgressiveBlurEdge side="bottom" extent={PLAYLISTS_FOOTER} />
                 </div>
@@ -1238,8 +1237,7 @@ export function PlaybackMenu({
                 inView={calendarInView}
                 onToggle={toggleCalendar}
                 bandAbove={false}
-                className={cn("-mx-5 px-5", picking ? "relative" : "sticky")}
-                style={picking ? undefined : { top: SECTION_TITLE_HEIGHT, bottom: CALENDAR_LIFT }}
+                className="relative -mx-5 px-5"
               />
               <div ref={calendarBodyRef}>
                 <CalendarSection
