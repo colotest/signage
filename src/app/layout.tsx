@@ -56,10 +56,16 @@ export default function RootLayout({
             goes back to matching window.innerHeight) and force the
             document back to scrollY 0 at that moment — not while the
             keyboard is open, which would fight Safari's legitimate
-            scroll-into-view while the user is still typing. */}
+            scroll-into-view while the user is still typing.
+            That one moment isn't always caught (it slipped through for the
+            Playback Menu's duration fields, the sheet being part of the
+            document on a phone — see Sheet), so on top of it: whenever the
+            document itself scrolls while nothing's being typed into, and
+            again shortly after a field loses focus (once the keyboard has
+            had time to go), it's put straight back. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){function reset(){if("scrollRestoration" in history){history.scrollRestoration="manual";}window.scrollTo(0,0);document.documentElement.scrollTop=0;if(document.body){document.body.scrollTop=0;}}reset();window.addEventListener("pageshow",reset);var vv=window.visualViewport;if(vv){var onVvResize=function(){if(Math.abs(vv.height-window.innerHeight)<1){reset();}};vv.addEventListener("resize",onVvResize);}})();`,
+            __html: `(function(){function reset(){if("scrollRestoration" in history){history.scrollRestoration="manual";}window.scrollTo(0,0);document.documentElement.scrollTop=0;if(document.body){document.body.scrollTop=0;}}function typing(){var el=document.activeElement;if(!el){return false;}if(el.isContentEditable||el.tagName==="TEXTAREA"){return true;}return el.tagName==="INPUT"&&!/^(checkbox|radio|button|submit|reset|range|color|file|image)$/.test(el.type);}function shifted(){return window.scrollY!==0||document.documentElement.scrollTop!==0||(document.body&&document.body.scrollTop!==0);}function settle(){if(!typing()&&shifted()){reset();}}reset();window.addEventListener("pageshow",reset);var vv=window.visualViewport;if(vv){var onVvResize=function(){if(Math.abs(vv.height-window.innerHeight)<1){reset();}};vv.addEventListener("resize",onVvResize);}document.addEventListener("scroll",function(e){var t=e.target;if(t===document||t===document.documentElement||t===document.body){settle();}},{capture:true,passive:true});document.addEventListener("focusout",function(){setTimeout(settle,350);setTimeout(settle,800);});})();`,
           }}
         />
       </head>
