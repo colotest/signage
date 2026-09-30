@@ -15,6 +15,7 @@ import { useScreenControl } from "@/lib/realtime/useScreenControl";
 import { PlaybackControls } from "./PlaybackControls";
 import { PlaybackMenu, type LibraryData } from "./PlaybackMenu";
 import { ScreenSetupMenu } from "./ScreenSetupMenu";
+import { useViewer } from "@/lib/auth/ViewerContext";
 
 // Preview "postage stamp" footprint — flipping just swaps these two, like
 // physically rotating the same little rectangle 90°. These are the TRUE
@@ -62,6 +63,7 @@ export function ScreenTile({
   schedules: ScheduledPlayback[];
 }) {
   const router = useRouter();
+  const viewer = useViewer();
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   // One control channel per tile, shared by the playback buttons and the
@@ -294,7 +296,9 @@ export function ScreenTile({
                 editing={renaming}
                 onDoneEditing={() => setRenaming(false)}
               />
-              {!renaming && (
+              {/* Screen setup (rename, rotation, reload, delete) is for
+                  admins only — the actions behind it check too. */}
+              {!renaming && viewer.isAdmin && (
                 <ScreenSetupMenu
                   screenId={screen.id}
                   playerPath={playerPath}

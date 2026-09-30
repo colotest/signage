@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils/cn";
 import type { PlaylistItemWithMedia, ScheduledPlayback, Screen } from "@/types/domain";
 import { ScreenTile } from "./ScreenTile";
 import { AddScreenButton } from "./AddScreenButton";
+import { useViewer } from "@/lib/auth/ViewerContext";
 import type { LibraryData } from "./PlaybackMenu";
 
 type ScreenWithPlaylist = Screen & { playlist: PlaylistItemWithMedia[]; schedules: ScheduledPlayback[] };
@@ -60,6 +61,7 @@ class TileTouchSensor extends TouchSensor {
 }
 
 export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]; library: LibraryData }) {
+  const viewer = useViewer();
   // Reordered locally the moment a tile is dropped, so it doesn't snap back
   // while the new order is saved.
   const [ordered, setOrdered] = useState(screens);
@@ -101,15 +103,21 @@ export function ScreenGrid({ screens, library }: { screens: ScreenWithPlaylist[]
     // Playlists — without this, the bottom row's info card ends up behind
     // iOS Safari's floating toolbar with no way to scroll it clear.
     <div className="safari-toolbar-inset flex flex-col gap-5">
-      <div className="flex items-center justify-between">
+      {/* min-h-10: the Add Screen button's height, kept when it's hidden. */}
+      <div className="flex min-h-10 items-center justify-between">
         <h1 className="text-[28px] font-semibold tracking-tight">Screens</h1>
-        <AddScreenButton />
+        {/* Adding screens is for admins (createScreen checks too). */}
+        {viewer.isAdmin && <AddScreenButton />}
       </div>
 
       {ordered.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border py-20 text-center">
           <p className="text-[17px] font-medium">No screens yet</p>
-          <p className="text-sm text-muted">Add a screen to get a player URL you can open on a TV.</p>
+          <p className="text-sm text-muted">
+            {viewer.isAdmin
+              ? "Add a screen to get a player URL you can open on a TV."
+              : "An admin can add screens for you to manage here."}
+          </p>
         </div>
       ) : (
         <DndContext id="screen-grid" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

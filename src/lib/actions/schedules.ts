@@ -1,5 +1,6 @@
 "use server";
 
+import { playlistName, recordActivity, screenName } from "@/lib/activity";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -33,7 +34,7 @@ export async function schedulePlaylist(
   runAtIso: string,
   hours: number,
 ): Promise<{ error: string } | { ok: true }> {
-  await requireSession();
+  const user = await requireSession();
   const runAt = new Date(runAtIso);
   if (Number.isNaN(runAt.getTime())) return { error: "That isn't a valid date." };
   if (runAt.getTime() <= Date.now()) return { error: "Pick a time in the future." };
@@ -75,6 +76,11 @@ export async function schedulePlaylist(
     if (error.code === "23P01") return { error: "Overlaps another schedule on this screen. Cancel that one first." };
     throw new Error(error.message);
   }
+  recordActivity(user, {
+    action: "schedule.set",
+    summary: async (admin) =>
+      `Scheduled playlist ${await playlistName(admin, playlistId)} on screen ${await screenName(admin, screenId)} for ${timeLabel(runAt.toISOString())}, ${hours} h`,
+  });
   return { ok: true };
 }
 
@@ -82,7 +88,7 @@ export async function schedulePlaylist(
 // playing. Cancelling one that's playing doesn't change what's on screen;
 // it just lets another playlist be scheduled into that time.
 export async function cancelScheduledPlayback(screenId: number, playlistId: string) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
   const { error } = await admin
     .from("scheduled_playbacks")
@@ -90,6 +96,11 @@ export async function cancelScheduledPlayback(screenId: number, playlistId: stri
     .eq("screen_id", screenId)
     .eq("playlist_id", playlistId);
   if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "schedule.cancel",
+    summary: async (admin) =>
+      `Cancelled the schedule for playlist ${await playlistName(admin, playlistId)} on screen ${await screenName(admin, screenId)}`,
+  });
 }
 
 // The pg_cron job already does this every few seconds; an open dashboard

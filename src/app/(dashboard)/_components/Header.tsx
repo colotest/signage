@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { UserIcon } from "@/components/icons/UserIcon";
 import { logoutAction } from "@/lib/actions/auth";
+import { useViewer } from "@/lib/auth/ViewerContext";
+import { ROLE_LABELS } from "@/lib/auth/roles";
 import { brandFont } from "@/lib/fonts";
 import { cn } from "@/lib/utils/cn";
 
@@ -51,8 +53,18 @@ export function Header() {
 
 // Log Out lives behind a round avatar button rather than in plain view —
 // it's rarely needed, and a stray tap on it signed the whole dashboard out.
+// So does everything about accounts: who's signed in, and for admins, the
+// Users page.
 function UserMenu() {
+  const viewer = useViewer();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  // Following the Users link closes the menu behind it.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
+    setOpen(false);
+  }
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -87,9 +99,25 @@ function UserMenu() {
       {open && (
         <div
           role="menu"
-          className="menu-pop absolute right-0 top-full z-20 mt-2 w-40 origin-top-right rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
+          className="menu-pop absolute right-0 top-full z-20 mt-2 w-56 origin-top-right rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
         >
-          <form action={logoutAction}>
+          <div className="border-b border-border px-2.5 pb-2 pt-1.5">
+            <p className="truncate text-[13px] font-medium">{viewer.email}</p>
+            <p className="text-[12px] text-muted">{ROLE_LABELS[viewer.role]}</p>
+          </div>
+          {viewer.isAdmin && (
+            <Link
+              href="/users"
+              role="menuitem"
+              className={cn(
+                "press-ghost-fit mt-1 block w-full rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+                pathname === "/users" && "bg-black/[.04] dark:bg-white/[.06]",
+              )}
+            >
+              Users
+            </Link>
+          )}
+          <form action={logoutAction} className={cn(!viewer.isAdmin && "mt-1")}>
             <button
               type="submit"
               role="menuitem"

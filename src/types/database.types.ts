@@ -19,6 +19,8 @@ export type ScreenTransition = "cut" | "dip" | "crossfade" | "slide";
 export type ScreenTransitionSpeed = "fast" | "normal" | "slow";
 // Which edge a sliding transition enters from — see 0021.
 export type ScreenSlideDirection = "right" | "left" | "top" | "bottom";
+// Strict ladder, highest first — see 0023_users.sql.
+export type UserRole = "super_admin" | "admin" | "default";
 
 export type Database = {
   public: {
@@ -353,6 +355,85 @@ export type Database = {
           },
         ];
       };
+      users: {
+        Row: {
+          id: string;
+          email: string;
+          password_hash: string;
+          role: UserRole;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          password_hash: string;
+          role?: UserRole;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string;
+          password_hash?: string;
+          role?: UserRole;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      signup_invites: {
+        Row: {
+          token_hash: string;
+          created_by: string | null;
+          created_at: string;
+          expires_at: string;
+          used_at: string | null;
+          used_by: string | null;
+        };
+        Insert: {
+          token_hash: string;
+          created_by?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          used_at?: string | null;
+          used_by?: string | null;
+        };
+        Update: {
+          token_hash?: string;
+          created_by?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          used_at?: string | null;
+          used_by?: string | null;
+        };
+        Relationships: [];
+      };
+      activity_log: {
+        Row: {
+          id: number;
+          user_id: string | null;
+          user_email: string;
+          action: string;
+          target: string | null;
+          summary: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id?: string | null;
+          user_email: string;
+          action: string;
+          target?: string | null;
+          summary: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string | null;
+          user_email?: string;
+          action?: string;
+          target?: string | null;
+          summary?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -387,6 +468,14 @@ export type Database = {
       run_due_scheduled_playbacks: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      log_activity: {
+        Args: { p_user_id: string; p_user_email: string; p_action: string; p_target: string | null; p_summary: string };
+        Returns: undefined;
+      };
+      redeem_signup_invite: {
+        Args: { p_token_hash: string; p_email: string; p_password_hash: string };
+        Returns: string | null;
       };
       server_now: {
         Args: Record<string, never>;

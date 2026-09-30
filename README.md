@@ -1,12 +1,13 @@
 # Signage
 
-A free (at base scale) web-based digital signage system for a single event venue. TVs load a unique `/screen/{id}` URL in kiosk mode; a password-gated dashboard manages screens, a media library, and per-screen playlists, with changes pushed to screens in near-real-time.
+A free (at base scale) web-based digital signage system for a single event venue. TVs load a unique `/screen/{id}` URL in kiosk mode; a login-gated dashboard manages screens, a media library, and per-screen playlists, with changes pushed to screens in near-real-time.
 
-**Stack:** Next.js (App Router, TypeScript) on Vercel · Supabase (Postgres, Realtime, Storage) · a single shared-password session cookie for the dashboard.
+**Stack:** Next.js (App Router, TypeScript) on Vercel · Supabase (Postgres, Realtime, Storage) · per-user logins (email + password, signed session cookie) for the dashboard.
 
 ## How it fits together
 
-- **Dashboard** (`/dashboard`, `/library`) — password-gated. Register screens, manage the media library, assign content to screens.
+- **Dashboard** (`/dashboard`, `/library`, `/users`) — login-gated. Register screens, manage the media library, assign content to screens.
+- **Users** — everyone signs in with their own email and password, and every change they make is recorded against them. Three tiers: **super admin** > **admin** > **default**. Admins additionally get each screen's wrench menu (rename, rotation, reload, delete), **+ Add Screen**, and the **Users** page (under the avatar menu): every account, its change history, deleting accounts ranked below theirs, and single-use signup links (7 days) for new default users. The Server Actions enforce all of this themselves; hiding the controls is just the UI side.
 - **Player** (`/screen/{id}`) — no login, meant to be opened fullscreen on a TV/Fire Stick/kiosk browser. Subscribes to Supabase Realtime so playlist changes appear within about a second, and caches its last-known content so it keeps showing something if the network drops.
 - **Supabase** holds all persistent data (`screens`, `folders`, `media_items`, `playlist_items`) and the `media` storage bucket. Row-Level Security allows public reads (needed by the unauthenticated player) but denies all writes — every mutation goes through a Server Action using the `service_role` key, which checks the dashboard's session cookie itself first.
 
@@ -16,6 +17,11 @@ A free (at base scale) web-based digital signage system for a single event venue
 2. **SQL Editor** → paste in [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) → Run. This creates the tables, RLS policies, and the two RPCs used for reordering/assigning playlist items.
 3. **Storage** → New bucket → name it exactly `media` → toggle **Public bucket** on.
 4. **Project Settings → API** → copy the Project URL, the `anon`/publishable key, and the `service_role`/secret key.
+5. Create the first account (a super admin — everyone after that joins through a signup link from the Users page): run `node scripts/hash-password.mjs`, type the password, then in the **SQL Editor**:
+   ```sql
+   insert into users (email, password_hash, role)
+   values ('you@example.com', '<printed hash>', 'super_admin');
+   ```
 
 ## Local development
 
@@ -30,7 +36,6 @@ Fill in `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=       # Project URL from step 4 above
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon / publishable key
 SUPABASE_SERVICE_ROLE_KEY=      # service_role / secret key — never expose this to the client
-ADMIN_PASSWORD=                 # whatever password gates the dashboard
 SESSION_SECRET=                 # random string, e.g. `openssl rand -base64 32`
 ```
 
@@ -44,7 +49,7 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 
 1. Push this repo to GitHub.
 2. Import it into [Vercel](https://vercel.com/new) (free tier).
-3. In the Vercel project's **Settings → Environment Variables**, add the same five variables as above (for Production and Preview).
+3. In the Vercel project's **Settings → Environment Variables**, add the same four variables as above (for Production and Preview).
    - Server functions are pinned to Frankfurt (`fra1`) in `vercel.json` so they sit next to the Supabase project. If your Supabase project lives elsewhere, change that region to match — every dashboard page load makes several database round trips, so a cross-region hop adds up fast.
 4. Deploy. Every push to `main` redeploys automatically.
 
@@ -56,12 +61,13 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 
 ## Project structure
 
-- `src/app/(dashboard)/` — password-gated dashboard pages (screens grid, library).
+- `src/app/(dashboard)/` — login-gated dashboard pages (screens grid, library, users).
 - `src/app/screen/[id]/` — the unauthenticated player.
-- `src/app/login/` — the password gate itself.
+- `src/app/login/` and `src/app/signup/` — logging in, and creating an account from a signup link.
 - `src/lib/actions/` — all Server Actions (the only place writes happen).
 - `src/lib/supabase/` — `client.ts` (anon key, safe in the browser) and `admin.ts` (service_role key, server-only).
-- `src/lib/auth/` — session cookie signing/verification and password check.
+- `src/lib/auth/` — session cookie signing/verification, the current user and their role, password hashing.
+- `src/lib/activity.ts` — records each change against the user who made it (shown on the Users page).
 - `src/lib/realtime/` — Realtime channel-name helpers and the dashboard's live-preview presence hook.
 - `supabase/migrations/` — the SQL schema.
 

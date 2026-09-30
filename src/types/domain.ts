@@ -7,6 +7,7 @@ import type {
   ScreenSlideDirection,
   ScreenTransition,
   ScreenTransitionSpeed,
+  UserRole,
 } from "./database.types";
 
 export type {
@@ -17,7 +18,12 @@ export type {
   ScreenSlideDirection,
   ScreenTransition,
   ScreenTransitionSpeed,
+  UserRole,
 };
+
+// A user as the app hands them around — never with their password hash.
+export type User = Omit<Database["public"]["Tables"]["users"]["Row"], "password_hash">;
+export type ActivityEntry = Database["public"]["Tables"]["activity_log"]["Row"];
 
 export type Screen = Database["public"]["Tables"]["screens"]["Row"];
 export type Folder = Database["public"]["Tables"]["folders"]["Row"];

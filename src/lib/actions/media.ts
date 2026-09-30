@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { folderName, quote, recordActivity } from "@/lib/activity";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { MediaType } from "@/types/domain";
@@ -68,7 +69,7 @@ export async function finalizeMediaUpload({
   height: number | null;
   durationSeconds: number | null;
 }) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
   const { error } = await admin.from("media_items").insert({
     id: mediaItemId,
@@ -83,6 +84,7 @@ export async function finalizeMediaUpload({
     duration_seconds: durationSeconds,
   });
   if (error) throw new Error(error.message);
+  recordActivity(user, { action: "media.upload", summary: `Uploaded ${quote(name)}` });
   revalidatePath("/library");
 }
 
@@ -144,12 +146,12 @@ export async function finalizeMediaReplace({
   height: number | null;
   durationSeconds: number | null;
 }) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
 
   const { data: existing, error: fetchError } = await admin
     .from("media_items")
-    .select("storage_path, media_type")
+    .select("name, storage_path, media_type")
     .eq("id", mediaItemId)
     .single();
   if (fetchError) throw new Error(fetchError.message);
@@ -168,6 +170,7 @@ export async function finalizeMediaReplace({
     })
     .eq("id", mediaItemId);
   if (updateError) throw new Error(updateError.message);
+  recordActivity(user, { action: "media.replace", summary: `Replaced the file behind ${quote(existing.name)}` });
 
   const { error: removeError } = await admin.storage.from(BUCKET).remove([existing.storage_path]);
   if (removeError) {
@@ -179,29 +182,44 @@ export async function finalizeMediaReplace({
 }
 
 export async function renameMediaItem(id: string, name: string) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
+  const { data: before } = await admin.from("media_items").select("name").eq("id", id).maybeSingle();
   const { error } = await admin.from("media_items").update({ name }).eq("id", id);
   if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "media.rename",
+    target: `media:${id}`,
+    summary: `Renamed ${quote(before?.name)} to ${quote(name)}`,
+  });
   revalidatePath("/library");
   revalidatePath("/dashboard");
 }
 
 export async function moveMediaItem(id: string, folderId: string | null) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
-  const { error } = await admin.from("media_items").update({ folder_id: folderId }).eq("id", id);
+  const { data: moved, error } = await admin
+    .from("media_items")
+    .update({ folder_id: folderId })
+    .eq("id", id)
+    .select("name");
   if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "media.move",
+    target: `media:${id}`,
+    summary: async (admin) => `Moved ${quote(moved?.[0]?.name)} to ${await folderName(admin, folderId)}`,
+  });
   revalidatePath("/library");
 }
 
 export async function deleteMediaItem(id: string) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
 
   const { data: item, error: fetchError } = await admin
     .from("media_items")
-    .select("storage_path, media_type")
+    .select("name, storage_path, media_type")
     .eq("id", id)
     .single();
   if (fetchError) throw new Error(fetchError.message);
@@ -213,6 +231,7 @@ export async function deleteMediaItem(id: string) {
   // playlist_items.media_item_id cascades, so this also removes it from any screen.
   const { error: deleteError } = await admin.from("media_items").delete().eq("id", id);
   if (deleteError) throw new Error(deleteError.message);
+  recordActivity(user, { action: "media.delete", summary: `Deleted ${quote(item.name)}` });
 
   revalidatePath("/library");
   revalidatePath("/dashboard");

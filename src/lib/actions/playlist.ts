@@ -1,11 +1,12 @@
 "use server";
 
+import { mediaNames, plural, quote, recordActivity, screenName } from "@/lib/activity";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { FitMode, PlaylistItemWithMedia } from "@/types/domain";
 
 export async function assignMedia(screenId: number, mediaIds: string[]) {
-  await requireSession();
+  const user = await requireSession();
   if (mediaIds.length === 0) return;
   const admin = createAdminClient();
   const { error } = await admin.rpc("assign_media_to_screen", {
@@ -13,40 +14,86 @@ export async function assignMedia(screenId: number, mediaIds: string[]) {
     p_media_ids: mediaIds,
   });
   if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "screen.add",
+    summary: async (admin) => `Added ${await mediaNames(admin, mediaIds)} to screen ${await screenName(admin, screenId)}`,
+  });
 }
 
 export async function unassignMedia(playlistItemId: string) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
-  const { error } = await admin.from("playlist_items").delete().eq("id", playlistItemId);
+  const { data: removed, error } = await admin
+    .from("playlist_items")
+    .delete()
+    .eq("id", playlistItemId)
+    .select("screen_id, media_item:media_items(name)");
   if (error) throw new Error(error.message);
+  const item = removed?.[0] as unknown as { screen_id: number; media_item: { name: string } | null } | undefined;
+  if (item) {
+    recordActivity(user, {
+      action: "screen.remove",
+      summary: async (admin) =>
+        `Removed ${quote(item.media_item?.name)} from screen ${await screenName(admin, item.screen_id)}`,
+    });
+  }
 }
 
 export async function reorderPlaylist(screenId: number, orderedPlaylistItemIds: string[]) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
   const { error } = await admin.rpc("reorder_playlist_items", {
     p_screen_id: screenId,
     p_ids: orderedPlaylistItemIds,
   });
   if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "screen.reorder",
+    target: `screen:${screenId}`,
+    summary: async (admin) => `Reordered what's playing on screen ${await screenName(admin, screenId)}`,
+  });
 }
 
 export async function updateItemDuration(playlistItemId: string, durationSeconds: number) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from("playlist_items")
     .update({ duration_seconds: Math.max(1, Math.round(durationSeconds)) })
-    .eq("id", playlistItemId);
+    .eq("id", playlistItemId)
+    .select("screen_id, duration_seconds, media_item:media_items(name)");
   if (error) throw new Error(error.message);
+  const item = updated?.[0] as unknown as
+    | { screen_id: number; duration_seconds: number; media_item: { name: string } | null }
+    | undefined;
+  if (item) {
+    recordActivity(user, {
+      action: "screen.duration",
+      target: `playlist_item:${playlistItemId}`,
+      summary: async (admin) =>
+        `Set ${quote(item.media_item?.name)} on screen ${await screenName(admin, item.screen_id)} to ${plural(item.duration_seconds, "second")}`,
+    });
+  }
 }
 
 export async function updateItemFitMode(playlistItemId: string, fitMode: FitMode) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
-  const { error } = await admin.from("playlist_items").update({ fit_mode: fitMode }).eq("id", playlistItemId);
+  const { data: updated, error } = await admin
+    .from("playlist_items")
+    .update({ fit_mode: fitMode })
+    .eq("id", playlistItemId)
+    .select("screen_id, media_item:media_items(name)");
   if (error) throw new Error(error.message);
+  const item = updated?.[0] as unknown as { screen_id: number; media_item: { name: string } | null } | undefined;
+  if (item) {
+    recordActivity(user, {
+      action: "screen.item_fit",
+      target: `playlist_item:${playlistItemId}`,
+      summary: async (admin) =>
+        `Set ${quote(item.media_item?.name)} on screen ${await screenName(admin, item.screen_id)} to ${fitMode === "cover" ? "fill" : "fit"} the screen`,
+    });
+  }
 }
 
 // What the dashboard's Playback Menu uses to fill a screen's "Now Playing"
@@ -59,7 +106,7 @@ export async function addItemsToScreen(
   items: { mediaId: string; durationSeconds?: number }[],
   at: "start" | "end",
 ): Promise<PlaylistItemWithMedia[]> {
-  await requireSession();
+  const user = await requireSession();
   if (items.length === 0) return [];
   const admin = createAdminClient();
 
@@ -96,12 +143,21 @@ export async function addItemsToScreen(
     if (error) throw new Error(error.message);
   }
 
+  recordActivity(user, {
+    action: "screen.add",
+    summary: async (admin) =>
+      `Added ${await mediaNames(admin, items.map((i) => i.mediaId))} to screen ${await screenName(admin, screenId)}`,
+  });
   return rows;
 }
 
 export async function clearScreenPlaylist(screenId: number) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
   const { error } = await admin.from("playlist_items").delete().eq("screen_id", screenId);
   if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "screen.clear",
+    summary: async (admin) => `Cleared what's playing on screen ${await screenName(admin, screenId)}`,
+  });
 }

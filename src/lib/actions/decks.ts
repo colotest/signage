@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { folderName, plural, quote, recordActivity } from "@/lib/activity";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -58,7 +59,7 @@ export async function finalizeDeckUpload({
   sizeBytes: number;
   pages: DeckPageInput[];
 }) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
 
   const { data: deck, error: deckError } = await admin
@@ -97,6 +98,10 @@ export async function finalizeDeckUpload({
     await admin.from("decks").delete().eq("id", deck.id);
     throw new Error(pagesError.message);
   }
+  recordActivity(user, {
+    action: "deck.upload",
+    summary: `Uploaded PDF ${quote(name)} (${plural(pages.length, "page")})`,
+  });
 
   revalidatePath("/library");
   revalidatePath("/dashboard");
@@ -120,7 +125,7 @@ export async function finalizeDeckReplace({
   sizeBytes: number;
   pages: DeckPageInput[];
 }) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
 
   const { data: deck, error: deckError } = await admin
@@ -190,6 +195,10 @@ export async function finalizeDeckReplace({
     .update({ storage_path: storagePath, size_bytes: sizeBytes, page_count: pages.length })
     .eq("id", deckId);
   if (updateError) throw new Error(updateError.message);
+  recordActivity(user, {
+    action: "deck.replace",
+    summary: `Replaced PDF ${quote(deck.name)} with a new version (${plural(pages.length, "page")})`,
+  });
 
   // Only once the swap itself has gone through: a failure above leaves the
   // deck pointing at files that are all still there. Cleaning up afterwards
@@ -204,13 +213,19 @@ export async function finalizeDeckReplace({
 }
 
 export async function renameDeck(id: string, name: string) {
-  await requireSession();
+  const user = await requireSession();
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
   const admin = createAdminClient();
 
+  const { data: before } = await admin.from("decks").select("name").eq("id", id).maybeSingle();
   const { error } = await admin.from("decks").update({ name: trimmed }).eq("id", id);
   if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "deck.rename",
+    target: `deck:${id}`,
+    summary: `Renamed PDF ${quote(before?.name)} to ${quote(trimmed)}`,
+  });
 
   // The pages are named after the deck, so they follow it.
   const { data: pages, error: pagesError } = await admin
@@ -232,19 +247,24 @@ export async function renameDeck(id: string, name: string) {
 }
 
 export async function moveDeck(id: string, folderId: string | null) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
-  const { error } = await admin.from("decks").update({ folder_id: folderId }).eq("id", id);
+  const { data: moved, error } = await admin.from("decks").update({ folder_id: folderId }).eq("id", id).select("name");
   if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "deck.move",
+    target: `deck:${id}`,
+    summary: async (admin) => `Moved PDF ${quote(moved?.[0]?.name)} to ${await folderName(admin, folderId)}`,
+  });
   revalidatePath("/library");
 }
 
 export async function deleteDeck(id: string) {
-  await requireSession();
+  const user = await requireSession();
   const admin = createAdminClient();
 
   const [{ data: deck, error: deckError }, { data: pages, error: pagesError }] = await Promise.all([
-    admin.from("decks").select("storage_path").eq("id", id).single(),
+    admin.from("decks").select("name, storage_path").eq("id", id).single(),
     admin.from("media_items").select("storage_path").eq("deck_id", id),
   ]);
   if (deckError) throw new Error(deckError.message);
@@ -259,6 +279,7 @@ export async function deleteDeck(id: string) {
   // playlist or screen showing its pages.
   const { error: deleteError } = await admin.from("decks").delete().eq("id", id);
   if (deleteError) throw new Error(deleteError.message);
+  recordActivity(user, { action: "deck.delete", summary: `Deleted PDF ${quote(deck.name)}` });
 
   revalidatePath("/library");
   revalidatePath("/dashboard");
