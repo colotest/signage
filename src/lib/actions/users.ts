@@ -47,6 +47,25 @@ export async function deleteUser(id: string) {
   revalidatePath("/users");
 }
 
+// Admins (and the super admin) can raise a default user to admin. Nothing
+// above that: there's only ever the one super admin, and taking admin
+// rights away again isn't something this page does.
+export async function makeAdmin(id: string) {
+  const user = await requireAdmin();
+  const admin = createAdminClient();
+  const { data: promoted, error } = await admin
+    .from("users")
+    .update({ role: "admin" })
+    .eq("id", id)
+    .eq("role", "default")
+    .select("email");
+  if (error) throw new Error(error.message);
+  const target = promoted?.[0];
+  if (!target) throw new Error("Only a default user can be made an admin.");
+  recordActivity(user, { action: "user.make_admin", summary: `Made ${quote(target.email)} an admin` });
+  revalidatePath("/users");
+}
+
 const ACTIVITY_PAGE_SIZE = 40;
 
 // One page of a user's history, newest first, for the full-screen view's

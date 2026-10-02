@@ -2,12 +2,12 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
-import { createSignupLink, deleteUser, getUserActivity } from "@/lib/actions/users";
+import { createSignupLink, deleteUser, getUserActivity, makeAdmin } from "@/lib/actions/users";
 import { removeWithAnimation } from "@/lib/animation/listMotion";
 import { ROLE_LABELS, ROLE_RANK } from "@/lib/auth/roles";
 import { useViewer } from "@/lib/auth/ViewerContext";
@@ -15,12 +15,20 @@ import { cn } from "@/lib/utils/cn";
 import type { ActivityEntry, User } from "@/types/domain";
 import { ThreeDotIcon, type SortDir } from "../../library/_components/FileTree";
 
-export type UserWithActivity = User & { recent: ActivityEntry[]; activityCount: number };
+// recent: the latest few changes (the page fetches 5 — fewer means that's
+// all of them). latestChangeTimes: when each of the last day and a half's
+// changes happened, for counting today's.
+export type UserWithActivity = User & { recent: ActivityEntry[]; latestChangeTimes: string[] };
 
-type UserSortKey = "name" | "role" | "date";
+const RECENT_COUNT = 5;
+
+type UserSortKey = "activity" | "name" | "role" | "date";
 
 function userSortValue(user: UserWithActivity, key: UserSortKey): string | number {
   switch (key) {
+    case "activity":
+      // Never-active users sort as the oldest.
+      return user.recent[0] ? new Date(user.recent[0].created_at).getTime() : 0;
     case "name":
       return user.email.toLowerCase();
     case "role":
@@ -28,6 +36,27 @@ function userSortValue(user: UserWithActivity, key: UserSortKey): string | numbe
     case "date":
       return new Date(user.created_at).getTime();
   }
+}
+
+// Midnight, in the viewer's own timezone — which the server doesn't know,
+// so it's null there and during hydration, and the counters fill in right
+// after. Recomputed per read; it only changes when the day does.
+function startOfToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+}
+const noSubscription = () => () => {};
+
+function useStartOfToday(): number | null {
+  return useSyncExternalStore(noSubscription, startOfToday, () => null);
+}
+
+function countSince(times: string[], since: number) {
+  return times.filter((iso) => new Date(iso).getTime() >= since).length;
+}
+
+function todayLabel(count: number) {
+  return `${count} change${count === 1 ? "" : "s"} today`;
 }
 
 function formatDate(iso: string): string {
@@ -57,16 +86,18 @@ function formatWhen(iso: string): string {
 export function UsersView({ users }: { users: UserWithActivity[] }) {
   const viewer = useViewer();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [sortKey, setSortKey] = useState<UserSortKey>("date");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  // Whoever's been at it most recently first.
+  const [sortKey, setSortKey] = useState<UserSortKey>("activity");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [showingAllFor, setShowingAllFor] = useState<UserWithActivity | null>(null);
 
   function toggleSort(key: UserSortKey) {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
       setSortKey(key);
-      // Highest role first is the useful way round for roles.
-      setSortDir(key === "role" ? "desc" : "asc");
+      // Highest role first, and most recent activity first, are the useful
+      // way round for those two.
+      setSortDir(key === "role" || key === "activity" ? "desc" : "asc");
     }
   }
 
@@ -104,6 +135,7 @@ export function UsersView({ users }: { users: UserWithActivity[] }) {
                 user={user}
                 isSelf={user.id === viewer.id}
                 canDelete={user.id !== viewer.id && ROLE_RANK[user.role] < ROLE_RANK[viewer.role]}
+                canMakeAdmin={user.role === "default"}
                 isExpanded={expanded.has(user.id)}
                 onToggleExpanded={() => toggleExpanded(user.id)}
                 onShowAll={() => setShowingAllFor(user)}
@@ -124,6 +156,7 @@ function UserRow({
   user,
   isSelf,
   canDelete,
+  canMakeAdmin,
   isExpanded,
   onToggleExpanded,
   onShowAll,
@@ -131,14 +164,15 @@ function UserRow({
   user: UserWithActivity;
   isSelf: boolean;
   canDelete: boolean;
+  canMakeAdmin: boolean;
   isExpanded: boolean;
   onToggleExpanded: () => void;
   onShowAll: () => void;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [, startTransition] = useTransition();
   const rowRef = useRef<HTMLLIElement | null>(null);
+  const today = useStartOfToday();
 
   // Mounted while open (and while sliding shut), same as a playlist card.
   const [contentMounted, setContentMounted] = useState(isExpanded);
@@ -152,6 +186,13 @@ function UserRow({
   function handleDelete() {
     startTransition(async () => {
       await removeWithAnimation(rowRef.current, () => deleteUser(user.id));
+      router.refresh();
+    });
+  }
+
+  function handleMakeAdmin() {
+    startTransition(async () => {
+      await makeAdmin(user.id);
       router.refresh();
     });
   }
@@ -176,29 +217,23 @@ function UserRow({
         </div>
 
         <span className="hidden shrink-0 text-[12px] text-muted sm:block">{formatDate(user.created_at)}</span>
-        <span className="shrink-0 text-[12px] text-muted">
-          {user.activityCount} change{user.activityCount === 1 ? "" : "s"}
+        {/* Fixed-width slot reserved even before it fills in after
+            hydration (see useStartOfToday), so the row doesn't shift. */}
+        <span className="min-w-[96px] shrink-0 text-right text-[12px] text-muted">
+          {today !== null && todayLabel(countSince(user.latestChangeTimes, today))}
         </span>
 
-        {canDelete &&
-          (confirmingDelete ? (
-            <div className="flex shrink-0 items-center gap-2 text-[13px]">
-              <button type="button" disabled={pending} onClick={handleDelete} className="press-ghost font-medium text-danger hover:opacity-70">
-                Confirm
-              </button>
-              <button type="button" onClick={() => setConfirmingDelete(false)} className="press-ghost text-muted hover:opacity-70">
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmingDelete(true)}
-              className="press-ghost shrink-0 text-[13px] text-muted hover:text-danger"
-            >
-              Delete
-            </button>
-          ))}
+        {canMakeAdmin || canDelete ? (
+          <UserRowMenu
+            canMakeAdmin={canMakeAdmin}
+            canDelete={canDelete}
+            onMakeAdmin={handleMakeAdmin}
+            onDelete={handleDelete}
+          />
+        ) : (
+          // Holds the menu button's place, keeping the counters lined up.
+          <span className="w-8 shrink-0" />
+        )}
       </div>
 
       <div
@@ -274,7 +309,8 @@ function UserActivityOverlay({ user, onClose }: { user: UserWithActivity | null;
 
 function UserActivityCard({ user, onClose }: { user: UserWithActivity; onClose: () => void }) {
   const [entries, setEntries] = useState<ActivityEntry[]>(user.recent);
-  const [done, setDone] = useState(user.recent.length >= user.activityCount);
+  const [done, setDone] = useState(user.recent.length < RECENT_COUNT);
+  const today = useStartOfToday();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const loadingRef = useRef(false);
@@ -320,7 +356,8 @@ function UserActivityCard({ user, onClose }: { user: UserWithActivity; onClose: 
       <div className="flex items-baseline gap-2 border-b border-border px-5 pb-3 pt-4">
         <Dialog.Title className="truncate text-[22px] font-semibold tracking-tight">{user.email}</Dialog.Title>
         <span className="shrink-0 text-[13px] text-muted">
-          {ROLE_LABELS[user.role]} · {user.activityCount} change{user.activityCount === 1 ? "" : "s"}
+          {ROLE_LABELS[user.role]}
+          {today !== null && ` · ${todayLabel(countSince(user.latestChangeTimes, today))}`}
         </span>
       </div>
 
@@ -397,9 +434,111 @@ function UsersMenuButton({
         <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-56 origin-top-right rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]">
           <CopySignupLinkItem />
           <div className="mt-1 border-t border-border px-2.5 pb-1 pt-2 text-[12px] text-muted">Sort by</div>
+          <SortMenuItem label="Last Change" sortKey="activity" active={sortKey} dir={sortDir} onClick={onToggleSort} />
           <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
           <SortMenuItem label="Role" sortKey="role" active={sortKey} dir={sortDir} onClick={onToggleSort} />
           <SortMenuItem label="Date Created" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A user's own "⋯": what can be done to that one account. Delete asks
+// first, in place, the way the playlists' Delete does.
+function UserRowMenu({
+  canMakeAdmin,
+  canDelete,
+  onMakeAdmin,
+  onDelete,
+}: {
+  canMakeAdmin: boolean;
+  canDelete: boolean;
+  onMakeAdmin: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  function close() {
+    setOpen(false);
+    setConfirmingDelete(false);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) close();
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const itemClass =
+    "press-ghost-fit block w-full rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]";
+
+  return (
+    <div ref={containerRef} data-no-toggle className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => (open ? close() : setOpen(true))}
+        aria-label="Account options"
+        aria-expanded={open}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-black/[.05] hover:text-foreground dark:hover:bg-white/[.08]"
+      >
+        <ThreeDotIcon className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-44 origin-top-right rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]">
+          {confirmingDelete ? (
+            <div className="px-2.5 py-1.5">
+              <p className="mb-1.5 text-[12px] text-muted">Delete this account?</p>
+              <div className="flex items-center gap-3 text-[13px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    onDelete();
+                  }}
+                  className="press-ghost font-medium text-danger hover:opacity-70"
+                >
+                  Confirm
+                </button>
+                <button type="button" onClick={() => setConfirmingDelete(false)} className="press-ghost text-muted hover:opacity-70">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {canMakeAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    onMakeAdmin();
+                  }}
+                  className={itemClass}
+                >
+                  Make Admin
+                </button>
+              )}
+              {canDelete && (
+                <button type="button" onClick={() => setConfirmingDelete(true)} className={cn(itemClass, "text-danger")}>
+                  Delete
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
