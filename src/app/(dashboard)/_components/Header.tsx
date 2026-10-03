@@ -110,7 +110,7 @@ function UserMenu() {
         >
           <div className="border-b border-border px-2.5 pb-2 pt-1.5">
             <p className="truncate text-[13px] font-medium">{viewer.email}</p>
-            <p className="text-[12px] text-muted">{ROLE_LABELS[viewer.role]}</p>
+            {ROLE_LABELS[viewer.role] && <p className="text-[12px] text-muted">{ROLE_LABELS[viewer.role]}</p>}
           </div>
           {viewer.isAdmin && (
             <Link

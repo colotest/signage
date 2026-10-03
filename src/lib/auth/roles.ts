@@ -1,7 +1,9 @@
 import type { UserRole } from "@/types/domain";
 
+// The super admin's is left blank on purpose: the account isn't labelled
+// anywhere it's shown.
 export const ROLE_LABELS: Record<UserRole, string> = {
-  super_admin: "Super Admin",
+  super_admin: "",
   admin: "Admin",
   default: "Default",
 };

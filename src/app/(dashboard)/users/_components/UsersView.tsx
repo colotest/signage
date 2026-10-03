@@ -59,6 +59,12 @@ function todayLabel(count: number) {
   return `${count} change${count === 1 ? "" : "s"} today`;
 }
 
+// "Admin · You" — skipping any part that's blank (the super admin's role
+// label is, see ROLE_LABELS) so no stray separator is left behind.
+function joinDescriptors(...parts: (string | false)[]) {
+  return parts.filter(Boolean).join(" · ");
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
@@ -211,8 +217,7 @@ function UserRow({
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
           <span className="truncate text-[15px] font-semibold">{user.email}</span>
           <span className="shrink-0 text-[12px] text-muted">
-            {ROLE_LABELS[user.role]}
-            {isSelf && " · You"}
+            {joinDescriptors(ROLE_LABELS[user.role], isSelf && "You")}
           </span>
         </div>
 
@@ -356,8 +361,10 @@ function UserActivityCard({ user, onClose }: { user: UserWithActivity; onClose: 
       <div className="flex items-baseline gap-2 border-b border-border px-5 pb-3 pt-4">
         <Dialog.Title className="truncate text-[22px] font-semibold tracking-tight">{user.email}</Dialog.Title>
         <span className="shrink-0 text-[13px] text-muted">
-          {ROLE_LABELS[user.role]}
-          {today !== null && ` · ${todayLabel(countSince(user.latestChangeTimes, today))}`}
+          {joinDescriptors(
+            ROLE_LABELS[user.role],
+            today !== null && todayLabel(countSince(user.latestChangeTimes, today)),
+          )}
         </span>
       </div>
 
