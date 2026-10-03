@@ -28,7 +28,14 @@ export function Header() {
     // on a blur effect the status bar area can't share. header-top-safe-area
     // (globals.css) is the normal 12px on desktop, but 0 on touch devices —
     // no extra clearance looked best there on device.
-    <header className="header-top-safe-area sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[var(--surface)] px-5 pb-3">
+    //
+    // z-30 beats everything a page puts in its own stacking order — section
+    // titles (z-10), row and sort menus (z-20) — which are siblings of this
+    // header rather than children of it, and later in the DOM. At a tie they
+    // won, so the account menu hanging below the header came out behind a
+    // page's own controls, and they took its clicks. Portalled dialogs stay
+    // above at z-40/50.
+    <header className="header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border bg-[var(--surface)] px-5 pb-3">
       <nav className="flex items-center gap-5">
         <span className={`${brandFont.className} mt-[0.1em] text-[38px] uppercase tracking-tight`}>
           Colo Cloud
