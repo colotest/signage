@@ -339,9 +339,17 @@ export function FileTree({
           <div className="absolute inset-0">
             <div
               style={{ WebkitTouchCallout: "none" }}
-              className="scroll-fade-y [--fade-bottom:24px] no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-3 sm:pt-[92px]"
+              className="scroll-fade-y [--fade-bottom:24px] no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-11 sm:pt-[92px]"
             >
               <div>
+                {/* Its trigger sits up beside Upload on desktop, and in the
+                    "⋯" menu on mobile (both LibraryView) — so the field
+                    belongs at the top of the list, where pressing either one
+                    leaves it in view. A subfolder's field renders down in
+                    the folder it belongs to instead (TreeLevel). */}
+                {creatingIn === null && (
+                  <NewFolderRow depth={0} parentId={null} onDone={() => onCreatingChange(undefined)} router={router} />
+                )}
                 <TreeLevel
                   folders={sortFolders(roots)}
                   files={sortFiles(rootFiles)}
@@ -366,21 +374,6 @@ export function FileTree({
                   dropTargetFolderId={dropTargetFolderId}
                   router={router}
                 />
-                {creatingIn === null ? (
-                  <NewFolderRow depth={0} parentId={null} onDone={() => onCreatingChange(undefined)} router={router} />
-                ) : (
-                  // Hidden on mobile — the mobile trigger for this now lives in
-                  // the "⋯" menu next to Upload (LibraryView), alongside Sort by.
-                  <div className="hidden px-4 py-2 sm:block">
-                    <button
-                      type="button"
-                      onClick={() => startCreatingIn(null)}
-                      className="press-ghost text-[13px] font-medium text-accent"
-                    >
-                      + New Folder
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
             <ProgressiveBlurEdge side="top" />
@@ -1143,6 +1136,9 @@ function NewFolderRow({
   const [pending, startTransition] = useTransition();
 
   function attachInput(node: HTMLInputElement | null) {
+    // The list may be scrolled anywhere when this opens — focus alone can
+    // leave the field under the sort bar or the fade at either edge.
+    node?.scrollIntoView({ block: "center" });
     node?.focus();
   }
 

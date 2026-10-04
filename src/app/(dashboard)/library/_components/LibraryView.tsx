@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils/cn";
 import { useLiveRefresh } from "@/lib/realtime/useLiveRefresh";
 import { FileTree, MENU_ITEM_CLASS, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
+import { Button } from "@/components/ui/Button";
 import { UploadDropzone } from "./UploadDropzone";
 import { useMediaUpload } from "./useMediaUpload";
 
@@ -374,7 +375,18 @@ export function LibraryView({
                   to upload to while the list is busy being a file picker,
                   and the space is better spent on the list itself. Where an
                   upload lands is shown by the highlighted folder itself. */}
-              {activePlaylistId === null && <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />}
+              {activePlaylistId === null && (
+                <>
+                  {/* Desktop only: on mobile this lives in the "⋯" menu
+                      beside Upload, and the row of pills has no space for
+                      it. Either way it drops a name field in at the top of
+                      the list rather than the bottom. */}
+                  <Button variant="secondary" className="hidden sm:inline-flex" onClick={() => setCreatingIn(null)}>
+                    + New Folder
+                  </Button>
+                  <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />
+                </>
+              )}
               <MobileFileMenuButton
                 sortKey={sortKey}
                 sortDir={sortDir}

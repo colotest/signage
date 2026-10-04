@@ -174,6 +174,7 @@ export function PlaylistSection({
       startInRename={creatingId === playlist.id}
       onDoneRenaming={() => setCreatingId(null)}
       isActive={activePlaylistId === playlist.id}
+      otherIsActive={activePlaylistId !== null && activePlaylistId !== playlist.id}
       selectedCount={selectedCount}
       onArmSelection={() => onArmSelection?.(playlist.id)}
       onCancelSelection={() => onCancelSelection?.()}
@@ -289,6 +290,7 @@ function PlaylistRow({
   startInRename,
   onDoneRenaming,
   isActive,
+  otherIsActive,
   selectedCount,
   onArmSelection,
   onCancelSelection,
@@ -305,6 +307,8 @@ function PlaylistRow({
   startInRename: boolean;
   onDoneRenaming: () => void;
   isActive: boolean;
+  // Another playlist is the one being picked for right now.
+  otherIsActive: boolean;
   selectedCount: number;
   onArmSelection: () => void;
   onCancelSelection: () => void;
@@ -417,11 +421,14 @@ function PlaylistRow({
         {actions ?? (
           <>
             <div className="flex shrink-0 items-center gap-2">
+              {/* Greyed out while another playlist is the one being picked
+                  for: pressing it there used to quietly switch the pick over
+                  to this playlist, losing whatever was already ticked. */}
               <button
                 type="button"
                 onClick={isActive ? onConfirmAdd : onArmSelection}
-                disabled={isActive && selectedCount === 0}
-                title={isActive ? "Add selected files" : "Add files"}
+                disabled={otherIsActive || (isActive && selectedCount === 0)}
+                title={isActive ? "Add selected files" : otherIsActive ? "Finish the other playlist's selection first" : "Add files"}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
               >
                 {isActive && selectedCount > 0 ? `+${selectedCount}` : "+"}
