@@ -378,8 +378,15 @@ button:not(.no-press) {
 /* Rows and menu items (press-ghost-fit) light up but don't swell: they
    span their whole list or menu, so growing would push past its edges
    (and be clipped by scrolling lists). iOS's own menus do the same. */
+/* will-change keeps the held button on its own compositing layer, so it
+   stays scaled as one image. Without it, Safari re-renders the button at
+   its final size once the transition settles, snapping the text and the
+   box edges to the pixel grid separately — the text lands off-centre and
+   the button looks like it grew downward. Only while pressed, so the
+   app's many idle buttons don't each hold a layer. */
 button:not(.no-press):not(.press-ghost-fit):not(:disabled):active {
   scale: 1.04;
+  will-change: scale;
   transition-duration: 160ms;
   transition-timing-function: ease-out;
 }
