@@ -457,9 +457,9 @@ export function LibraryView({
 // Mobile-only stand-in for FileTree's own sort bar and its "+ New Folder"
 // trigger (both hidden below the sm breakpoint — see FileTree) — tucked
 // behind a "⋯" popup next to Upload instead, so the file list gets that
-// space back on a small screen. Stays open after picking an option (the
-// user may want to flip a sort direction more than once, or glance at the
-// list after starting a new folder) — only an outside tap/Escape closes it.
+// space back on a small screen. Stays open after picking a sort option —
+// the user may want to flip a direction more than once — but closes on
+// "+ New Folder", which puts a field in the list this menu covers.
 export function MobileFileMenuButton({
   sortKey,
   sortDir,
@@ -493,7 +493,17 @@ export function MobileFileMenuButton({
         <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
         <SortMenuItem label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
         <div className="my-1 border-t border-border" />
-        <button type="button" onClick={onNewFolder} className={MENU_ITEM_CLASS}>
+        {/* Closes with it, unlike the sort options above: the field it
+            opens is in the list behind this menu, and leaving the menu
+            over it just hides what you're meant to be typing into. */}
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            onNewFolder();
+          }}
+          className={MENU_ITEM_CLASS}
+        >
           + New Folder
         </button>
       </Menu>

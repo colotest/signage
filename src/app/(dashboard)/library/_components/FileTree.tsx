@@ -1,19 +1,21 @@
 "use client";
 
-import { createContext, useContext, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Menu } from "@/components/ui/Menu";
 import { MediaThumb } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
+import { CheckIcon } from "@/components/icons/PlaybackIcons";
 import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatResolutionAndDuration, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
 import { createUploadLink, revokeUploadLink } from "@/lib/actions/uploadLinks";
 import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
 import { deleteDeck, moveDeck, renameDeck } from "@/lib/actions/decks";
-import { removeWithAnimation } from "@/lib/animation/listMotion";
+import { animateEntrance, removeWithAnimation } from "@/lib/animation/listMotion";
+import { useFlipRows } from "@/lib/animation/useFlipRows";
 import { mediaPublicUrl, type DeckWithPages, type Folder, type MediaItem } from "@/types/domain";
 import { RenameableTitle } from "./RenameableTitle";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
@@ -176,6 +178,22 @@ export function FileTree({
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Rows slide to wherever the current sort puts them — a folder just
+  // created lands in its place rather than appearing there, and everything
+  // it displaces moves with it. createdFolderId marks that one row as an
+  // arrival, so it opens its own space instead of simply being there.
+  const rowsRef = useRef<HTMLDivElement | null>(null);
+  const [createdFolderId, setCreatedFolderId] = useState<string | null>(null);
+  useFlipRows(rowsRef, createdFolderId);
+
+  // Dropped again once that row has had its arrival: it only applies to the
+  // render the folder first appears in, and a lingering id would replay the
+  // animation the next time the row happened to remount — collapsing and
+  // reopening the folder it sits in, say.
+  function markCreatedFolder(folderId: string) {
+    setCreatedFolderId(folderId);
+    window.setTimeout(() => setCreatedFolderId((current) => (current === folderId ? null : current)), 1000);
+  }
 
   // OS-level file drag (from the desktop, a Finder window, etc.) — entirely
   // separate machinery from the dnd-kit drag above (native DragEvents vs.
@@ -381,14 +399,20 @@ export function FileTree({
               style={{ WebkitTouchCallout: "none" }}
               className="scroll-fade-y [--fade-bottom:24px] no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-11 sm:pt-[92px]"
             >
-              <div>
+              <div ref={rowsRef}>
                 {/* Its trigger sits up beside Upload on desktop, and in the
                     "⋯" menu on mobile (both LibraryView) — so the field
                     belongs at the top of the list, where pressing either one
                     leaves it in view. A subfolder's field renders down in
                     the folder it belongs to instead (TreeLevel). */}
                 {creatingIn === null && (
-                  <NewFolderRow depth={0} parentId={null} onDone={() => onCreatingChange(undefined)} router={router} />
+                  <NewFolderRow
+                    depth={0}
+                    parentId={null}
+                    onDone={() => onCreatingChange(undefined)}
+                    onCreated={markCreatedFolder}
+                    router={router}
+                  />
                 )}
                 <TreeLevel
                   folders={sortFolders(roots)}
@@ -403,6 +427,7 @@ export function FileTree({
                   creatingIn={creatingIn}
                   onStartCreating={startCreatingIn}
                   onDoneCreating={() => onCreatingChange(undefined)}
+                  onCreatedFolder={markCreatedFolder}
                   selectionMode={selectionMode}
                   selectedIds={selectedIds}
                   onToggleMedia={onToggleMedia}
@@ -502,6 +527,7 @@ function TreeLevel({
   creatingIn,
   onStartCreating,
   onDoneCreating,
+  onCreatedFolder,
   selectionMode,
   selectedIds,
   onToggleMedia,
@@ -527,6 +553,9 @@ function TreeLevel({
   creatingIn: string | null | undefined;
   onStartCreating: (id: string | null) => void;
   onDoneCreating: () => void;
+  // Marks a freshly created folder as an arrival, so the row it becomes
+  // opens its own space (see useFlipRows in FileTree).
+  onCreatedFolder: (folderId: string) => void;
   selectionMode: boolean;
   selectedIds: Set<string>;
   onToggleMedia: (id: string) => void;
@@ -597,6 +626,7 @@ function TreeLevel({
                 creatingIn={creatingIn}
                 onStartCreating={onStartCreating}
                 onDoneCreating={onDoneCreating}
+                onCreatedFolder={onCreatedFolder}
                 selectionMode={selectionMode}
                 selectedIds={selectedIds}
                 onToggleMedia={onToggleMedia}
@@ -610,7 +640,13 @@ function TreeLevel({
               />
             )}
             {isExpanded && creatingIn === folder.id && (
-              <NewFolderRow depth={depth + 1} parentId={folder.id} onDone={onDoneCreating} router={router} />
+              <NewFolderRow
+                depth={depth + 1}
+                parentId={folder.id}
+                onDone={onDoneCreating}
+                onCreated={onCreatedFolder}
+                router={router}
+              />
             )}
           </div>
         );
@@ -949,6 +985,7 @@ function FolderRow({
         rowRef.current = node;
       }}
       onClick={onRowClick}
+      data-flip-key={`folder-${folder.id}`}
       className={cn(
         "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
         isHighlighted ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
@@ -1093,6 +1130,7 @@ function FileRow({
       {...attributes}
       {...listeners}
       onClick={selectionMode ? onToggleSelect : undefined}
+      data-flip-key={`file-${item.id}`}
       className={cn(
         "flex items-center gap-2 border-b border-border px-4 py-2 last:border-0",
         selectionMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
@@ -1165,16 +1203,28 @@ function NewFolderRow({
   depth,
   parentId,
   onDone,
+  onCreated,
   router,
 }: {
   depth: number;
   parentId: string | null;
   onDone: () => void;
+  onCreated: (folderId: string) => void;
   router: Router;
 }) {
   const [pending, startTransition] = useTransition();
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Opens its own space and pushes the rows below down, rather than the
+  // list jumping to include it.
+  useLayoutEffect(() => {
+    const entrance = animateEntrance(rowRef.current);
+    return entrance.cancel;
+  }, []);
 
   function attachInput(node: HTMLInputElement | null) {
+    inputRef.current = node;
     // The list may be scrolled anywhere when this opens — focus alone can
     // leave the field under the sort bar or the fade at either edge.
     node?.scrollIntoView({ block: "center" });
@@ -1188,26 +1238,79 @@ function NewFolderRow({
       return;
     }
     startTransition(async () => {
-      await createFolder(trimmed, parentId);
+      const folder = await createFolder(trimmed, parentId);
+      onCreated(folder.id);
       router.refresh();
       onDone();
     });
   }
 
   return (
-    <div className="px-4 py-2">
-      <input
-        ref={attachInput}
-        disabled={pending}
-        placeholder="Folder name"
-        onBlur={(e) => submit(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") onDone();
-        }}
-        style={{ marginLeft: depth * 20 + (parentId === null ? 0 : 20) }}
-        className="rounded-[var(--radius-sm)] border border-accent bg-transparent px-2 py-1 text-[13px] outline-none"
-      />
+    // Deliberately the same shape as a FolderRow — same gaps, same columns,
+    // so it reads as the row it's about to become. Its icon is faded and
+    // its date/size columns empty, since it isn't one yet.
+    <div
+      ref={rowRef}
+      className="flex items-center gap-2 border-b border-border px-4 py-2 last:border-0"
+    >
+      <div style={{ width: depth * 20 + (parentId === null ? 0 : 20) }} className="shrink-0" />
+      <span aria-hidden className="h-4 w-4 shrink-0" />
+      <span className="shrink-0 opacity-40">📁</span>
+
+      <div className="flex min-w-0 flex-1 items-center">
+        <input
+          ref={attachInput}
+          disabled={pending}
+          placeholder="Folder name"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit(e.currentTarget.value);
+            if (e.key === "Escape") onDone();
+          }}
+          className="w-full min-w-0 max-w-64 rounded-[var(--radius-sm)] border border-accent bg-transparent px-2 py-1 text-[13px] outline-none"
+        />
+      </div>
+
+      {/* Commit and cancel, for anyone not reaching for Enter or Escape.
+          onMouseDown is where the work happens — by the time a click lands
+          the field has already blurred, and on touch the keyboard closing
+          can swallow the click entirely. */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          disabled={pending}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            submit(inputRef.current?.value ?? "");
+          }}
+          title="Create folder"
+          aria-label="Create folder"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast hover:opacity-90 disabled:opacity-40"
+        >
+          <CheckIcon className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onDone();
+          }}
+          title="Cancel"
+          aria-label="Cancel"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/[.06] text-[13px] text-muted hover:text-foreground disabled:opacity-40 dark:bg-white/[.1]"
+        >
+          ✕
+        </button>
+      </div>
+
+      <RowColumn width="w-28">Folder</RowColumn>
+      <RowColumn width="w-44" />
+      <RowColumn width="w-28" />
+      <RowColumn width="w-20" />
+      <RowColumn width="w-40" />
+      {/* Keeps the columns clear of the row menu's own width, which this
+          row doesn't have. */}
+      <span aria-hidden className="w-7 shrink-0" />
     </div>
   );
 }
@@ -1299,6 +1402,7 @@ function DeckRow({
     <div
       ref={rowRef}
       onClick={selectionMode ? onToggleSelect : onToggleExpanded}
+      data-flip-key={`deck-${deck.id}`}
       className={cn(
         "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
         selectionMode && checkState === "all"

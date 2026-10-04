@@ -7,7 +7,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { Menu } from "@/components/ui/Menu";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
-import { useFlipChildren } from "@/lib/hooks/useFlipChildren";
+import { useFlipChildren } from "@/lib/animation/useFlipChildren";
 import { cn } from "@/lib/utils/cn";
 import { formatDuration } from "@/lib/utils/format";
 import {
