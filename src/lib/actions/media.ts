@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { folderName, quote, recordActivity } from "@/lib/activity";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { repointMediaItem } from "@/lib/uploads/replace";
 import type { MediaType } from "@/types/domain";
 
 const BUCKET = "media";
@@ -120,14 +121,8 @@ export async function createReplaceUploadUrl({
   };
 }
 
-// Repoints an existing media item at a newly-uploaded file — same id, so
-// every playlist_items row referencing it (and any screen currently
-// showing it) keeps working with no playlist rebuilding. The old object is
-// only removed from storage after the row update succeeds, so a failed
-// update never leaves the item pointing at something already deleted; a
-// failure to clean up the now-orphaned old file afterward is logged but
-// doesn't fail the whole operation, since the part the user actually
-// cares about — the item now serving the new file — already succeeded.
+// Repoints an existing media item at a newly-uploaded file — see
+// repointMediaItem.
 export async function finalizeMediaReplace({
   mediaItemId,
   storagePath,
@@ -158,25 +153,16 @@ export async function finalizeMediaReplace({
   if (fetchError) throw new Error(fetchError.message);
   if (existing.media_type === "page") throw new Error("Built-in pages can't be replaced.");
 
-  const { error: updateError } = await admin
-    .from("media_items")
-    .update({
-      storage_path: storagePath,
-      media_type: mediaType,
-      mime_type: mimeType,
-      size_bytes: sizeBytes,
-      width,
-      height,
-      duration_seconds: durationSeconds,
-    })
-    .eq("id", mediaItemId);
-  if (updateError) throw new Error(updateError.message);
+  await repointMediaItem(admin, { id: mediaItemId, storage_path: existing.storage_path }, {
+    storagePath,
+    mediaType,
+    mimeType,
+    sizeBytes,
+    width,
+    height,
+    durationSeconds,
+  });
   recordActivity(user, { action: "media.replace", summary: `Replaced the file behind ${quote(existing.name)}` });
-
-  const { error: removeError } = await admin.storage.from(BUCKET).remove([existing.storage_path]);
-  if (removeError) {
-    console.error(`Failed to remove old storage object "${existing.storage_path}" after replace:`, removeError.message);
-  }
 
   revalidatePath("/library");
   revalidatePath("/dashboard");

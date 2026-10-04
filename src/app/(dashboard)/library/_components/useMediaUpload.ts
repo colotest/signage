@@ -35,8 +35,13 @@ const SESSION_ACTIONS: UploadActions = {
 // The one upload pipeline behind every "+ Upload" button and OS file drop —
 // the Library page, the dashboard's Playback Menu file picker and the
 // public upload page all use it, so they can't drift apart. `uploading` is
-// the in-progress count.
-export function useMediaUpload(targetFolderId: string | null, actions: UploadActions = SESSION_ACTIONS) {
+// the in-progress count. onError replaces the default alert, for a page
+// that reports failures its own way.
+export function useMediaUpload(
+  targetFolderId: string | null,
+  actions: UploadActions = SESSION_ACTIONS,
+  onError?: (file: File, err: unknown) => void,
+) {
   const router = useRouter();
   const [uploading, setUploading] = useState(0);
   // What a PDF is busy doing, since splitting one into pages takes long
@@ -88,7 +93,8 @@ export function useMediaUpload(targetFolderId: string | null, actions: UploadAct
           succeeded++;
         } catch (err) {
           console.error("Upload failed", file.name, err);
-          alert(`Failed to upload "${file.name}": ${err instanceof Error ? err.message : "unknown error"}`);
+          if (onError) onError(file, err);
+          else alert(`Failed to upload "${file.name}": ${err instanceof Error ? err.message : "unknown error"}`);
         } finally {
           setUploading((n) => n - 1);
         }

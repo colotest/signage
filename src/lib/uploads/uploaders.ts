@@ -7,7 +7,7 @@ type Admin = ReturnType<typeof createAdminClient>;
 // of their email before the "@", capitalised — or all caps when it's just
 // two letters, which are most likely initials. Users have no display names
 // of their own.
-function shortName(email: string) {
+export function shortName(email: string) {
   const local = email.split("@")[0];
   if (local.length === 2) return local.toUpperCase();
   return local.charAt(0).toUpperCase() + local.slice(1);

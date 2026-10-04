@@ -1,56 +1,66 @@
 import type { Metadata } from "next";
-import { brandFont } from "@/lib/fonts";
+import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { shortName } from "@/lib/uploads/uploaders";
 import { folderForUploadLink } from "@/lib/uploads/links";
-import { kindLabel } from "@/lib/utils/format";
-import { UploadWindow, type UploadedFile } from "./UploadWindow";
+import { LANG_COOKIE, parseLang } from "./copy";
+import { UploadPage as UploadPageView, type UploadedFile } from "./UploadWindow";
 
 export const metadata: Metadata = {
-  title: "Upload Files — Colo Cloud",
+  title: "Upload — Colo Cloud",
   robots: { index: false, follow: false },
 };
 
+type Admin = ReturnType<typeof createAdminClient>;
+
 // Someone outside the team, handed a folder's upload link. They can add
-// files to that one folder and see what's already in it — nothing about
-// any other folder is ever fetched for this page, let alone sent to it.
-// The proxy leaves /upload/* open (see src/proxy.ts); the token is the
-// whole of the access check, done again by every action the page calls.
+// files to that one folder, replace the ones already in it, and see what's
+// there — nothing about any other folder is ever fetched for this page,
+// let alone sent to it. The proxy leaves /upload/* open (see src/proxy.ts);
+// the token is the whole of the access check, done again by every action
+// the page calls.
 export default async function UploadPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const lang = parseLang((await cookies()).get(LANG_COOKIE)?.value);
   const admin = createAdminClient();
   const folder = await folderForUploadLink(admin, token);
 
-  return (
-    <div className="h-full overflow-y-auto bg-background">
-      <div className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 pb-24 pt-10 sm:pt-14">
-        <h1 className={`${brandFont.className} text-center text-[52px] uppercase leading-none tracking-tight`}>
-          Colo Cloud
-        </h1>
-        {folder ? (
-          <UploadWindow token={token} folderName={folder.name} files={await folderFiles(admin, folder.id)} />
-        ) : (
-          <div className="mt-10 max-w-sm text-center">
-            <p className="text-[17px] font-semibold">This upload link isn&apos;t active.</p>
-            <p className="mt-1 text-sm text-muted">
-              It may have been turned off, or the folder it pointed to was removed. Ask whoever sent it for a new one.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const link = folder
+    ? {
+        folderName: folder.name,
+        ...(await Promise.all([ownerName(admin, folder.id), folderFiles(admin, folder.id)]).then(
+          ([owner, files]) => ({ ownerName: owner, files }),
+        )),
+      }
+    : null;
+
+  return <UploadPageView initialLang={lang} token={token} link={link} />;
 }
 
-// Just this folder's own files, as bare listing rows — no storage paths,
-// ids or subfolders, since none of those are anything this page needs.
-async function folderFiles(admin: ReturnType<typeof createAdminClient>, folderId: string): Promise<UploadedFile[]> {
+// Who the files are for: whoever created the folder, or — for folders from
+// before that was recorded — whoever shared the link.
+async function ownerName(admin: Admin, folderId: string): Promise<string | null> {
+  const [{ data: folder }, { data: link }] = await Promise.all([
+    admin.from("folders").select("created_by").eq("id", folderId).maybeSingle(),
+    admin.from("folder_upload_links").select("created_by").eq("folder_id", folderId).maybeSingle(),
+  ]);
+  const userId = folder?.created_by ?? link?.created_by;
+  if (!userId) return null;
+  const { data: user } = await admin.from("users").select("email").eq("id", userId).maybeSingle();
+  return user ? shortName(user.email) : null;
+}
+
+// Just this folder's own files, as bare listing rows — no storage paths or
+// subfolders, since none of those are anything this page needs.
+async function folderFiles(admin: Admin, folderId: string): Promise<UploadedFile[]> {
   const [{ data: media, error: mediaError }, { data: decks, error: decksError }] = await Promise.all([
     admin
       .from("media_items")
-      .select("id, name, media_type, mime_type, size_bytes, created_at")
+      .select("id, name, media_type, created_at")
       .eq("folder_id", folderId)
+      .is("deck_id", null)
       .neq("media_type", "page"),
-    admin.from("decks").select("id, name, size_bytes, page_count, created_at").eq("folder_id", folderId),
+    admin.from("decks").select("id, name, created_at").eq("folder_id", folderId),
   ]);
   if (mediaError) throw new Error(mediaError.message);
   if (decksError) throw new Error(decksError.message);
@@ -59,19 +69,10 @@ async function folderFiles(admin: ReturnType<typeof createAdminClient>, folderId
     ...(media ?? []).map((item) => ({
       id: item.id,
       name: item.name,
-      kind: kindLabel(item),
       icon: item.media_type === "video" ? ("video" as const) : ("image" as const),
-      sizeBytes: item.size_bytes,
       createdAt: item.created_at,
     })),
-    ...(decks ?? []).map((deck) => ({
-      id: deck.id,
-      name: deck.name,
-      kind: `PDF · ${deck.page_count} page${deck.page_count === 1 ? "" : "s"}`,
-      icon: "pdf" as const,
-      sizeBytes: deck.size_bytes,
-      createdAt: deck.created_at,
-    })),
+    ...(decks ?? []).map((deck) => ({ id: deck.id, name: deck.name, icon: "pdf" as const, createdAt: deck.created_at })),
   ];
   return files.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

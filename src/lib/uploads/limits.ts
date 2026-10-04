@@ -12,28 +12,21 @@ export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 // asking for thousands of them.
 export const MAX_PDF_PAGES = 200;
 
-export const ACCEPTED_TYPES = [
-  { label: "Images", formats: "JPG, PNG, WebP, GIF" },
-  { label: "Videos", formats: "MP4, MOV, WebM" },
-  { label: "Documents", formats: "PDF — each page becomes a slide" },
-];
-
 export const ACCEPT_ATTRIBUTE = "image/*,video/*,application/pdf";
 
 // Slides can't be shown as-is; they're turned away with a pointer to
 // exporting a PDF, which then uploads as a deck.
 const PRESENTATION_EXTENSIONS = [".ppt", ".pptx", ".pps", ".ppsx", ".key", ".odp"];
 
-// Why a file can't go up, or null if it can.
-export function rejectionReason(file: File): string | null {
+export type Rejection = "presentation" | "type" | "size";
+
+// Why a file can't go up, or null if it can — as a code, for the page to
+// put into words in whichever language it's showing.
+export function rejectionReason(file: File): Rejection | null {
   const name = file.name.toLowerCase();
   const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
-  if (PRESENTATION_EXTENSIONS.some((ext) => name.endsWith(ext))) {
-    return "is a presentation — export it as a PDF first, then upload the PDF";
-  }
-  if (!isPdf && !file.type.startsWith("image/") && !file.type.startsWith("video/")) {
-    return "isn't an image, video or PDF";
-  }
-  if (file.size > MAX_UPLOAD_BYTES) return `is larger than ${MAX_UPLOAD_BYTES / 1024 / 1024} MB`;
+  if (PRESENTATION_EXTENSIONS.some((ext) => name.endsWith(ext))) return "presentation";
+  if (!isPdf && !file.type.startsWith("image/") && !file.type.startsWith("video/")) return "type";
+  if (file.size > MAX_UPLOAD_BYTES) return "size";
   return null;
 }

@@ -3,9 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Spinner } from "@/components/ui/Spinner";
-import { createDeckUploadUrls, finalizeDeckReplace } from "@/lib/actions/decks";
-import { renderPdfPages } from "@/lib/media/renderPdfPages";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { replaceDeckFile } from "@/lib/media/replaceFile";
 import type { DeckWithPages } from "@/types/domain";
 
 // Swapping a newer PDF in under the same deck. Page 1 stays page 1 — the
@@ -31,37 +29,15 @@ export function ReplaceDeckButton({ deck, className }: { deck: DeckWithPages; cl
     }
 
     try {
-      setStatus("Reading…");
-      const pages = await renderPdfPages(file, (done, total) => setStatus(`Page ${done}/${total}`));
-      const { original, pages: slots } = await createDeckUploadUrls({ pageCount: pages.length });
-
-      const supabase = createBrowserClient();
-      setStatus("Uploading…");
-      const { error: originalError } = await supabase.storage
-        .from("media")
-        .uploadToSignedUrl(original.storagePath, original.token, file);
-      if (originalError) throw originalError;
-
-      await Promise.all(
-        pages.map(async (page, i) => {
-          const { error } = await supabase.storage
-            .from("media")
-            .uploadToSignedUrl(slots[i].storagePath, slots[i].token, page.blob);
-          if (error) throw error;
-        }),
+      await replaceDeckFile(file, deck.id, (progress) =>
+        setStatus(
+          progress.phase === "reading"
+            ? "Reading…"
+            : progress.phase === "rendering"
+              ? `Page ${progress.done}/${progress.total}`
+              : "Uploading…",
+        ),
       );
-
-      await finalizeDeckReplace({
-        deckId: deck.id,
-        storagePath: original.storagePath,
-        sizeBytes: file.size,
-        pages: pages.map((page, i) => ({
-          storagePath: slots[i].storagePath,
-          width: page.width,
-          height: page.height,
-          sizeBytes: page.blob.size,
-        })),
-      });
       router.refresh();
     } catch (err) {
       console.error("Replace failed", deck.name, err);

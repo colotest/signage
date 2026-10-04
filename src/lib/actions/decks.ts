@@ -6,6 +6,7 @@ import { folderName, plural, quote, recordActivity } from "@/lib/activity";
 import { requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { insertDeck, pageName, type DeckPageInput } from "@/lib/uploads/insertDeck";
+import { replaceDeckFiles } from "@/lib/uploads/replace";
 
 // A PDF in the library is a deck: the original file, plus one image per
 // page rendered in the uploader's browser (see renderPdfPages). The pages
@@ -94,81 +95,11 @@ export async function finalizeDeckReplace({
     .single();
   if (deckError) throw new Error(deckError.message);
 
-  const { data: existing, error: existingError } = await admin
-    .from("media_items")
-    .select("id, storage_path, deck_position")
-    .eq("deck_id", deckId)
-    .order("deck_position", { ascending: true });
-  if (existingError) throw new Error(existingError.message);
-
-  const current = existing ?? [];
-  const staleObjects: string[] = [deck.storage_path];
-
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i];
-    const kept = current[i];
-    if (kept) {
-      const { error } = await admin
-        .from("media_items")
-        .update({
-          storage_path: page.storagePath,
-          mime_type: "image/jpeg",
-          size_bytes: page.sizeBytes,
-          width: page.width,
-          height: page.height,
-          name: pageName(deck.name, i),
-          deck_position: i,
-        })
-        .eq("id", kept.id);
-      if (error) throw new Error(error.message);
-      staleObjects.push(kept.storage_path);
-      continue;
-    }
-    const { error } = await admin.from("media_items").insert({
-      folder_id: null,
-      deck_id: deckId,
-      deck_position: i,
-      name: pageName(deck.name, i),
-      storage_path: page.storagePath,
-      media_type: "image" as const,
-      mime_type: "image/jpeg",
-      size_bytes: page.sizeBytes,
-      width: page.width,
-      height: page.height,
-      uploaded_by: deck.uploaded_by,
-      uploaded_via_link: deck.uploaded_via_link,
-      upload_link_folder_id: deck.upload_link_folder_id,
-    });
-    if (error) throw new Error(error.message);
-  }
-
-  const dropped = current.slice(pages.length);
-  if (dropped.length > 0) {
-    const { error } = await admin
-      .from("media_items")
-      .delete()
-      .in("id", dropped.map((page) => page.id));
-    if (error) throw new Error(error.message);
-    staleObjects.push(...dropped.map((page) => page.storage_path));
-  }
-
-  const { error: updateError } = await admin
-    .from("decks")
-    .update({ storage_path: storagePath, size_bytes: sizeBytes, page_count: pages.length })
-    .eq("id", deckId);
-  if (updateError) throw new Error(updateError.message);
+  await replaceDeckFiles(admin, deck, { storagePath, sizeBytes, pages });
   recordActivity(user, {
     action: "deck.replace",
     summary: `Replaced PDF ${quote(deck.name)} with a new version (${plural(pages.length, "page")})`,
   });
-
-  // Only once the swap itself has gone through: a failure above leaves the
-  // deck pointing at files that are all still there. Cleaning up afterwards
-  // is best-effort, like finalizeMediaReplace's own.
-  const { error: removeError } = await admin.storage.from(BUCKET).remove(staleObjects);
-  if (removeError) {
-    console.error(`Failed to remove ${staleObjects.length} replaced objects for deck "${deck.name}":`, removeError.message);
-  }
 
   revalidatePath("/library");
   revalidatePath("/dashboard");

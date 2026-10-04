@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { insertDeck, type DeckPageInput } from "@/lib/uploads/insertDeck";
 import { folderForUploadLink } from "@/lib/uploads/links";
 import { MAX_PDF_PAGES, MAX_UPLOAD_BYTES } from "@/lib/uploads/limits";
+import { repointMediaItem, replaceDeckFiles } from "@/lib/uploads/replace";
 import type { MediaType } from "@/types/domain";
 
 // Upload links (see 0024_folder_upload_links.sql): the dashboard side turns
@@ -191,6 +192,91 @@ export async function finalizeLinkDeckUpload(
     sizeBytes: sizeBytes ?? 0,
     pages: pages.map((page, i) => ({ ...page, sizeBytes: pageSizes[i] ?? page.sizeBytes })),
     uploadedBy: { linkFolderId: folder.id },
+  });
+  revalidatePath("/library");
+  revalidatePath("/dashboard");
+}
+
+// Replacing goes through the same checks as uploading, plus one more: the
+// item being replaced has to be one this page actually lists — a file or
+// PDF sitting directly in the link's own folder.
+
+export async function createLinkReplaceUploadUrl(
+  linkToken: string,
+  { filename, contentType }: { filename: string; contentType: string },
+) {
+  const admin = createAdminClient();
+  const folder = await requireLinkFolder(admin, linkToken);
+  const mediaType = mediaTypeFromMime(contentType);
+  const { storagePath, token } = await signedUpload(admin, folder.id, extensionOf(filename));
+  return { storagePath, mediaType, token };
+}
+
+export async function finalizeLinkMediaReplace(
+  linkToken: string,
+  {
+    mediaItemId,
+    storagePath,
+    mimeType,
+    width,
+    height,
+    durationSeconds,
+  }: {
+    mediaItemId: string;
+    storagePath: string;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+    durationSeconds: number | null;
+  },
+) {
+  const admin = createAdminClient();
+  const folder = await requireLinkFolder(admin, linkToken);
+
+  const { data: existing, error } = await admin
+    .from("media_items")
+    .select("id, storage_path, folder_id, deck_id, media_type")
+    .eq("id", mediaItemId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!existing || existing.folder_id !== folder.id || existing.deck_id || existing.media_type === "page") {
+    throw new Error("That file isn't in this folder.");
+  }
+
+  const sizeBytes = await verifyUploaded(admin, folder.id, storagePath, MAX_UPLOAD_BYTES);
+  await repointMediaItem(admin, existing, {
+    storagePath,
+    mediaType: mediaTypeFromMime(mimeType),
+    mimeType,
+    sizeBytes,
+    width,
+    height,
+    durationSeconds,
+  });
+  revalidatePath("/library");
+  revalidatePath("/dashboard");
+}
+
+export async function finalizeLinkDeckReplace(
+  linkToken: string,
+  { deckId, storagePath, pages }: { deckId: string; storagePath: string; pages: DeckPageInput[] },
+) {
+  const admin = createAdminClient();
+  const folder = await requireLinkFolder(admin, linkToken);
+  if (pages.length < 1 || pages.length > MAX_PDF_PAGES) throw new Error("That PDF has an unexpected number of pages.");
+
+  const { data: deck, error } = await admin.from("decks").select("*").eq("id", deckId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!deck || deck.folder_id !== folder.id) throw new Error("That PDF isn't in this folder.");
+
+  const sizeBytes = await verifyUploaded(admin, folder.id, storagePath, MAX_UPLOAD_BYTES);
+  const pageSizes = await Promise.all(
+    pages.map((page) => verifyUploaded(admin, folder.id, page.storagePath, MAX_UPLOAD_BYTES)),
+  );
+  await replaceDeckFiles(admin, deck, {
+    storagePath,
+    sizeBytes: sizeBytes ?? 0,
+    pages: pages.map((page, i) => ({ ...page, sizeBytes: pageSizes[i] ?? page.sizeBytes })),
   });
   revalidatePath("/library");
   revalidatePath("/dashboard");

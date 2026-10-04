@@ -3,10 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Spinner } from "@/components/ui/Spinner";
-import { createReplaceUploadUrl, finalizeMediaReplace } from "@/lib/actions/media";
-import { inspectFile } from "@/lib/media/inspectFile";
-import { prepareImage } from "@/lib/media/prepareImage";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { replaceMediaFile } from "@/lib/media/replaceFile";
 import type { MediaItem } from "@/types/domain";
 
 export function ReplaceMediaButton({ item, className }: { item: MediaItem; className?: string }) {
@@ -28,30 +25,7 @@ export function ReplaceMediaButton({ item, className }: { item: MediaItem; class
 
     setUploading(true);
     try {
-      const { storagePath, mediaType, token } = await createReplaceUploadUrl({
-        filename: file.name,
-        contentType: file.type,
-      });
-
-      const supabase = createBrowserClient();
-      // What actually goes up — see prepareImage.
-      const upload = mediaType === "image" ? await prepareImage(file) : file;
-      const [metadata, { error: uploadError }] = await Promise.all([
-        inspectFile(upload, mediaType),
-        supabase.storage.from("media").uploadToSignedUrl(storagePath, token, upload),
-      ]);
-      if (uploadError) throw uploadError;
-
-      await finalizeMediaReplace({
-        mediaItemId: item.id,
-        storagePath,
-        mediaType,
-        mimeType: file.type,
-        sizeBytes: upload.size,
-        width: metadata.width,
-        height: metadata.height,
-        durationSeconds: metadata.durationSeconds,
-      });
+      await replaceMediaFile(file, item.id);
       router.refresh();
     } catch (err) {
       console.error("Replace failed", item.name, err);
