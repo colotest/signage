@@ -186,11 +186,51 @@ body {
   animation: menu-pop 380ms var(--ease-bounce);
 }
 
+/* Closing (data-state, see Menu): shrinks back into its button, fading
+   only towards the end so it stays readable on the way. */
+@keyframes menu-pop-out {
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.25);
+  }
+}
+
+.menu-pop[data-state="closed"] {
+  animation: menu-pop-out 300ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .menu-pop,
   .pop-in {
     animation: sheet-fade-in 180ms ease-out;
   }
+
+  .menu-pop[data-state="closed"] {
+    animation: sheet-fade-out 150ms ease-in forwards;
+  }
+}
+
+/* Drag-select in menus (see Menu): while a press is being dragged across
+   the options, the one under the finger shows as pressed — not the one the
+   press started on, which the browser keeps :active throughout. */
+.menu-pop[data-dragging] .press-ghost-fit:active::before,
+.menu-pop[data-dragging] button:not([data-highlighted]):active::after {
+  opacity: 0;
+}
+
+/* Quick both ways while dragging, so the highlight keeps up with the
+   finger rather than trailing the slow fade of a released press. */
+.menu-pop[data-dragging] .press-ghost-fit::before {
+  transition-duration: 160ms;
+}
+
+.menu-pop[data-dragging] .press-ghost-fit[data-highlighted]::before {
+  opacity: 1;
+  transition-duration: 120ms;
 }
 
 /* Popups (see Sheet) slide up from the bottom edge of the screen and back
@@ -256,33 +296,72 @@ body {
    the start scale, so it reads as the button's own once scaled down. */
 @keyframes sheet-grow {
   from {
-    transform: translate(var(--origin-dx), var(--origin-dy)) scale(var(--origin-scale));
+    transform: translate(var(--origin-dx), var(--origin-dy)) scale(var(--origin-scale-x), var(--origin-scale-y));
     border-radius: var(--origin-radius);
-    opacity: 0;
-  }
-  25% {
-    opacity: 1;
   }
 }
 
 @keyframes sheet-shrink {
-  70% {
-    opacity: 1;
-  }
   to {
-    transform: translate(var(--origin-dx), var(--origin-dy)) scale(var(--origin-scale));
+    transform: translate(var(--origin-dx), var(--origin-dy)) scale(var(--origin-scale-x), var(--origin-scale-y));
     border-radius: var(--origin-radius);
-    opacity: 0;
   }
 }
 
+@keyframes origin-tint-out {
+  from {
+    opacity: 1;
+  }
+}
+
+@keyframes origin-tint-in {
+  to {
+    opacity: 1;
+  }
+}
+
+/* The trigger's colour, laid over the whole popup: opaque at the button's
+   end of the animation, clear at the popup's. */
+.sheet-content[data-origin]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  border-radius: inherit;
+  background: var(--origin-bg);
+  opacity: 0;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  /* See-through trigger: nothing to turn into, so a fade at either end. */
   .sheet-content[data-origin][data-state="open"] {
-    animation: sheet-grow 560ms var(--ease-spring);
+    animation:
+      sheet-grow 560ms var(--ease-spring),
+      sheet-fade-in 140ms ease-out;
   }
 
   .sheet-content[data-origin][data-state="closed"] {
-    animation: sheet-shrink 360ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation:
+      sheet-shrink 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards,
+      sheet-fade-out 140ms ease-in 240ms forwards;
+  }
+
+  /* Solid trigger: starts as the button, and ends as it. */
+  .sheet-content[data-origin-solid][data-state="open"] {
+    animation: sheet-grow 560ms var(--ease-spring);
+  }
+
+  .sheet-content[data-origin-solid][data-state="open"]::after {
+    animation: origin-tint-out 320ms ease-in-out;
+  }
+
+  .sheet-content[data-origin-solid][data-state="closed"] {
+    animation: sheet-shrink 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .sheet-content[data-origin-solid][data-state="closed"]::after {
+    animation: origin-tint-in 320ms ease-in-out forwards;
   }
 }
 
@@ -430,8 +509,8 @@ body {
 
 button:not(.no-press) {
   transition:
-    scale 480ms var(--ease-pop),
-    transform 480ms var(--ease-pop),
+    scale 960ms var(--ease-pop),
+    transform 960ms var(--ease-pop),
     color 150ms ease,
     background-color 150ms ease,
     border-color 150ms ease,
@@ -448,16 +527,19 @@ button:not(.no-press) {
    box edges to the pixel grid separately — the text lands off-centre and
    the button looks like it grew downward. Only while pressed, so the
    app's many idle buttons don't each hold a layer. */
+/* --press-scale (set by PressEffects per press) is 1.15, less for very wide
+   buttons: capped at 24px of extra width, so a full-width button doesn't
+   balloon past its card. */
 button:not(.no-press):not(.press-ghost-fit):not(:disabled):active {
-  scale: 1.06;
+  scale: var(--press-scale, 1.15);
   will-change: scale, transform;
-  transition-duration: 160ms;
+  transition-duration: 320ms;
   transition-timing-function: ease-out;
 }
 
 /* Liquid drag: PressEffects writes --liquid (shift + stretch toward the
    pointer) while a held button is dragged. It follows through the held
-   state's 160ms transition, which gives it a slight, fluid lag, and springs
+   state's 320ms transition, which gives it a slight, fluid lag, and springs
    back on release with the same overshoot as the swell. */
 button[data-liquid] {
   transform: var(--liquid);
@@ -476,12 +558,12 @@ button:not(.no-press)::after {
   );
   box-shadow: inset 0 1px 0 var(--press-glow);
   opacity: 0;
-  transition: opacity 450ms ease-out;
+  transition: opacity 900ms ease-out;
 }
 
 button:not(.no-press):not(:disabled):active::after {
   opacity: 1;
-  transition-duration: 80ms;
+  transition-duration: 160ms;
 }
 
 /* Buttons with no surface of their own. While pressed, a rounded, tinted
@@ -497,7 +579,15 @@ button:not(.no-press):not(:disabled):active::after {
   pointer-events: none;
   background: color-mix(in srgb, currentColor 13%, transparent);
   opacity: 0;
-  transition: opacity 320ms ease-out;
+  transition: opacity 640ms ease-out;
+}
+
+/* Links styled as press-ghost (menu items) need the same anchoring for
+   their tint that every button gets in the base layer above. */
+a.press-ghost,
+a.press-ghost-fit {
+  position: relative;
+  isolation: isolate;
 }
 
 /* button.-qualified to outrank the base ::after rule above. */
@@ -515,7 +605,7 @@ button.press-ghost::after {
 .press-ghost:not(:disabled):active::before,
 .press-ghost-fit:not(:disabled):active::before {
   opacity: 1;
-  transition-duration: 60ms;
+  transition-duration: 120ms;
 }
 
 @media (prefers-reduced-motion: reduce) {

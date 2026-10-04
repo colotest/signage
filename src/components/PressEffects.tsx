@@ -10,11 +10,15 @@ import { rememberTrigger } from "@/lib/utils/lastTrigger";
 const LIQUID_BUTTON = "button:not(.no-press):not(.press-ghost-fit):not(:disabled)";
 const NOT_LIQUID = "[data-screen-tile], [aria-roledescription], [data-no-liquid]";
 
+// Pressed buttons swell by 15%, but by no more than this many px of extra
+// width: a full-width button would otherwise spill past its card.
+const MAX_SWELL_PX = 24;
+
 // One set of app-wide listeners for the press effects in globals.css; renders
 // nothing.
 // - Records where each button press lands, as --press-x/--press-y on the
 //   button, so its glow spreads out from under the finger or cursor (and
-//   follows it while dragging).
+//   follows it while dragging), and how much it swells (--press-scale).
 // - Remembers the pressed control, so a popup it opens can grow out of it
 //   (see lastTrigger and Sheet).
 // - Liquid drag, after iOS 26: dragging a held button pulls it after the
@@ -48,6 +52,8 @@ export function PressEffects() {
       const button = target?.closest?.("button:not(.no-press)");
       if (!(button instanceof HTMLElement)) return;
       setPressPoint(button, e);
+      const width = button.offsetWidth;
+      if (width) button.style.setProperty("--press-scale", `${1 + Math.min(0.15, MAX_SWELL_PX / width)}`);
 
       endDrag();
       if (e.button !== 0 || reducedMotion.matches) return;

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { UserIcon } from "@/components/icons/UserIcon";
+import { Menu } from "@/components/ui/Menu";
 import { logoutAction } from "@/lib/actions/auth";
 import { useViewer } from "@/lib/auth/ViewerContext";
 import { ROLE_LABELS } from "@/lib/auth/roles";
@@ -75,27 +76,13 @@ function UserMenu() {
     setPrevPathname(pathname);
     setOpen(false);
   }
-  const containerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   return (
-    <div ref={containerRef} className="relative shrink-0">
+    <div className="relative shrink-0">
       <button
+        ref={anchorRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Account"
@@ -108,38 +95,33 @@ function UserMenu() {
 
       {/* Items are rounded 4px less than the menu, matching its 4px (p-1)
           inset, so their corners run parallel to its own. */}
-      {open && (
-        <div
-          role="menu"
-          className="menu-pop glass-material absolute right-0 top-full z-20 mt-2 w-56 origin-top-right rounded-[var(--radius-md)] border border-border p-1 shadow-[var(--shadow-float)]"
-        >
-          <div className="border-b border-border px-2.5 pb-2 pt-1.5">
-            <p className="truncate text-[13px] font-medium">{viewer.email}</p>
-            {ROLE_LABELS[viewer.role] && <p className="text-[12px] text-muted">{ROLE_LABELS[viewer.role]}</p>}
-          </div>
-          {viewer.isAdmin && (
-            <Link
-              href="/users"
-              role="menuitem"
-              className={cn(
-                "press-ghost-fit mt-1 block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]",
-                pathname === "/users" && "bg-black/[.04] dark:bg-white/[.06]",
-              )}
-            >
-              Users
-            </Link>
-          )}
-          <form action={logoutAction} className={cn(!viewer.isAdmin && "mt-1")}>
-            <button
-              type="submit"
-              role="menuitem"
-              className="press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium text-danger hover:bg-black/[.04] dark:hover:bg-white/[.06]"
-            >
-              Log Out
-            </button>
-          </form>
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-56 p-1">
+        <div className="border-b border-border px-2.5 pb-2 pt-1.5">
+          <p className="truncate text-[13px] font-medium">{viewer.email}</p>
+          {ROLE_LABELS[viewer.role] && <p className="text-[12px] text-muted">{ROLE_LABELS[viewer.role]}</p>}
         </div>
-      )}
+        {viewer.isAdmin && (
+          <Link
+            href="/users"
+            role="menuitem"
+            className={cn(
+              "press-ghost-fit mt-1 block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+              pathname === "/users" && "bg-black/[.04] dark:bg-white/[.06]",
+            )}
+          >
+            Users
+          </Link>
+        )}
+        <form action={logoutAction} className={cn(!viewer.isAdmin && "mt-1")}>
+          <button
+            type="submit"
+            role="menuitem"
+            className="press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium text-danger hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+          >
+            Log Out
+          </button>
+        </form>
+      </Menu>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { Menu } from "@/components/ui/Menu";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -407,27 +408,13 @@ function UsersMenuButton({
   onToggleSort: (key: UserSortKey) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   return (
-    <div ref={containerRef} className="relative shrink-0">
+    <div className="relative shrink-0">
       <button
+        ref={anchorRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="User options"
@@ -437,16 +424,14 @@ function UsersMenuButton({
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-56 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
-          <CopySignupLinkItem />
-          <div className="mt-1 border-t border-border px-2.5 pb-1 pt-2 text-[12px] text-muted">Sort by</div>
-          <SortMenuItem label="Last Change" sortKey="activity" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-          <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-          <SortMenuItem label="Role" sortKey="role" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-          <SortMenuItem label="Date Created" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-        </div>
-      )}
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-56 p-1">
+        <CopySignupLinkItem />
+        <div className="mt-1 border-t border-border px-2.5 pb-1 pt-2 text-[12px] text-muted">Sort by</div>
+        <SortMenuItem label="Last Change" sortKey="activity" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        <SortMenuItem label="Role" sortKey="role" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        <SortMenuItem label="Date Created" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+      </Menu>
     </div>
   );
 }
@@ -466,37 +451,29 @@ function UserRowMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
+  // The confirmation is reset on the way in rather than out, so the menu
+  // doesn't flip back to its options while it's still shrinking away.
   function close() {
     setOpen(false);
-    setConfirmingDelete(false);
   }
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) close();
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+  function openMenu() {
+    setConfirmingDelete(false);
+    setOpen(true);
+  }
+
 
   const itemClass =
     "press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]";
 
   return (
-    <div ref={containerRef} data-no-toggle className="relative shrink-0">
+    <div data-no-toggle className="relative shrink-0">
       <button
+        ref={anchorRef}
         type="button"
-        onClick={() => (open ? close() : setOpen(true))}
+        onClick={() => (open ? close() : openMenu())}
         aria-label="Account options"
         aria-expanded={open}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-black/[.05] hover:text-foreground dark:hover:bg-white/[.08]"
@@ -504,50 +481,48 @@ function UserRowMenu({
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-44 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
-          {confirmingDelete ? (
-            <div className="pop-in origin-top px-2.5 py-1.5">
-              <p className="mb-1.5 text-[12px] text-muted">Delete this account?</p>
-              <div className="flex items-center gap-3 text-[13px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    close();
-                    onDelete();
-                  }}
-                  className="press-ghost font-medium text-danger hover:opacity-70"
-                >
-                  Confirm
-                </button>
-                <button type="button" onClick={() => setConfirmingDelete(false)} className="press-ghost text-muted hover:opacity-70">
-                  Cancel
-                </button>
-              </div>
+      <Menu open={open} onClose={close} anchorRef={anchorRef} className="w-44 p-1">
+        {confirmingDelete ? (
+          <div className="pop-in origin-top px-2.5 py-1.5">
+            <p className="mb-1.5 text-[12px] text-muted">Delete this account?</p>
+            <div className="flex items-center gap-3 text-[13px]">
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  onDelete();
+                }}
+                className="press-ghost font-medium text-danger hover:opacity-70"
+              >
+                Confirm
+              </button>
+              <button type="button" onClick={() => setConfirmingDelete(false)} className="press-ghost text-muted hover:opacity-70">
+                Cancel
+              </button>
             </div>
-          ) : (
-            <>
-              {canMakeAdmin && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    close();
-                    onMakeAdmin();
-                  }}
-                  className={itemClass}
-                >
-                  Make Admin
-                </button>
-              )}
-              {canDelete && (
-                <button type="button" onClick={() => setConfirmingDelete(true)} className={cn(itemClass, "text-danger")}>
-                  Delete
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <>
+            {canMakeAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  onMakeAdmin();
+                }}
+                className={itemClass}
+              >
+                Make Admin
+              </button>
+            )}
+            {canDelete && (
+              <button type="button" onClick={() => setConfirmingDelete(true)} className={cn(itemClass, "text-danger")}>
+                Delete
+              </button>
+            )}
+          </>
+        )}
+      </Menu>
     </div>
   );
 }

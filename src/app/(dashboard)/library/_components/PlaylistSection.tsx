@@ -4,8 +4,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
+import { Menu } from "@/components/ui/Menu";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
+import { useFlipChildren } from "@/lib/hooks/useFlipChildren";
 import { cn } from "@/lib/utils/cn";
 import { formatDuration } from "@/lib/utils/format";
 import {
@@ -323,6 +325,10 @@ function PlaylistRow({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // The header's controls come and go (the ✕ beside "+" while picking files,
+  // Delete becoming Confirm/Cancel); everything they push aside glides over
+  // rather than jumping.
+  const headerRowRef = useFlipChildren<HTMLDivElement>();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   // Registers this card as a place a file dragged out of the Media list can
   // be dropped — the shared DndContext lives in LibraryView, which resolves
@@ -384,7 +390,7 @@ function PlaylistRow({
         isDropTarget ? "border-accent ring-2 ring-inset ring-accent" : "border-border",
       )}
     >
-      <div className="flex items-center gap-3">
+      <div ref={headerRowRef} className="flex items-center gap-3">
         <button type="button" onClick={onToggleExpanded} className="no-press text-muted">
           <Chevron open={isExpanded} />
         </button>
@@ -537,27 +543,13 @@ export function PlaylistSortMenuButton({
   onToggleSort: (key: PlaylistSortKey) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   return (
-    <div ref={containerRef} className="relative shrink-0">
+    <div className="relative shrink-0">
       <button
+        ref={anchorRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Playlist sort options"
@@ -567,13 +559,11 @@ export function PlaylistSortMenuButton({
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-40 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
-          <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
-          <PlaylistSortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-          <PlaylistSortMenuItem label="Date Created" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-        </div>
-      )}
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-40 p-1">
+        <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
+        <PlaylistSortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        <PlaylistSortMenuItem label="Date Created" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+      </Menu>
     </div>
   );
 }

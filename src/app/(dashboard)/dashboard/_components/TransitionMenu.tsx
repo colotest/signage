@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { Menu } from "@/components/ui/Menu";
 import { cn } from "@/lib/utils/cn";
 import type { ScreenBackground, ScreenSlideDirection, ScreenTransition, ScreenTransitionSpeed } from "@/types/domain";
 import { ThreeDotIcon } from "../../library/_components/FileTree";
@@ -61,34 +62,17 @@ export function TransitionMenu({
   onSelectBackground: (background: ScreenBackground) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   const active = OPTIONS.find((o) => o.value === transition) ?? OPTIONS[0];
 
   return (
-    // Deliberately NOT the dropdown's positioning anchor: this button sits
-    // mid-row, and a 256px menu hanging off its own right edge ran straight
-    // off a phone's screen. The nearest positioned ancestor (the popup's
-    // title group, see Sheet) is the anchor instead, so the menu starts at
-    // the title's left edge and stays inside the popup.
-    <div ref={containerRef} className="shrink-0">
+    // Hangs right from the button's left edge, nudged back inside the popup
+    // when that would run off a phone's screen (see Menu).
+    <div className="shrink-0">
       <button
+        ref={anchorRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="Playback settings"
@@ -99,103 +83,110 @@ export function TransitionMenu({
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div className="menu-pop absolute left-0 top-full z-20 mt-1 w-64 origin-top-left rounded-[var(--radius-md)] border border-border glass-material p-3 shadow-[var(--shadow-float)]">
-          <p className="mb-1.5 text-[11px] text-muted">Background</p>
-          <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
-            {BACKGROUNDS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onSelectBackground(option.value)}
-                className={cn(
-                  "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
-                  background === option.value
-                    ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
-                    : "text-muted hover:text-foreground",
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          <p className="mb-1.5 mt-3 border-t border-border pt-3 text-[11px] text-muted">Transition</p>
-          <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
-            {OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onSelect(option.value)}
-                className={cn(
-                  "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
-                  transition === option.value
-                    ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
-                    : "text-muted hover:text-foreground",
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-[11px] leading-snug text-muted">{active.hint}</p>
-
-          {/* Only a slide has an edge to come in from. */}
-          {transition === "slide" && (
-            <div className="mt-3 border-t border-border pt-3">
-              <p className="mb-1.5 text-[11px] text-muted">Direction</p>
-              <div className="relative">
-                <select
-                  value={slideDirection}
-                  onChange={(e) => onSelectSlideDirection(e.target.value as ScreenSlideDirection)}
-                  aria-label="Slide direction"
-                  className="w-full appearance-none rounded-[var(--radius-sm)] border border-border bg-transparent py-1.5 pl-2.5 pr-7 text-[13px] text-foreground outline-none focus:ring-1 focus:ring-accent"
-                >
-                  {DIRECTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <svg
-                  aria-hidden
-                  viewBox="0 0 24 24"
-                  className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                >
-                  <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-            </div>
-          )}
-
-          {/* Nothing to time when there's no animation to run. */}
-          {transition !== "cut" && (
-            <div className="mt-3 border-t border-border pt-3">
-              <p className="mb-1.5 text-[11px] text-muted">Speed</p>
-              <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
-                {SPEEDS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => onSelectSpeed(option.value)}
-                    className={cn(
-                      "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
-                      speed === option.value
-                        ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
-                        : "text-muted hover:text-foreground",
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+      <Menu
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={anchorRef}
+        align="start"
+        dragSelect={false}
+        role="dialog"
+        aria-label="Playback settings"
+        className="w-64 p-3"
+      >
+        <p className="mb-1.5 text-[11px] text-muted">Background</p>
+        <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
+          {BACKGROUNDS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onSelectBackground(option.value)}
+              className={cn(
+                "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
+                background === option.value
+                  ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
+                  : "text-muted hover:text-foreground",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
-      )}
+
+        <p className="mb-1.5 mt-3 border-t border-border pt-3 text-[11px] text-muted">Transition</p>
+        <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
+          {OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onSelect(option.value)}
+              className={cn(
+                "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
+                transition === option.value
+                  ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
+                  : "text-muted hover:text-foreground",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] leading-snug text-muted">{active.hint}</p>
+
+        {/* Only a slide has an edge to come in from. */}
+        {transition === "slide" && (
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="mb-1.5 text-[11px] text-muted">Direction</p>
+            <div className="relative">
+              <select
+                value={slideDirection}
+                onChange={(e) => onSelectSlideDirection(e.target.value as ScreenSlideDirection)}
+                aria-label="Slide direction"
+                className="w-full appearance-none rounded-[var(--radius-sm)] border border-border bg-transparent py-1.5 pl-2.5 pr-7 text-[13px] text-foreground outline-none focus:ring-1 focus:ring-accent"
+              >
+                {DIRECTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </div>
+        )}
+
+        {/* Nothing to time when there's no animation to run. */}
+        {transition !== "cut" && (
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="mb-1.5 text-[11px] text-muted">Speed</p>
+            <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
+              {SPEEDS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onSelectSpeed(option.value)}
+                  className={cn(
+                    "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
+                    speed === option.value
+                      ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
+                      : "text-muted hover:text-foreground",
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </Menu>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { Menu } from "@/components/ui/Menu";
 import { MediaThumb } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
@@ -784,33 +785,18 @@ function Checkbox({
 // actions stay reachable on touch (hover was never going to fire there).
 function RowMenu({ label, children }: { label: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   return (
     <div
-      ref={containerRef}
       className="relative shrink-0"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
       <button
+        ref={anchorRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label={label}
@@ -820,14 +806,15 @@ function RowMenu({ label, children }: { label: string; children: React.ReactNode
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          className="menu-pop absolute right-0 top-full z-20 mt-1 w-48 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]"
-        >
-          {children}
-        </div>
-      )}
+      <Menu
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={anchorRef}
+        onClick={() => setOpen(false)}
+        className="w-48 p-1"
+      >
+        {children}
+      </Menu>
     </div>
   );
 }

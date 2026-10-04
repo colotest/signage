@@ -16,6 +16,7 @@ import {
   type DropAnimation,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { Menu } from "@/components/ui/Menu";
 import { MediaThumb } from "@/components/MediaThumb";
 import type { DeckWithPages, Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
 import { moveMediaItem } from "@/lib/actions/media";
@@ -471,27 +472,13 @@ export function MobileFileMenuButton({
   onNewFolder: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   return (
-    <div ref={containerRef} className="relative shrink-0 sm:hidden">
+    <div className="relative shrink-0 sm:hidden">
       <button
+        ref={anchorRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="File options"
@@ -501,17 +488,15 @@ export function MobileFileMenuButton({
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-40 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
-          <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
-          <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-          <SortMenuItem label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-          <div className="my-1 border-t border-border" />
-          <button type="button" onClick={onNewFolder} className={MENU_ITEM_CLASS}>
-            + New Folder
-          </button>
-        </div>
-      )}
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-40 p-1">
+        <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
+        <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        <SortMenuItem label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        <div className="my-1 border-t border-border" />
+        <button type="button" onClick={onNewFolder} className={MENU_ITEM_CLASS}>
+          + New Folder
+        </button>
+      </Menu>
     </div>
   );
 }

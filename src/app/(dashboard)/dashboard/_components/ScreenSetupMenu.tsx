@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { Menu } from "@/components/ui/Menu";
 import { deleteScreen } from "@/lib/actions/screens";
 import { removeWithAnimation } from "@/lib/animation/listMotion";
 import { cn } from "@/lib/utils/cn";
@@ -58,27 +59,20 @@ export function ScreenSetupMenu({
   }
   const [pending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
 
+  // The confirmation is reset on the way in rather than out, so the menu
+  // doesn't flip back while it's still shrinking away.
   function close() {
     setOpen(false);
-    setConfirmingDelete(false);
   }
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) close();
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+  function toggle() {
+    if (open) return close();
+    setConfirmingDelete(false);
+    setOpen(true);
+  }
+
 
   function handleDelete() {
     // The whole tile leaves, not just this menu — see ScreenGrid.
@@ -92,8 +86,9 @@ export function ScreenSetupMenu({
   return (
     <div ref={containerRef} className="shrink-0">
       <button
+        ref={anchorRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         title="Screen setup"
         aria-label="Screen setup"
         aria-expanded={open}
@@ -102,90 +97,97 @@ export function ScreenSetupMenu({
         <WrenchIcon className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div className="menu-pop absolute left-0 top-full z-10 mt-2 w-56 origin-top-left rounded-[var(--radius-md)] border border-border glass-material p-3 shadow-[var(--shadow-float)]">
-          <button
-            type="button"
-            onClick={() => {
-              close();
-              onRename();
-            }}
-            className="press-ghost-fit mb-2 block w-full rounded-[var(--radius-sm)] px-2 py-1 text-left text-[13px] font-medium text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]"
-          >
-            Rename
-          </button>
+      <Menu
+        open={open}
+        onClose={close}
+        anchorRef={anchorRef}
+        align="start"
+        dragSelect={false}
+        role="dialog"
+        aria-label="Screen setup"
+        className="w-56 p-3"
+      >
+        <button
+          type="button"
+          onClick={() => {
+            close();
+            onRename();
+          }}
+          className="press-ghost-fit mb-2 block w-full rounded-[var(--radius-sm)] px-2 py-1 text-left text-[13px] font-medium text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+        >
+          Rename
+        </button>
 
-          <a
-            href={playerPath}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block truncate rounded-[var(--radius-sm)] bg-black/[.03] dark:bg-white/[.05] px-2 py-1 font-mono text-[11px] text-muted hover:text-accent"
-          >
-            {playerPath}
-          </a>
+        <a
+          href={playerPath}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block truncate rounded-[var(--radius-sm)] bg-black/[.03] dark:bg-white/[.05] px-2 py-1 font-mono text-[11px] text-muted hover:text-accent"
+        >
+          {playerPath}
+        </a>
 
-          <div className="mt-3 border-t border-border pt-3">
-            <p className="mb-1.5 text-[11px] text-muted">Rotation</p>
-            <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
-              {ROTATION_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => onSelectRotation(option.value)}
-                  className={cn(
-                    "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
-                    rotation === option.value
-                      ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
-                      : "text-muted hover:text-foreground",
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-3 border-t border-border pt-3">
-            <button
-              type="button"
-              onClick={handleReload}
-              title="Fully reload this screen's player page"
-              className="press-ghost mb-3 block text-[13px] font-medium text-foreground hover:opacity-70"
-            >
-              {reloadSent ? "Reload sent ✓" : "Reload Screen"}
-            </button>
-            {confirmingDelete ? (
-              <div className="flex items-center gap-2 text-[13px]">
-                <span className="text-muted">Delete screen?</span>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={pending}
-                  className="press-ghost font-medium text-danger hover:opacity-70"
-                >
-                  {pending ? "Deleting…" : "Confirm"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(false)}
-                  disabled={pending}
-                  className="press-ghost text-muted hover:opacity-70"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
+        <div className="mt-3 border-t border-border pt-3">
+          <p className="mb-1.5 text-[11px] text-muted">Rotation</p>
+          <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
+            {ROTATION_OPTIONS.map((option) => (
               <button
+                key={option.value}
                 type="button"
-                onClick={() => setConfirmingDelete(true)}
-                className="press-ghost text-[13px] font-medium text-danger hover:opacity-70"
+                onClick={() => onSelectRotation(option.value)}
+                className={cn(
+                  "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
+                  rotation === option.value
+                    ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
+                    : "text-muted hover:text-foreground",
+                )}
               >
-                Delete Screen
+                {option.label}
               </button>
-            )}
+            ))}
           </div>
         </div>
-      )}
+
+        <div className="mt-3 border-t border-border pt-3">
+          <button
+            type="button"
+            onClick={handleReload}
+            title="Fully reload this screen's player page"
+            className="press-ghost mb-3 block text-[13px] font-medium text-foreground hover:opacity-70"
+          >
+            {reloadSent ? "Reload sent ✓" : "Reload Screen"}
+          </button>
+          {confirmingDelete ? (
+            <div className="flex items-center gap-2 text-[13px]">
+              <span className="text-muted">Delete screen?</span>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={pending}
+                className="press-ghost font-medium text-danger hover:opacity-70"
+              >
+                {pending ? "Deleting…" : "Confirm"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={pending}
+                className="press-ghost text-muted hover:opacity-70"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              className="press-ghost text-[13px] font-medium text-danger hover:opacity-70"
+            >
+              Delete Screen
+            </button>
+          )}
+        </div>
+      </Menu>
     </div>
   );
 }
