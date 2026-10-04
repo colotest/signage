@@ -35,7 +35,10 @@ export function Header() {
     // won, so the account menu hanging below the header came out behind a
     // page's own controls, and they took its clicks. Portalled dialogs stay
     // above at z-40/50.
-    <header className="header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border bg-[var(--surface)] px-5 pb-3">
+    //
+    // --shadow-bar: a soft falloff under the hairline, so the page reads as
+    // passing beneath the header rather than butting up against it.
+    <header className="header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border bg-[var(--surface)] px-5 pb-3 shadow-[var(--shadow-bar)]">
       <nav className="flex items-center gap-5">
         <span className={`${brandFont.className} mt-[0.1em] text-[38px] uppercase tracking-tight`}>
           Colo Cloud
@@ -98,15 +101,17 @@ function UserMenu() {
         aria-label="Account"
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-black/[.06] text-muted hover:text-foreground dark:bg-white/[.1]"
+        className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-black/[.06] text-muted shadow-[var(--shadow-control)] hover:text-foreground dark:bg-white/[.1]"
       >
         <UserIcon className="mt-1.5 h-8 w-8" />
       </button>
 
+      {/* Items are rounded 4px less than the menu, matching its 4px (p-1)
+          inset, so their corners run parallel to its own. */}
       {open && (
         <div
           role="menu"
-          className="menu-pop absolute right-0 top-full z-20 mt-2 w-56 origin-top-right rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
+          className="menu-pop glass-material absolute right-0 top-full z-20 mt-2 w-56 origin-top-right rounded-[var(--radius-md)] border border-border p-1 shadow-[var(--shadow-float)]"
         >
           <div className="border-b border-border px-2.5 pb-2 pt-1.5">
             <p className="truncate text-[13px] font-medium">{viewer.email}</p>
@@ -117,7 +122,7 @@ function UserMenu() {
               href="/users"
               role="menuitem"
               className={cn(
-                "press-ghost-fit mt-1 block w-full rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+                "press-ghost-fit mt-1 block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]",
                 pathname === "/users" && "bg-black/[.04] dark:bg-white/[.06]",
               )}
             >
@@ -128,7 +133,7 @@ function UserMenu() {
             <button
               type="submit"
               role="menuitem"
-              className="press-ghost-fit block w-full rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] font-medium text-danger hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+              className="press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium text-danger hover:bg-black/[.04] dark:hover:bg-white/[.06]"
             >
               Log Out
             </button>

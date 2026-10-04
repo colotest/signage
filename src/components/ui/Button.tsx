@@ -3,11 +3,14 @@ import type { ButtonHTMLAttributes } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
+// Filled variants are raised controls: a lit top rim and a small shadow
+// (--shadow-control). Ghost has no surface of its own to light.
 const variantClasses: Record<Variant, string> = {
-  primary: "bg-accent text-accent-contrast hover:opacity-90",
-  secondary: "bg-black/[.05] dark:bg-white/[.08] text-foreground hover:bg-black/[.08] dark:hover:bg-white/[.12]",
+  primary: "bg-accent text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90",
+  secondary:
+    "bg-black/[.05] dark:bg-white/[.08] text-foreground shadow-[var(--shadow-control)] hover:bg-black/[.08] dark:hover:bg-white/[.12]",
   ghost: "press-ghost-fit bg-transparent text-accent hover:bg-accent/10",
-  danger: "bg-danger text-white hover:opacity-90",
+  danger: "bg-danger text-white shadow-[var(--shadow-control)] hover:opacity-90",
 };
 
 export function Button({

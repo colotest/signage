@@ -17,8 +17,43 @@
   --radius-lg: 22px;
   --radius-full: 999px;
 
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
-  --shadow-sheet: 0 -8px 40px rgba(0, 0, 0, 0.18);
+  /* Layered lighting, after iOS/macOS 26. Light falls from above, so
+     every raised surface carries a bright rim just inside its top edge —
+     an inset 1px highlight, which on a rounded shape thins out around the
+     corners and fades down the sides by itself — and a faint shade just
+     inside the bottom. Below it sit two shadows: a tight, darker contact
+     shadow and a wide, soft ambient one, both growing with elevation
+     (card < float < sheet).
+     All four elevations share the same four-layer structure, so one can
+     animate into another (see drag-pickup) without jumping. */
+  --rim-top: rgba(255, 255, 255, 0.9);
+  --rim-bottom: rgba(0, 0, 0, 0.035);
+  /* On filled controls (accent, danger, tinted grey) white reads far more
+     strongly than on a white card, so their rim is gentler. */
+  --rim-control: rgba(255, 255, 255, 0.32);
+  --shadow-contact: rgba(0, 0, 0, 0.06);
+  --shadow-ambient: rgba(0, 0, 0, 0.1);
+  --shadow-ambient-strong: rgba(0, 0, 0, 0.22);
+
+  --shadow-control:
+    inset 0 1px 0 var(--rim-control), inset 0 -1px 0 var(--rim-bottom),
+    0 1px 2px var(--shadow-contact), 0 4px 10px -4px var(--shadow-ambient);
+  --shadow-card:
+    inset 0 1px 0 var(--rim-top), inset 0 -1px 0 var(--rim-bottom),
+    0 1px 2px var(--shadow-contact), 0 10px 30px -10px var(--shadow-ambient);
+  --shadow-float:
+    inset 0 1px 0 var(--rim-top), inset 0 -1px 0 var(--rim-bottom),
+    0 2px 6px var(--shadow-contact), 0 20px 50px -12px var(--shadow-ambient-strong);
+  --shadow-sheet:
+    inset 0 1px 0 var(--rim-top), inset 0 -1px 0 var(--rim-bottom),
+    0 4px 12px var(--shadow-contact), 0 32px 80px -20px var(--shadow-ambient-strong);
+  /* The header is a bar, not a raised surface: no rim, just a soft falloff
+     below its hairline. */
+  --shadow-bar: 0 8px 24px -16px var(--shadow-ambient-strong);
+
+  /* Pressing a control lights it up from the point of contact (see the
+     press feedback further down). */
+  --press-glow: rgba(255, 255, 255, 0.5);
 
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
   /* Overshoots slightly past its end value — for things that pop back. */
@@ -43,6 +78,14 @@
     --accent-contrast: #ffffff;
     --danger: #ff453a;
     --success: #30d158;
+
+    --rim-top: rgba(255, 255, 255, 0.12);
+    --rim-bottom: rgba(0, 0, 0, 0.3);
+    --rim-control: rgba(255, 255, 255, 0.2);
+    --shadow-contact: rgba(0, 0, 0, 0.3);
+    --shadow-ambient: rgba(0, 0, 0, 0.4);
+    --shadow-ambient-strong: rgba(0, 0, 0, 0.6);
+    --press-glow: rgba(255, 255, 255, 0.18);
 
     color-scheme: dark;
   }
@@ -304,10 +347,10 @@ body {
 }
 
 
-/* Press feedback for every button: it sinks in while held, then springs
-   back out (with a touch of overshoot) on release. At the pressed-in
-   position a streak of light sweeps across it once, over a soft inner
-   shadow, so it reads as a physical key catching the light.
+/* Press feedback for every button, after iOS/macOS 26: while held it
+   swells slightly and lights up from where it was touched (--press-x/y,
+   set by PressOrigin), with its top rim catching more light; on release it
+   settles back with a touch of overshoot and the glow fades out.
 
    Unlayered on purpose — it has to beat Tailwind's own transition-*
    utilities, which would otherwise replace the scale transition, so the
@@ -324,7 +367,7 @@ body {
 
 button:not(.no-press) {
   transition:
-    scale 420ms var(--ease-pop),
+    scale 480ms var(--ease-pop),
     color 150ms ease,
     background-color 150ms ease,
     border-color 150ms ease,
@@ -332,57 +375,48 @@ button:not(.no-press) {
     box-shadow 150ms ease;
 }
 
-button:not(.no-press):not(:disabled):active {
-  scale: 0.95;
-  transition-duration: 90ms;
+/* Rows and menu items (press-ghost-fit) light up but don't swell: they
+   span their whole list or menu, so growing would push past its edges
+   (and be clipped by scrolling lists). iOS's own menus do the same. */
+/* will-change keeps the held button on its own compositing layer, so it
+   stays scaled as one image. Without it, Safari re-renders the button at
+   its final size once the transition settles, snapping the text and the
+   box edges to the pixel grid separately — the text lands off-centre and
+   the button looks like it grew downward. Only while pressed, so the
+   app's many idle buttons don't each hold a layer. */
+button:not(.no-press):not(.press-ghost-fit):not(:disabled):active {
+  scale: 1.04;
+  will-change: scale;
+  transition-duration: 160ms;
   transition-timing-function: ease-out;
 }
 
-/* The glint + inner shadow. The gradient is 3x the button's width: at
-   background-position 0 the bright band sits just past the right edge
-   (out of view, the resting state), at 100% just past the left — so the
-   press animation sweeps it across left to right. */
 button:not(.no-press)::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(
-      110deg,
-      transparent 36%,
-      rgba(255, 255, 255, 0.55) 46%,
-      rgba(255, 255, 255, 0.2) 53%,
-      transparent 64%
-    )
-    0 0 / 300% 100% no-repeat;
-  box-shadow:
-    inset 0 1.5px 3px rgba(0, 0, 0, 0.28),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.22);
+  background: radial-gradient(
+    circle at var(--press-x, 50%) var(--press-y, 50%),
+    var(--press-glow),
+    transparent 70%
+  );
+  box-shadow: inset 0 1px 0 var(--press-glow);
   opacity: 0;
-  transition: opacity 320ms ease-out;
+  transition: opacity 450ms ease-out;
 }
 
 button:not(.no-press):not(:disabled):active::after {
   opacity: 1;
-  transition-duration: 60ms;
-  animation: press-glint 700ms cubic-bezier(0.2, 0.7, 0.3, 1);
-}
-
-@keyframes press-glint {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: 0 0;
-  }
+  transition-duration: 80ms;
 }
 
 /* Buttons with no surface of their own. While pressed, a rounded, tinted
    container shows up behind them. press-ghost is for bare text/icons, where
    the container is a sliver wider than the button itself. press-ghost-fit
    is for ones that already have padding and a radius, where it fills their
-   own shape. The glint and inner shadow follow the same outline. */
+   own shape. The glow follows the same outline. */
 .press-ghost::before,
 .press-ghost-fit::before {
   content: "";
@@ -413,13 +447,21 @@ button.press-ghost::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  button:not(.no-press):not(:disabled):active {
+  button:not(.no-press):not(.press-ghost-fit):not(:disabled):active {
     scale: none;
   }
+}
 
-  button:not(.no-press):not(:disabled):active::after {
-    animation: none;
-  }
+/* Translucent material for small floating surfaces (dropdown menus): the
+   surface colour at 72% over a blurred, more saturated copy of what's
+   behind, like iOS's own menus. The real Liquid Glass refraction isn't
+   reproducible in Safari, so this is the frosted part only. Kept off
+   anything large — the blur is recomputed every frame over the playing
+   screen previews. */
+.glass-material {
+  background-color: var(--surface-elevated);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
 }
 
 /* Slide transitions on the player (see Player.tsx). Only opacity and

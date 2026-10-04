@@ -31,7 +31,7 @@ export function dayKey(date: Date) {
 // tinted circle. Shared by the date/time picker and the Playback Menu's
 // Calendar. `markedDays` (dayKey()s) get a small dot under the date, which
 // the Calendar uses for days with something scheduled. Every button opts
-// out of the app-wide press glint (no-press) — across a whole grid of dates
+// out of the app-wide press glow (no-press) — across a whole grid of dates
 // it was more distracting than helpful.
 export function MonthCalendar({
   value,
