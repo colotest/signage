@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { PressOrigin } from "@/components/PressOrigin";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -69,7 +70,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="app-shell-height overflow-hidden">{children}</body>
+      <body className="app-shell-height overflow-hidden">
+        <PressOrigin />
+        {children}
+      </body>
     </html>
   );
 }

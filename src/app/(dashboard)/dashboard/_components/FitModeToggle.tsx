@@ -126,8 +126,8 @@ export function FitModeToggle({
           title={option.label}
           aria-label={option.label}
           aria-pressed={fitMode === option.value}
-          // no-press: the sliding highlight is the feedback here — no sink
-          // or glint on top of it.
+          // no-press: the sliding highlight is the feedback here — no swell
+          // or glow on top of it.
           className={cn(
             "no-press flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-300",
             fitMode === option.value ? "text-foreground" : "text-muted",

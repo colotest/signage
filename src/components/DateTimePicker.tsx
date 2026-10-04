@@ -10,7 +10,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 // out, then a time pill that opens hour/minute wheels. Used on every
 // platform, Apple's included — the native iOS picker ignores `min`, so it
 // can't grey out past dates, and one picker everywhere behaves the same.
-// Every button in here opts out of the app-wide press glint (no-press, see
+// Every button in here opts out of the app-wide press glow (no-press, see
 // globals.css) — across a whole grid of dates and wheel rows it was more
 // distracting than helpful.
 export function DateTimePicker({ value, onChange }: { value: Date; onChange: (next: Date) => void }) {
