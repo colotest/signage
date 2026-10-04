@@ -357,9 +357,14 @@ body {
    is gone. Their movement uses the popup's own timing exactly (separate
    animations from the fades, so it isn't split into keyframe segments), so
    they stay locked to it. Created and removed by Sheet. */
+/* absolute, not fixed — like the popup itself on a phone (see Sheet): iOS
+   Safari tints its floating toolbar with the colour of a fixed element
+   touching the screen's bottom edge, and the ghost, stretched to the full
+   screen, turned it blue. The page never scrolls, so absolute to it sits
+   exactly where fixed would. */
 .sheet-ghost,
 .sheet-ghost-glyph {
-  position: fixed;
+  position: absolute;
   z-index: 55;
   pointer-events: none;
   display: flex;
@@ -383,10 +388,13 @@ body {
 /* The shape's corners: the button's at its end, the popup's everywhere else.
    --ghost-radius-end is the popup's radius divided by the shape's full
    stretch, and since the shape always covers exactly the popup's box, that
-   keeps its corners on the popup's own throughout the motion. They round off
-   into the button's only near the button's end, after the popup has faded
-   out beneath — so it's never a round shape over a square-cornered popup.
-   A repaint each frame of that short stretch, but of one plain coloured box. */
+   keeps its corners on the popup's own throughout the motion. Closing, they
+   round off into the button's as the popup fades out beneath (150-300ms), so
+   it's never a round shape over a square-cornered popup — and done well
+   before the shape reaches the button's size: rounding any later, the
+   full-screen popup's square corners (a phone's) made the button look
+   square as it landed. A repaint each frame of that short stretch, but of
+   one plain coloured box. */
 @keyframes ghost-square-off {
   to {
     border-radius: var(--ghost-radius-end);
@@ -435,8 +443,8 @@ body {
 .sheet-ghost[data-mode="close"] {
   animation:
     ghost-from-popup 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards,
-    ghost-round-off 140ms ease-in-out 240ms backwards,
-    sheet-fade-in 320ms ease-in-out backwards;
+    ghost-round-off 150ms ease-out 150ms backwards,
+    sheet-fade-in 220ms ease-out backwards;
 }
 
 .sheet-ghost-glyph[data-mode="close"] {
@@ -475,7 +483,7 @@ body {
   .sheet-content[data-origin-solid][data-state="closed"] {
     animation:
       sheet-shrink 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards,
-      sheet-fade-out 120ms ease-in 220ms forwards;
+      sheet-fade-out 100ms ease-in 150ms forwards;
   }
 }
 

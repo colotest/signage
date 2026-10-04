@@ -4,13 +4,11 @@
 // (PressEffects) and for menus being drag-selected through (Menu). Written
 // as --liquid (a matrix) plus data-liquid, which globals.css applies.
 //
-// The shape is a plain matrix rather than rotate(angle) scale()
-// rotate(-angle): the drag angle flips between +180° and -180° when
-// dragging left, and a CSS transition between two such rotations spins the
-// long way round — the stretch whirled through a full turn with every
-// wobble. The matrix is the same for either angle. It's also eased here,
-// with a small spring per frame, not by a CSS transition: interpolating
-// matrices makes the browser decompose them into rotations again.
+// The shape is a plain matrix (a shift and a stretch along each axis) eased
+// here, with a small spring per frame, rather than by a CSS transition:
+// interpolating transforms makes the browser decompose them into rotations,
+// and a drag angle flipping between +180° and -180° (dragging left) spun
+// the stretch the long way round.
 
 // How something gives under a drag: how many px it can be pulled at most,
 // how much it can stretch at most (0.1 = 10%), and over how many px of drag
@@ -43,14 +41,14 @@ export function pullLiquid(el: HTMLElement, dx: number, dy: number, feel: Liquid
   const ux = dx / distance;
   const uy = dy / distance;
   // Stretched by `stretch` along the drag and slimmed by half that across
-  // it, so a diagonal drag skews it: (1 + s)·uuᵀ + (1 - s/2)·vvᵀ, with v
-  // perpendicular to u — symmetric, so the same for u and -u.
+  // it — but only ever along the element's own axes, never skewed: a
+  // diagonal drag stretches it horizontally and vertically in proportion
+  // (ux², uy²), rather than tilting it towards the corner.
   const along = 1 + stretch;
   const across = 1 - stretch / 2;
   const a = along * ux * ux + across * uy * uy;
   const d = along * uy * uy + across * ux * ux;
-  const b = (along - across) * ux * uy;
-  pullTo(el, [a, b, d, ux * pull, uy * pull]);
+  pullTo(el, [a, 0, d, ux * pull, uy * pull]);
 }
 
 // Lets go: it springs back to rest, then data-liquid comes off.

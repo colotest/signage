@@ -278,12 +278,14 @@ function spawnGhost(origin: Origin, mode: "open" | "close", hold: string | null)
   clearGhosts();
   const { trigger, style, x, y, width, height } = origin;
 
+  // Positioned absolutely in the page (see .sheet-ghost for why not fixed);
+  // the scroll offsets are 0 in practice, as the page never scrolls.
   const shape = document.createElement("div");
   shape.className = "sheet-ghost";
   const radius = Math.min(parseFloat(style.borderTopLeftRadius) || 0, origin.layoutWidth / 2, origin.layoutHeight / 2);
   Object.assign(shape.style, {
-    left: `${x - width / 2}px`,
-    top: `${y - height / 2}px`,
+    left: `${x - width / 2 + window.scrollX}px`,
+    top: `${y - height / 2 + window.scrollY}px`,
     width: `${width}px`,
     height: `${height}px`,
     borderRadius: `${radius * origin.swell}px`,
@@ -302,8 +304,8 @@ function spawnGhost(origin: Origin, mode: "open" | "close", hold: string | null)
   const glyph = document.createElement("div");
   glyph.className = "sheet-ghost-glyph";
   Object.assign(glyph.style, {
-    left: `${x - width / 2}px`,
-    top: `${y - height / 2}px`,
+    left: `${x - width / 2 + window.scrollX}px`,
+    top: `${y - height / 2 + window.scrollY}px`,
     width: `${width}px`,
     height: `${height}px`,
   });
