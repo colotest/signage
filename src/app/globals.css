@@ -220,9 +220,9 @@ body {
 
 /* Drag-select in menus (see Menu): while a press is being dragged across
    the options, the one under the finger shows as pressed — not the one the
-   press started on, which the browser keeps :active throughout. */
-.menu-pop[data-dragging] .press-ghost-fit:active::before,
-.menu-pop[data-dragging] button:not([data-highlighted]):active::after {
+   press started on, which stays data-pressed throughout. */
+.menu-pop[data-dragging] .press-ghost-fit[data-pressed]:not([data-highlighted])::before,
+.menu-pop[data-dragging] button[data-pressed]:not([data-highlighted]):not(.no-press)::after {
   opacity: 0;
 }
 
@@ -505,7 +505,7 @@ body {
 
 
 /* Press feedback for every button, after iOS/macOS 26: while held it
-   swells slightly and lights up from where it was touched (--press-x/y,
+   swells and lights up from where it was touched (--press-x/y,
    set by PressEffects), with its top rim catching more light; on release it
    settles back with a touch of overshoot and the glow fades out. Dragged
    while held, it's pulled after the pointer (liquid drag, data-liquid
@@ -515,7 +515,14 @@ body {
    utilities, which would otherwise replace the scale transition, so the
    color/opacity transitions those utilities provided are listed here too.
    `scale` (not transform) keeps it composable with any transform a button
-   already carries. .no-press opts a button out. */
+   already carries. .no-press opts a button out.
+
+   "Held" is data-pressed, set by PressEffects straight from the pointer,
+   rather than :active: on a touch screen the browser only applies :active
+   once it's sure the touch is a tap — after the finger has already lifted,
+   in the same moment as the click — so the swell started late and on a busy
+   frame, stuttering. :focus-visible:active keeps keyboard presses (Space)
+   working, as no pointer is involved there. */
 @layer base {
   button {
     position: relative;
@@ -538,20 +545,28 @@ button:not(.no-press) {
 /* Rows and menu items (press-ghost-fit) light up but don't swell: they
    span their whole list or menu, so growing would push past its edges
    (and be clipped by scrolling lists). iOS's own menus do the same. */
-/* will-change keeps the held button on its own compositing layer, so it
-   stays scaled as one image. Without it, Safari re-renders the button at
-   its final size once the transition settles, snapping the text and the
-   box edges to the pixel grid separately — the text lands off-centre and
-   the button looks like it grew downward. Only while pressed, so the
-   app's many idle buttons don't each hold a layer. */
 /* --press-scale (set by PressEffects per press) is 1.15, less for very wide
    buttons: capped at 24px of extra width, so a full-width button doesn't
    balloon past its card. */
-button:not(.no-press):not(.press-ghost-fit):not(:disabled):active {
+button:not(.no-press):not(.press-ghost-fit):not(:disabled):is([data-pressed], :focus-visible:active) {
   scale: var(--press-scale, 1.15);
-  will-change: scale, transform;
   transition-duration: 320ms;
   transition-timing-function: ease-out;
+}
+
+/* Keeps a pressed button on its own compositing layer, so it's scaled as
+   one image. Without it, Safari re-renders the button at its final size once
+   the transition settles, snapping the text and the box edges to the pixel
+   grid separately — the text lands off-centre and the button looks like it
+   grew downward. data-press-ready goes on a frame before the swell starts
+   (the layer being created mid-swell was a visible snap of its own) and
+   comes off only once the spring-back is over; launching and landing (see
+   below) keep it too. Only around a press, so the app's many idle buttons
+   don't each hold a layer. */
+button[data-press-ready],
+button[data-launching],
+button[data-landing] {
+  will-change: scale, transform;
 }
 
 /* Liquid drag: PressEffects writes --liquid (shift + stretch toward the
@@ -578,7 +593,7 @@ button:not(.no-press)::after {
   transition: opacity 900ms ease-out;
 }
 
-button:not(.no-press):not(:disabled):active::after {
+button:not(.no-press):not(:disabled):is([data-pressed], :focus-visible:active)::after {
   opacity: 1;
   transition-duration: 160ms;
 }
@@ -619,8 +634,8 @@ button.press-ghost::after {
   border-radius: inherit;
 }
 
-.press-ghost:not(:disabled):active::before,
-.press-ghost-fit:not(:disabled):active::before {
+.press-ghost:not(:disabled):is([data-pressed], :focus-visible:active)::before,
+.press-ghost-fit:not(:disabled):is([data-pressed], :focus-visible:active)::before {
   opacity: 1;
   transition-duration: 120ms;
 }
@@ -648,7 +663,7 @@ button[data-landing]::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  button:not(.no-press):not(.press-ghost-fit):not(:disabled):active {
+  button:not(.no-press):not(.press-ghost-fit):not(:disabled):is([data-pressed], :focus-visible:active) {
     scale: none;
   }
 }

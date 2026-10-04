@@ -10,12 +10,26 @@ import { rememberTrigger } from "@/lib/utils/lastTrigger";
 const LIQUID_BUTTON = "button:not(.no-press):not(.press-ghost-fit):not(:disabled)";
 const NOT_LIQUID = "[data-screen-tile], [aria-roledescription], [data-no-liquid]";
 
+// What gets press feedback (see the press rules in globals.css).
+const PRESSABLE = "button:not(.no-press):not(:disabled), a.press-ghost, a.press-ghost-fit";
+// A tap shows as pressed for at least this long, so a quick one still gets
+// a visible swell; and for a moment past release whatever the tap does
+// next (a popup taking over the button — see Sheet) can pick it up before
+// it starts springing back.
+const MIN_PRESS_MS = 160;
+const RELEASE_GRACE_MS = 60;
+// The spring-back's length (globals.css), for which the button keeps its
+// compositing layer (data-press-ready).
+const SETTLE_MS = 1000;
+
 // Pressed buttons swell by 15%, but by no more than this many px of extra
 // width: a full-width button would otherwise spill past its card.
 const MAX_SWELL_PX = 24;
 
 // One set of app-wide listeners for the press effects in globals.css; renders
 // nothing.
+// - Marks what's held as data-pressed, straight from the pointer (see
+//   globals.css for why not :active).
 // - Records where each button press lands, as --press-x/--press-y on the
 //   button, so its glow spreads out from under the finger or cursor (and
 //   follows it while dragging), and how much it swells (--press-scale).
@@ -29,6 +43,36 @@ export function PressEffects() {
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let drag: { el: HTMLElement; pointerId: number; x: number; y: number; reach: number } | null = null;
+    let press: { el: Element; pointerId: number; at: number; cancelled: boolean } | null = null;
+    const timers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+
+    function startPress(el: Element, pointerId: number) {
+      clearTimeout(timers.get(el));
+      const current = { el, pointerId, at: performance.now(), cancelled: false };
+      press = current;
+      // Layer first, swell on the next frame: creating the layer in the
+      // same frame the swell starts was a visible snap in Safari.
+      el.setAttribute("data-press-ready", "");
+      requestAnimationFrame(() => {
+        if (!current.cancelled) el.setAttribute("data-pressed", "");
+      });
+    }
+
+    // `cancelled`: the browser took the touch over (a scroll) — let go at
+    // once rather than holding the press.
+    function endPress(cancelled: boolean) {
+      if (!press) return;
+      const { el, at } = press;
+      press.cancelled = cancelled;
+      press = null;
+      const release = () => {
+        el.removeAttribute("data-pressed");
+        timers.set(el, setTimeout(() => el.removeAttribute("data-press-ready"), SETTLE_MS));
+      };
+      if (cancelled) return release();
+      const wait = Math.max(RELEASE_GRACE_MS, MIN_PRESS_MS - (performance.now() - at));
+      timers.set(el, setTimeout(release, wait));
+    }
 
     function setPressPoint(el: HTMLElement, e: PointerEvent) {
       const rect = el.getBoundingClientRect();
@@ -48,6 +92,10 @@ export function PressEffects() {
       const target = e.target as Element | null;
       const trigger = target?.closest?.("button, a, [role='button']");
       if (trigger instanceof HTMLElement) rememberTrigger(trigger);
+
+      endPress(true);
+      const pressable = target?.closest?.(PRESSABLE);
+      if (pressable && e.button === 0) startPress(pressable, e.pointerId);
 
       const button = target?.closest?.("button:not(.no-press)");
       if (!(button instanceof HTMLElement)) return;
@@ -90,6 +138,7 @@ export function PressEffects() {
 
     function handlePointerEnd(e: PointerEvent) {
       if (drag && e.pointerId === drag.pointerId) endDrag();
+      if (press && e.pointerId === press.pointerId) endPress(e.type === "pointercancel");
     }
 
     document.addEventListener("pointerdown", handlePointerDown, { capture: true, passive: true });
@@ -98,6 +147,7 @@ export function PressEffects() {
     document.addEventListener("pointercancel", handlePointerEnd, { passive: true });
     return () => {
       endDrag();
+      endPress(true);
       document.removeEventListener("pointerdown", handlePointerDown, { capture: true });
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerEnd);
