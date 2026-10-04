@@ -104,7 +104,7 @@ export function FitModeToggle({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
-      className="relative inline-flex self-start shrink-0 touch-pan-y rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[13px]"
+      className="relative inline-flex self-start shrink-0 touch-pan-y rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[13px] shadow-[var(--shadow-well)]"
     >
       {/* One highlight that slides between the options, rather than each
           option switching its own background on and off. Each option is
@@ -113,7 +113,7 @@ export function FitModeToggle({
       <span
         aria-hidden
         className={cn(
-          "absolute left-0.5 top-0.5 bottom-0.5 w-7 rounded-full bg-surface shadow-sm",
+          "absolute left-0.5 top-0.5 bottom-0.5 w-7 rounded-full bg-surface shadow-[var(--shadow-control)]",
           dragOffset === null && "transition-transform duration-300 ease-[var(--ease-spring)]",
         )}
         style={{ transform: `translateX(${dragOffset ?? selectedIndex * STEP_PX}px)` }}

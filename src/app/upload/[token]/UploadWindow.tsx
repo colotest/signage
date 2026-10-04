@@ -82,7 +82,7 @@ export function UploadPage({
 
 function LanguageSwitch({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
   return (
-    <div role="group" aria-label="Sprache / Language" className="flex rounded-full bg-black/[.05] p-0.5 dark:bg-white/[.08]">
+    <div role="group" aria-label="Sprache / Language" className="flex rounded-full bg-black/[.05] p-0.5 shadow-[var(--shadow-well)] dark:bg-white/[.08]">
       {(["de", "en"] as const).map((option) => (
         <button
           key={option}
@@ -91,7 +91,7 @@ function LanguageSwitch({ lang, onChange }: { lang: Lang; onChange: (lang: Lang)
           onClick={() => onChange(option)}
           className={cn(
             "rounded-full px-3 py-1 text-[12px] font-semibold uppercase transition-colors",
-            lang === option ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+            lang === option ? "bg-surface text-foreground shadow-[var(--shadow-control)]" : "text-muted hover:text-foreground",
           )}
         >
           {option}
@@ -399,7 +399,7 @@ function FileRow({
         type="button"
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
-        className="flex w-[7.5rem] shrink-0 items-center justify-center gap-1.5 rounded-full bg-black/[.05] px-3 py-1 text-[12px] font-medium text-foreground transition-colors hover:bg-black/[.08] disabled:opacity-40 dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+        className="flex w-[7.5rem] shrink-0 items-center justify-center gap-1.5 rounded-full bg-black/[.05] px-3 py-1 text-[12px] font-medium text-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] disabled:opacity-40 dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
         {replacingLabel ? (
           <>

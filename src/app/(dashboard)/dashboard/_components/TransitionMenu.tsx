@@ -94,15 +94,15 @@ export function TransitionMenu({
         title="Playback settings"
         aria-label="Playback settings"
         aria-expanded={open}
-        className="press-ghost-fit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+        className="press-ghost-fit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
       {open && (
-        <div className="menu-pop absolute left-0 top-full z-20 mt-1 w-64 origin-top-left rounded-[var(--radius-md)] border border-border bg-surface p-3 shadow-[var(--shadow-card)]">
+        <div className="menu-pop absolute left-0 top-full z-20 mt-1 w-64 origin-top-left rounded-[var(--radius-md)] border border-border glass-material p-3 shadow-[var(--shadow-float)]">
           <p className="mb-1.5 text-[11px] text-muted">Background</p>
-          <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[12px]">
+          <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
             {BACKGROUNDS.map((option) => (
               <button
                 key={option.value}
@@ -111,7 +111,7 @@ export function TransitionMenu({
                 className={cn(
                   "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
                   background === option.value
-                    ? "bg-surface text-foreground font-medium shadow-sm"
+                    ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
                     : "text-muted hover:text-foreground",
                 )}
               >
@@ -121,7 +121,7 @@ export function TransitionMenu({
           </div>
 
           <p className="mb-1.5 mt-3 border-t border-border pt-3 text-[11px] text-muted">Transition</p>
-          <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[12px]">
+          <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
             {OPTIONS.map((option) => (
               <button
                 key={option.value}
@@ -130,7 +130,7 @@ export function TransitionMenu({
                 className={cn(
                   "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
                   transition === option.value
-                    ? "bg-surface text-foreground font-medium shadow-sm"
+                    ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
                     : "text-muted hover:text-foreground",
                 )}
               >
@@ -175,7 +175,7 @@ export function TransitionMenu({
           {transition !== "cut" && (
             <div className="mt-3 border-t border-border pt-3">
               <p className="mb-1.5 text-[11px] text-muted">Speed</p>
-              <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[12px]">
+              <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
                 {SPEEDS.map((option) => (
                   <button
                     key={option.value}
@@ -184,7 +184,7 @@ export function TransitionMenu({
                     className={cn(
                       "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
                       speed === option.value
-                        ? "bg-surface text-foreground font-medium shadow-sm"
+                        ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
                         : "text-muted hover:text-foreground",
                     )}
                   >

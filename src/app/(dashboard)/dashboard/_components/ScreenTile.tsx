@@ -390,7 +390,7 @@ export function ScreenTile({
             onClick={() => setMenuOpen(true)}
             title="Playback"
             aria-label="Open playback menu"
-            className="-my-2 flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm transition-all hover:opacity-90"
+            className="-my-2 flex h-[84px] w-[84px] shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-[var(--shadow-control)] transition-all hover:opacity-90"
           >
             <PlaylistPlayIcon className="h-9 w-9" />
           </button>

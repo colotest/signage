@@ -429,7 +429,7 @@ function PlaylistRow({
                 onClick={isActive ? onConfirmAdd : onArmSelection}
                 disabled={otherIsActive || (isActive && selectedCount === 0)}
                 title={isActive ? "Add selected files" : otherIsActive ? "Finish the other playlist's selection first" : "Add files"}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90 disabled:opacity-40"
               >
                 {isActive && selectedCount > 0 ? `+${selectedCount}` : "+"}
               </button>
@@ -439,7 +439,7 @@ function PlaylistRow({
                   onClick={onCancelSelection}
                   title="Cancel selection"
                   aria-label="Cancel selection"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white hover:opacity-90"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger text-[15px] font-medium text-white shadow-[var(--shadow-control)] hover:opacity-90"
                 >
                   ✕
                 </button>
@@ -562,13 +562,13 @@ export function PlaylistSortMenuButton({
         onClick={() => setOpen((o) => !o)}
         aria-label="Playlist sort options"
         aria-expanded={open}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]">
+        <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
           <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
           <PlaylistSortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
           <PlaylistSortMenuItem label="Date Created" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
@@ -597,7 +597,7 @@ function PlaylistSortMenuItem({
       type="button"
       onClick={() => onClick(sortKey)}
       className={cn(
-        "press-ghost-fit flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+        "press-ghost-fit flex w-full items-center justify-between rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
         isActive ? "font-medium text-foreground" : "text-muted",
       )}
     >

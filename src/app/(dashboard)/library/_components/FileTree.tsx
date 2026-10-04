@@ -670,7 +670,7 @@ function TreeLevel({
 function UploadDropOverlay({ folderName }: { folderName: string }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-[var(--radius-lg)] border-2 border-accent bg-accent/15">
-      <p className="rounded-full bg-surface px-4 py-2 text-[15px] font-medium text-accent shadow-[var(--shadow-card)]">
+      <p className="rounded-full bg-surface px-4 py-2 text-[15px] font-medium text-accent shadow-[var(--shadow-float)]">
         Drop here to upload to: {folderName}
       </p>
     </div>
@@ -823,7 +823,7 @@ function RowMenu({ label, children }: { label: string; children: React.ReactNode
       {open && (
         <div
           onClick={() => setOpen(false)}
-          className="absolute right-0 top-full z-20 mt-1 w-48 rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]"
+          className="absolute right-0 top-full z-20 mt-1 w-48 rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]"
         >
           {children}
         </div>
@@ -853,7 +853,7 @@ function MenuItem({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "press-ghost-fit block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] disabled:opacity-50 dark:hover:bg-white/[.06]",
+        "press-ghost-fit block w-full cursor-pointer rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] disabled:opacity-50 dark:hover:bg-white/[.06]",
         danger ? "text-danger" : "text-foreground",
       )}
     >
@@ -863,7 +863,7 @@ function MenuItem({
 }
 
 export const MENU_ITEM_CLASS =
-  "press-ghost-fit block w-full cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]";
+  "press-ghost-fit block w-full cursor-pointer rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]";
 
 function FolderRow({
   folder,

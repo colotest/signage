@@ -26,34 +26,41 @@
      (card < float < sheet).
      All four elevations share the same four-layer structure, so one can
      animate into another (see drag-pickup) without jumping. */
-  --rim-top: rgba(255, 255, 255, 0.9);
-  --rim-bottom: rgba(0, 0, 0, 0.035);
+  --rim-top: rgba(255, 255, 255, 1);
+  /* On a white surface the white top rim can't show, so in light mode it's
+     mostly the bottom shade that gives a card its edge. */
+  --rim-bottom: rgba(0, 0, 0, 0.07);
   /* On filled controls (accent, danger, tinted grey) white reads far more
      strongly than on a white card, so their rim is gentler. */
-  --rim-control: rgba(255, 255, 255, 0.32);
-  --shadow-contact: rgba(0, 0, 0, 0.06);
-  --shadow-ambient: rgba(0, 0, 0, 0.1);
-  --shadow-ambient-strong: rgba(0, 0, 0, 0.22);
+  --rim-control: rgba(255, 255, 255, 0.45);
+  --shadow-contact: rgba(0, 0, 0, 0.08);
+  --shadow-ambient: rgba(0, 0, 0, 0.16);
+  --shadow-ambient-strong: rgba(0, 0, 0, 0.3);
+  /* Recessed tracks (segmented controls): shade along the inside of the top
+     edge, a lit lip along the bottom — the inverse of a raised surface. */
+  --well-shade: rgba(0, 0, 0, 0.1);
+  --well-lip: rgba(255, 255, 255, 0.7);
 
   --shadow-control:
-    inset 0 1px 0 var(--rim-control), inset 0 -1px 0 var(--rim-bottom),
-    0 1px 2px var(--shadow-contact), 0 4px 10px -4px var(--shadow-ambient);
+    inset 0 1px 0 var(--rim-control), inset 0 -1px 1px var(--rim-bottom),
+    0 1px 2px var(--shadow-contact), 0 6px 14px -6px var(--shadow-ambient-strong);
   --shadow-card:
-    inset 0 1px 0 var(--rim-top), inset 0 -1px 0 var(--rim-bottom),
-    0 1px 2px var(--shadow-contact), 0 10px 30px -10px var(--shadow-ambient);
+    inset 0 1px 0 var(--rim-top), inset 0 -1px 1px var(--rim-bottom),
+    0 1px 3px var(--shadow-contact), 0 12px 32px -10px var(--shadow-ambient);
   --shadow-float:
-    inset 0 1px 0 var(--rim-top), inset 0 -1px 0 var(--rim-bottom),
-    0 2px 6px var(--shadow-contact), 0 20px 50px -12px var(--shadow-ambient-strong);
+    inset 0 1px 0 var(--rim-top), inset 0 -1px 1px var(--rim-bottom),
+    0 2px 6px var(--shadow-contact), 0 22px 50px -12px var(--shadow-ambient-strong);
   --shadow-sheet:
-    inset 0 1px 0 var(--rim-top), inset 0 -1px 0 var(--rim-bottom),
+    inset 0 1px 0 var(--rim-top), inset 0 -1px 1px var(--rim-bottom),
     0 4px 12px var(--shadow-contact), 0 32px 80px -20px var(--shadow-ambient-strong);
+  --shadow-well: inset 0 1px 2px var(--well-shade), inset 0 -1px 0 var(--well-lip);
   /* The header is a bar, not a raised surface: no rim, just a soft falloff
      below its hairline. */
   --shadow-bar: 0 8px 24px -16px var(--shadow-ambient-strong);
 
   /* Pressing a control lights it up from the point of contact (see the
      press feedback further down). */
-  --press-glow: rgba(255, 255, 255, 0.5);
+  --press-glow: rgba(255, 255, 255, 0.6);
 
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
   /* Overshoots slightly past its end value — for things that pop back. */
@@ -79,13 +86,15 @@
     --danger: #ff453a;
     --success: #30d158;
 
-    --rim-top: rgba(255, 255, 255, 0.12);
-    --rim-bottom: rgba(0, 0, 0, 0.3);
-    --rim-control: rgba(255, 255, 255, 0.2);
-    --shadow-contact: rgba(0, 0, 0, 0.3);
-    --shadow-ambient: rgba(0, 0, 0, 0.4);
-    --shadow-ambient-strong: rgba(0, 0, 0, 0.6);
-    --press-glow: rgba(255, 255, 255, 0.18);
+    --rim-top: rgba(255, 255, 255, 0.18);
+    --rim-bottom: rgba(0, 0, 0, 0.4);
+    --rim-control: rgba(255, 255, 255, 0.28);
+    --shadow-contact: rgba(0, 0, 0, 0.4);
+    --shadow-ambient: rgba(0, 0, 0, 0.5);
+    --shadow-ambient-strong: rgba(0, 0, 0, 0.7);
+    --well-shade: rgba(0, 0, 0, 0.45);
+    --well-lip: rgba(255, 255, 255, 0.07);
+    --press-glow: rgba(255, 255, 255, 0.26);
 
     color-scheme: dark;
   }
@@ -385,7 +394,7 @@ button:not(.no-press) {
    the button looks like it grew downward. Only while pressed, so the
    app's many idle buttons don't each hold a layer. */
 button:not(.no-press):not(.press-ghost-fit):not(:disabled):active {
-  scale: 1.04;
+  scale: 1.06;
   will-change: scale;
   transition-duration: 160ms;
   transition-timing-function: ease-out;

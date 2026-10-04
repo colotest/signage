@@ -432,13 +432,13 @@ function UsersMenuButton({
         onClick={() => setOpen((o) => !o)}
         aria-label="User options"
         aria-expanded={open}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
       {open && (
-        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-56 origin-top-right rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]">
+        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-56 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
           <CopySignupLinkItem />
           <div className="mt-1 border-t border-border px-2.5 pb-1 pt-2 text-[12px] text-muted">Sort by</div>
           <SortMenuItem label="Last Change" sortKey="activity" active={sortKey} dir={sortDir} onClick={onToggleSort} />
@@ -490,7 +490,7 @@ function UserRowMenu({
   }, [open]);
 
   const itemClass =
-    "press-ghost-fit block w-full rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]";
+    "press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]";
 
   return (
     <div ref={containerRef} data-no-toggle className="relative shrink-0">
@@ -505,7 +505,7 @@ function UserRowMenu({
       </button>
 
       {open && (
-        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-44 origin-top-right rounded-[var(--radius-md)] border border-border bg-surface p-1 shadow-[var(--shadow-card)]">
+        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-44 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
           {confirmingDelete ? (
             <div className="px-2.5 py-1.5">
               <p className="mb-1.5 text-[12px] text-muted">Delete this account?</p>
@@ -605,7 +605,7 @@ function CopySignupLinkItem() {
       type="button"
       onClick={handleClick}
       disabled={state === "working"}
-      className="press-ghost-fit block w-full rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] font-medium text-accent hover:bg-black/[.04] disabled:opacity-60 dark:hover:bg-white/[.06]"
+      className="press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium text-accent hover:bg-black/[.04] disabled:opacity-60 dark:hover:bg-white/[.06]"
     >
       {state === "copied" ? "Link copied ✓" : state === "working" ? "Creating link…" : "Copy Signup Link"}
     </button>
@@ -631,7 +631,7 @@ function SortMenuItem({
       type="button"
       onClick={() => onClick(sortKey)}
       className={cn(
-        "press-ghost-fit flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+        "press-ghost-fit flex w-full items-center justify-between rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
         isActive ? "font-medium text-foreground" : "text-muted",
       )}
     >

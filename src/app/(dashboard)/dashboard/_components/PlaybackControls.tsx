@@ -25,7 +25,7 @@ export function PlaybackControls({
   }
 
   return (
-    <div className="inline-flex self-start shrink-0 rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[13px]">
+    <div className="inline-flex self-start shrink-0 rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[13px] shadow-[var(--shadow-well)]">
       <button
         type="button"
         onClick={() => send({ type: "prev" })}

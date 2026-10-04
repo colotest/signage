@@ -992,7 +992,7 @@ export function PlaybackMenu({
           onClick={() => handleOpenChange(false)}
           title="Done"
           aria-label="Done"
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm hover:opacity-90"
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90"
         >
           <CheckIcon className="h-6 w-6" />
         </button>
@@ -1118,7 +1118,7 @@ export function PlaybackMenu({
                 tabIndex={picking ? 0 : -1}
                 aria-hidden={!picking}
                 title="Done picking"
-                className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-accent px-5 py-2 text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-card)]"
+                className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-accent px-5 py-2 text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-control)]"
                 style={{ top: `calc(100% - ${PICKER_FADE}px)` }}
               >
                 Done
@@ -1239,7 +1239,7 @@ export function PlaybackMenu({
                           disabled={p.entries.length === 0}
                           title="Play — adds this playlist to the end of Now Playing"
                           aria-label={`Play ${p.name}`}
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast hover:opacity-90 disabled:opacity-40"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90 disabled:opacity-40"
                         >
                           <PlayIcon className="h-4 w-4 translate-x-px" />
                         </button>

@@ -103,7 +103,7 @@ export function ScreenSetupMenu({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-10 mt-2 w-56 rounded-[var(--radius-md)] border border-border bg-surface p-3 shadow-[var(--shadow-card)]">
+        <div className="absolute left-0 top-full z-10 mt-2 w-56 rounded-[var(--radius-md)] border border-border glass-material p-3 shadow-[var(--shadow-float)]">
           <button
             type="button"
             onClick={() => {
@@ -126,7 +126,7 @@ export function ScreenSetupMenu({
 
           <div className="mt-3 border-t border-border pt-3">
             <p className="mb-1.5 text-[11px] text-muted">Rotation</p>
-            <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 text-[12px]">
+            <div className="flex w-full rounded-full bg-black/[.05] dark:bg-white/[.08] p-0.5 shadow-[var(--shadow-well)] text-[12px]">
               {ROTATION_OPTIONS.map((option) => (
                 <button
                   key={option.value}
@@ -135,7 +135,7 @@ export function ScreenSetupMenu({
                   className={cn(
                     "press-ghost-fit flex-1 rounded-full py-1 text-center transition-colors",
                     rotation === option.value
-                      ? "bg-surface text-foreground font-medium shadow-sm"
+                      ? "bg-surface text-foreground font-medium shadow-[var(--shadow-control)]"
                       : "text-muted hover:text-foreground",
                   )}
                 >
