@@ -153,6 +153,7 @@ export async function finalizeLinkMediaUpload(
     width,
     height,
     duration_seconds: durationSeconds,
+    uploaded_via_link: true,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/library");
@@ -188,6 +189,7 @@ export async function finalizeLinkDeckUpload(
     storagePath,
     sizeBytes: sizeBytes ?? 0,
     pages: pages.map((page, i) => ({ ...page, sizeBytes: pageSizes[i] ?? page.sizeBytes })),
+    uploadedBy: "link",
   });
   revalidatePath("/library");
   revalidatePath("/dashboard");

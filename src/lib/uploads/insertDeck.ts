@@ -20,14 +20,22 @@ export async function insertDeck(
     storagePath,
     sizeBytes,
     pages,
+    uploadedBy,
   }: {
     name: string;
     folderId: string | null;
     storagePath: string;
     sizeBytes: number;
     pages: DeckPageInput[];
+    // Who added it: a signed-in user's id, or "link" for an upload link.
+    uploadedBy: string | "link";
   },
 ) {
+  const uploader =
+    uploadedBy === "link"
+      ? { uploaded_by: null, uploaded_via_link: true }
+      : { uploaded_by: uploadedBy, uploaded_via_link: false };
+
   const { data: deck, error: deckError } = await admin
     .from("decks")
     .insert({
@@ -37,6 +45,7 @@ export async function insertDeck(
       mime_type: "application/pdf",
       size_bytes: sizeBytes,
       page_count: pages.length,
+      ...uploader,
     })
     .select()
     .single();
@@ -56,6 +65,7 @@ export async function insertDeck(
       size_bytes: page.sizeBytes,
       width: page.width,
       height: page.height,
+      ...uploader,
     })),
   );
   if (pagesError) {

@@ -56,7 +56,7 @@ export async function finalizeDeckUpload({
   const user = await requireSession();
   const admin = createAdminClient();
 
-  const deck = await insertDeck(admin, { name, folderId, storagePath, sizeBytes, pages });
+  const deck = await insertDeck(admin, { name, folderId, storagePath, sizeBytes, pages, uploadedBy: user.id });
   recordActivity(user, {
     action: "deck.upload",
     summary: `Uploaded PDF ${quote(name)} (${plural(pages.length, "page")})`,
@@ -135,6 +135,8 @@ export async function finalizeDeckReplace({
       size_bytes: page.sizeBytes,
       width: page.width,
       height: page.height,
+      uploaded_by: deck.uploaded_by,
+      uploaded_via_link: deck.uploaded_via_link,
     });
     if (error) throw new Error(error.message);
   }

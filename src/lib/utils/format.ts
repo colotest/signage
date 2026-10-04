@@ -25,6 +25,27 @@ export function formatResolution(width: number | null, height: number | null): s
   return `${width}×${height}`;
 }
 
+// The file browser's "Resolution & Duration" column — "1920×1080 px &
+// 1:05 min" (or "& 10s" under a minute), or whichever half applies, or nothing at all (a folder, a
+// built-in page) rather than a placeholder dash. `extent` stands in for the
+// duration where something else measures the length, like a PDF's pages.
+export function formatResolutionAndDuration(
+  width: number | null,
+  height: number | null,
+  seconds: number | null,
+  extent?: string,
+): string {
+  const parts: string[] = [];
+  if (width != null && height != null) parts.push(`${width}×${height} px`);
+  if (seconds != null) {
+    // "10s" under a minute, "1:10 min" from a full minute on.
+    const total = Math.round(seconds);
+    parts.push(total < 60 ? `${total}s` : `${formatDuration(total)} min`);
+  }
+  else if (extent) parts.push(extent);
+  return parts.join(" & ");
+}
+
 // A Finder-style "Kind" column — the file's format spelled out in words
 // rather than a raw MIME type (e.g. "MP4 Video" instead of "video/mp4").
 export function kindLabel(item: Pick<MediaItem, "media_type" | "mime_type"> & Partial<Pick<MediaItem, "deck_id">>): string {

@@ -59,6 +59,8 @@ export type LibraryData = {
   media: MediaItem[];
   decks: DeckWithPages[];
   playlists: PlaylistWithEntries[];
+  // User id → short name, for the file browser's Uploaded By.
+  uploaders: Record<string, string>;
 };
 
 const FILE_PICKER_MS = 300;
@@ -1085,6 +1087,7 @@ export function PlaybackMenu({
                 </div>
                 <FileTree
                   decks={library.decks}
+                  uploaders={library.uploaders}
                   className="min-h-0 flex-1"
                   folders={library.folders}
                   media={library.media}

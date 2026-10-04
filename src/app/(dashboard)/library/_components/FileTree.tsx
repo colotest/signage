@@ -7,7 +7,7 @@ import { MediaThumb } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { cn } from "@/lib/utils/cn";
-import { formatBytes, formatDuration, formatResolution, kindLabel } from "@/lib/utils/format";
+import { formatBytes, formatResolutionAndDuration, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
 import { createUploadLink, revokeUploadLink } from "@/lib/actions/uploadLinks";
 import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
@@ -65,19 +65,35 @@ function collectMediaIds(node: FolderNode): string[] {
   ];
 }
 
-export type SortKey = "name" | "kind" | "resolution" | "duration" | "size" | "date";
+export type SortKey = "name" | "kind" | "resolution" | "uploader" | "size" | "date";
 export type SortDir = "asc" | "desc";
 
-function sortValue(item: MediaItem, key: SortKey): string | number {
+type Uploaded = Pick<MediaItem, "uploaded_by" | "uploaded_via_link">;
+
+// User id → short name (see fetchUploaderNames), for every row's Uploaded
+// By without threading it through each level of the tree.
+const UploadersContext = createContext<Record<string, string>>({});
+
+function uploaderLabel(item: Uploaded, uploaders: Record<string, string>): string {
+  if (item.uploaded_via_link) return "Upload link";
+  return (item.uploaded_by && uploaders[item.uploaded_by]) || "";
+}
+
+function useUploaderLabel(item: Uploaded): string {
+  return uploaderLabel(item, useContext(UploadersContext));
+}
+
+function sortValue(item: MediaItem, key: SortKey, uploaders: Record<string, string>): string | number {
   switch (key) {
     case "name":
       return item.name.toLowerCase();
     case "kind":
       return kindLabel(item);
     case "resolution":
-      return (item.width ?? 0) * (item.height ?? 0);
-    case "duration":
-      return item.duration_seconds ?? -1;
+      // One column now: by pixel count, then by length among equals.
+      return (item.width ?? 0) * (item.height ?? 0) * 1e6 + (item.duration_seconds ?? 0);
+    case "uploader":
+      return uploaderLabel(item, uploaders).toLowerCase();
     case "size":
       return item.size_bytes ?? -1;
     case "date":
@@ -114,6 +130,7 @@ export function FileTree({
   onUploadFiles,
   dropTargetFolderId,
   uploadLinks,
+  uploaders = {},
 }: {
   className?: string;
   folders: Folder[];
@@ -140,6 +157,8 @@ export function FileTree({
   dropTargetFolderId: string | null | undefined;
   // Left out in the Playback Menu, like onUploadFiles.
   uploadLinks?: Record<string, string>;
+  // User id → short name, for Uploaded By.
+  uploaders?: Record<string, string>;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -186,8 +205,8 @@ export function FileTree({
   function sortFiles(items: MediaItem[]) {
     const copy = [...items];
     copy.sort((a, b) => {
-      const av = sortValue(a, sortKey);
-      const bv = sortValue(b, sortKey);
+      const av = sortValue(a, sortKey, uploaders);
+      const bv = sortValue(b, sortKey, uploaders);
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -198,7 +217,8 @@ export function FileTree({
     return [...nodes].sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // Decks sort by the columns they actually have — name, size, date — and
+  // Decks sort by the columns they actually have — name, uploader, size,
+  // date — and
   // fall back to name for the ones they don't (a deck has no single
   // resolution or duration of its own).
   function sortDecks(items: DeckWithPages[]) {
@@ -207,6 +227,7 @@ export function FileTree({
       const value = (deck: DeckWithPages): string | number => {
         if (sortKey === "size") return deck.size_bytes ?? -1;
         if (sortKey === "date") return new Date(deck.created_at).getTime();
+        if (sortKey === "uploader") return uploaderLabel(deck, uploaders).toLowerCase();
         return deck.name.toLowerCase();
       };
       const av = value(a);
@@ -281,6 +302,7 @@ export function FileTree({
 
   return (
     <UploadLinksContext.Provider value={uploadLinks ?? null}>
+    <UploadersContext.Provider value={uploaders}>
       {/* -mx-5 bleeds this whole section — header row included, so it stays
           aligned with the rows below it — out of the page's own left/right
           inset to reach the screen edges for more row width. -mt-10 pulls
@@ -409,20 +431,20 @@ export function FileTree({
               className="w-28 shrink-0"
             />
             <SortButton
-              label="Resolution"
+              label="Resolution & Duration"
               sortKey="resolution"
               active={sortKey}
               dir={sortDir}
               onClick={onToggleSort}
-              className="w-24 shrink-0"
+              className="w-44 shrink-0"
             />
             <SortButton
-              label="Duration"
-              sortKey="duration"
+              label="Uploaded By"
+              sortKey="uploader"
               active={sortKey}
               dir={sortDir}
               onClick={onToggleSort}
-              className="w-16 shrink-0"
+              className="w-28 shrink-0"
             />
             <SortButton
               label="Size"
@@ -444,6 +466,7 @@ export function FileTree({
         </div>
         {isDraggingOsFile && <UploadDropOverlay folderName={uploadTargetFolderName} />}
       </div>
+    </UploadersContext.Provider>
     </UploadLinksContext.Provider>
   );
 }
@@ -651,7 +674,7 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
   );
 }
 
-// Title above, date below in a smaller font, on mobile — there's no room
+// Title above, uploader and date below in a smaller font, on mobile — there's no room
 // for separate columns there, and everything besides title/date is already
 // tucked behind the "⋯" menu. Desktop has the width to spare, so it gets a
 // real Kind/Resolution/Duration/Size/Date Added row instead (see RowColumn
@@ -663,11 +686,13 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
 // ordinary row click. [&>*]:max-w-full keeps a long name truncating rather
 // than overflowing; the rename inputs opt back into the full width
 // themselves (self-stretch) while editing.
-function RowInfo({ title, date }: { title: React.ReactNode; date: string }) {
+function RowInfo({ title, date, uploader }: { title: React.ReactNode; date: string; uploader?: string }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col items-start [&>*]:max-w-full">
       {title}
-      <span className="truncate text-[10px] text-muted sm:hidden">{date}</span>
+      <span className="truncate text-[10px] text-muted sm:hidden">
+        {uploader ? `${uploader} · ${date}` : date}
+      </span>
     </div>
   );
 }
@@ -677,7 +702,7 @@ function RowInfo({ title, date }: { title: React.ReactNode; date: string }) {
 // there's no room for the rest anyway. Widths here must match the
 // corresponding SortButton's width in the sort bar for the header labels to
 // land above their actual columns.
-function RowColumn({ width, children }: { width: string; children: React.ReactNode }) {
+function RowColumn({ width, children }: { width: string; children?: React.ReactNode }) {
   return <span className={cn("hidden shrink-0 truncate text-[12px] text-muted sm:block", width)}>{children}</span>;
 }
 
@@ -960,8 +985,8 @@ function FolderRow({
       )}
 
       <RowColumn width="w-28">Folder</RowColumn>
-      <RowColumn width="w-24">—</RowColumn>
-      <RowColumn width="w-16">—</RowColumn>
+      <RowColumn width="w-44" />
+      <RowColumn width="w-28" />
       <RowColumn width="w-20">
         {itemCount} item{itemCount === 1 ? "" : "s"}
       </RowColumn>
@@ -1042,6 +1067,13 @@ function FileRow({
     });
   }
 
+  const uploader = useUploaderLabel(item);
+  // Built-in pages have no file behind them, so nothing to measure.
+  const dimensions =
+    item.media_type === "page"
+      ? ""
+      : formatResolutionAndDuration(item.width, item.height, item.media_type === "video" ? item.duration_seconds : null);
+
   return (
     <div
       ref={(node) => {
@@ -1075,20 +1107,18 @@ function FileRow({
           />
         }
         date={formatDate(item.created_at)}
+        uploader={uploader}
       />
 
       <RowColumn width="w-28">{kindLabel(item)}</RowColumn>
-      <RowColumn width="w-24">{formatResolution(item.width, item.height)}</RowColumn>
-      <RowColumn width="w-16">{item.media_type === "video" ? formatDuration(item.duration_seconds) : "—"}</RowColumn>
-      <RowColumn width="w-20">{formatBytes(item.size_bytes)}</RowColumn>
+      <RowColumn width="w-44">{dimensions}</RowColumn>
+      <RowColumn width="w-28">{uploader}</RowColumn>
+      <RowColumn width="w-20">{item.media_type === "page" ? null : formatBytes(item.size_bytes)}</RowColumn>
       <RowColumn width="w-40">{formatDate(item.created_at)}</RowColumn>
 
       <RowMenu label={`${item.name} actions`}>
-        <MenuInfo>
-          {kindLabel(item)}
-          {item.media_type !== "page" && <> · {formatResolution(item.width, item.height)}</>}
-        </MenuInfo>
-        {item.media_type === "video" && <MenuInfo>{formatDuration(item.duration_seconds)}</MenuInfo>}
+        <MenuInfo>{kindLabel(item)}</MenuInfo>
+        {dimensions && <MenuInfo>{dimensions}</MenuInfo>}
         {item.media_type !== "page" && <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>}
         {(item.folder_id || item.media_type !== "page") && <div className="my-1 border-t border-border" />}
         {item.folder_id && !inDeck && (
@@ -1232,6 +1262,7 @@ function DeckRow({
 }) {
   const [pending, startTransition] = useTransition();
   const rowRef = useRef<HTMLDivElement | null>(null);
+  const uploader = useUploaderLabel(deck);
   const cover = deck.pages[0];
   const fileName = `${deck.name}.pdf`;
 
@@ -1305,11 +1336,19 @@ function DeckRow({
           </span>
         }
         date={formatDate(deck.created_at)}
+        uploader={uploader}
       />
 
       <RowColumn width="w-28">PDF</RowColumn>
-      <RowColumn width="w-24">{formatResolution(cover?.width ?? null, cover?.height ?? null)}</RowColumn>
-      <RowColumn width="w-16">{deck.pages.length} pp.</RowColumn>
+      <RowColumn width="w-44">
+        {formatResolutionAndDuration(
+          cover?.width ?? null,
+          cover?.height ?? null,
+          null,
+          `${deck.pages.length} ${deck.pages.length === 1 ? "page" : "pages"}`,
+        )}
+      </RowColumn>
+      <RowColumn width="w-28">{uploader}</RowColumn>
       <RowColumn width="w-20">{formatBytes(deck.size_bytes)}</RowColumn>
       <RowColumn width="w-40">{formatDate(deck.created_at)}</RowColumn>
 

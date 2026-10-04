@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchUploaderNames } from "@/lib/uploads/uploaders";
 import { ScreenGrid } from "./_components/ScreenGrid";
 import type { PlaylistEntryWithMedia, PlaylistItemWithMedia, ScheduledPlayback } from "@/types/domain";
 import type { PlaylistWithEntries } from "../library/_components/PlaylistSection";
@@ -23,6 +24,7 @@ export default async function DashboardPage() {
     { data: schedules, error: schedulesError },
     { data: decks, error: decksError },
     { data: statuses, error: statusesError },
+    uploaders,
   ] = await Promise.all([
     admin
       .from("screens")
@@ -45,6 +47,7 @@ export default async function DashboardPage() {
     admin.from("scheduled_playbacks").select("*").order("run_at", { ascending: true }),
     admin.from("decks").select("*").order("created_at", { ascending: false }),
     admin.from("screen_status_live").select("*"),
+    fetchUploaderNames(admin),
   ]);
 
   if (screensError) throw new Error(screensError.message);
@@ -109,6 +112,7 @@ export default async function DashboardPage() {
         media: media ?? [],
         decks: decksWithPages(decks ?? [], media ?? []),
         playlists: playlistsWithEntries,
+        uploaders,
       }}
     />
   );

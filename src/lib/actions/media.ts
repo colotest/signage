@@ -82,6 +82,7 @@ export async function finalizeMediaUpload({
     width,
     height,
     duration_seconds: durationSeconds,
+    uploaded_by: user.id,
   });
   if (error) throw new Error(error.message);
   recordActivity(user, { action: "media.upload", summary: `Uploaded ${quote(name)}` });

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchUploaderNames } from "@/lib/uploads/uploaders";
 import { LibraryView } from "./_components/LibraryView";
 import type { DeckWithPages, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
 import type { PlaylistWithEntries } from "./_components/PlaylistSection";
@@ -13,6 +14,7 @@ export default async function LibraryPage() {
     { data: playlistEntries, error: entriesError },
     { data: decks, error: decksError },
     { data: uploadLinks, error: uploadLinksError },
+    uploaders,
   ] = await Promise.all([
     admin.from("folders").select("*").order("name", { ascending: true }),
     admin.from("media_items").select("*").order("created_at", { ascending: false }),
@@ -24,6 +26,7 @@ export default async function LibraryPage() {
       .order("position", { ascending: true }),
     admin.from("decks").select("*").order("created_at", { ascending: false }),
     admin.from("folder_upload_links").select("folder_id, token"),
+    fetchUploaderNames(admin),
   ]);
 
   if (foldersError) throw new Error(foldersError.message);
@@ -51,6 +54,7 @@ export default async function LibraryPage() {
       media={media ?? []}
       decks={decksWithPages(decks ?? [], media ?? [])}
       playlists={playlistsWithEntries}
+      uploaders={uploaders}
       uploadLinks={Object.fromEntries((uploadLinks ?? []).map((link) => [link.folder_id, link.token]))}
     />
   );

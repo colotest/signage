@@ -140,6 +140,9 @@ export type Database = {
           deck_id: string | null;
           deck_position: number | null;
           created_at: string;
+          // Who added it (0027): a signed-in user, or an upload link.
+          uploaded_by: string | null;
+          uploaded_via_link: boolean;
         };
         Insert: {
           id?: string;
@@ -155,6 +158,8 @@ export type Database = {
           deck_id?: string | null;
           deck_position?: number | null;
           created_at?: string;
+          uploaded_by?: string | null;
+          uploaded_via_link?: boolean;
         };
         Update: {
           id?: string;
@@ -170,6 +175,8 @@ export type Database = {
           deck_id?: string | null;
           deck_position?: number | null;
           created_at?: string;
+          uploaded_by?: string | null;
+          uploaded_via_link?: boolean;
         };
         Relationships: [
           {
@@ -198,6 +205,9 @@ export type Database = {
           size_bytes: number | null;
           page_count: number;
           created_at: string;
+          // Who added it (0027): a signed-in user, or an upload link.
+          uploaded_by: string | null;
+          uploaded_via_link: boolean;
         };
         Insert: {
           id?: string;
@@ -208,6 +218,8 @@ export type Database = {
           size_bytes?: number | null;
           page_count?: number;
           created_at?: string;
+          uploaded_by?: string | null;
+          uploaded_via_link?: boolean;
         };
         Update: {
           id?: string;
@@ -218,6 +230,8 @@ export type Database = {
           size_bytes?: number | null;
           page_count?: number;
           created_at?: string;
+          uploaded_by?: string | null;
+          uploaded_via_link?: boolean;
         };
         Relationships: [
           {
