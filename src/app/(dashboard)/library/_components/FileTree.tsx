@@ -718,7 +718,10 @@ function RowInfo({ title, date, uploader }: { title: React.ReactNode; date: stri
 // Added) — hidden on mobile, where RowInfo's stacked date covers it and
 // there's no room for the rest anyway. Widths here must match the
 // corresponding SortButton's width in the sort bar for the header labels to
-// land above their actual columns.
+// land above their actual columns — and so must every row's own gap, since
+// the name column flexes: a row gap 2px wider than the bar's cost the name
+// column 2px per column, which is what left file and deck rows sitting up
+// to 10px left of their headers while folder rows looked right.
 function RowColumn({ width, children }: { width: string; children?: React.ReactNode }) {
   return <span className={cn("hidden shrink-0 truncate text-[12px] text-muted sm:block", width)}>{children}</span>;
 }
@@ -1104,13 +1107,13 @@ function FileRow({
       {...listeners}
       onClick={selectionMode ? onToggleSelect : undefined}
       className={cn(
-        "flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0",
+        "flex items-center gap-2 border-b border-border px-4 py-2 last:border-0",
         selectionMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
         selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
-      <Checkbox visible={selectionMode} state={selected} onChange={onToggleSelect} collapsedClassName="-mr-2.5" />
+      <Checkbox visible={selectionMode} state={selected} onChange={onToggleSelect} collapsedClassName="-mr-2" />
       <div style={{ width: depth * 20 }} className="shrink-0" />
       <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
         <MediaThumb item={item} />
@@ -1310,7 +1313,7 @@ function DeckRow({
       ref={rowRef}
       onClick={selectionMode ? onToggleSelect : onToggleExpanded}
       className={cn(
-        "flex cursor-pointer items-center gap-2.5 border-b border-border px-4 py-2 last:border-0",
+        "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
         selectionMode && checkState === "all"
           ? "bg-accent/10 dark:bg-accent/15"
           : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
@@ -1320,7 +1323,7 @@ function DeckRow({
         visible={selectionMode}
         state={checkState === "all" ? true : checkState === "some" ? "indeterminate" : false}
         onChange={onToggleSelect}
-        collapsedClassName="-mr-2.5"
+        collapsedClassName="-mr-2"
       />
       <div style={{ width: depth * 20 }} className="shrink-0" />
       {/* The first page stands in for the deck, the way a cover does. */}

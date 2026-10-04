@@ -19,11 +19,10 @@ function loadPdfJs(): Promise<PdfJs> {
   return pdfjsPromise;
 }
 
-// Long edge of a rendered page, in pixels. 1080p screens are the target and
-// a page is shown whole, so this is a comfortable margin over what any of
-// them can actually display, without making every page a multi-megabyte
-// file.
-const MAX_EDGE = 1920;
+// Long edge of a rendered page, in pixels. The largest screen is 4K
+// (3840×2160) and a page is shown whole, so this is as sharp as any of
+// them can display — same ceiling as prepareImage's for photos.
+const MAX_EDGE = 3840;
 // Slides are mostly flat colour and text, where JPEG at this quality is
 // indistinguishable at screen size and a fraction of a PNG's size. The
 // original PDF is kept either way, so nothing is lost for good.
@@ -49,9 +48,10 @@ export async function renderPdfPages(file: File, onProgress?: (done: number, tot
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
       const page = await pdf.getPage(pageNumber);
       const base = page.getViewport({ scale: 1 });
-      // Never upscale a page that's already larger than we need it, and
-      // never blow a small one up past its own resolution either.
-      const viewport = page.getViewport({ scale: Math.min(MAX_EDGE / Math.max(base.width, base.height), 4) });
+      // Fit the long edge to MAX_EDGE, within a 6× ceiling — enough for the
+      // smallest common slide export (Google Slides, 720 pt wide) to reach
+      // it, while a stray tiny page doesn't become a huge canvas.
+      const viewport = page.getViewport({ scale: Math.min(MAX_EDGE / Math.max(base.width, base.height), 6) });
 
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(viewport.width);

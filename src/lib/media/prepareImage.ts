@@ -1,9 +1,10 @@
 "use client";
 
-// Short side of an uploaded image, in pixels. The screens are 1080p, so
-// anything past this is detail none of them can show — and a 12 MP phone
-// photo is a lot for a TV stick to decode and scale on every slide change.
-const MAX_SHORT_SIDE = 1080;
+// Short side of an uploaded image, in pixels. The largest screen is 4K
+// (3840×2160), so anything past this is detail none of them can show — and
+// a 48 MP phone photo is a lot for a TV stick to decode and scale on every
+// slide change.
+const MAX_SHORT_SIDE = 2160;
 // Same as the rendered PDF pages: indistinguishable at screen size.
 const JPEG_QUALITY = 0.92;
 
