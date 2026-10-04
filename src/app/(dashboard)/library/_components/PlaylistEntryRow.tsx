@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { MediaThumb } from "@/components/MediaThumb";
 import { animateEntrance, animateRemoval } from "@/lib/animation/listMotion";
 import { usePresenceList, type PresenceState } from "@/lib/animation/usePresenceList";
-import { kindLabel } from "@/lib/utils/format";
+import { displayName, kindLabel } from "@/lib/utils/format";
 import type { MediaItem } from "@/types/domain";
 
 function formatDate(iso: string): string {
@@ -178,7 +178,7 @@ function PlaylistEntryRow({
         <MediaThumb item={entry.media_item} />
       </div>
 
-      <span className="min-w-0 flex-1 truncate text-[14px]">{entry.media_item.name}</span>
+      <span className="min-w-0 flex-1 truncate text-[14px]">{displayName(entry.media_item.name)}</span>
 
       <span className="hidden w-24 shrink-0 truncate text-[12px] text-muted sm:block">{kindLabel(entry.media_item)}</span>
 

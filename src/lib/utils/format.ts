@@ -55,3 +55,17 @@ export function kindLabel(item: Pick<MediaItem, "media_type" | "mime_type"> & Pa
   const subtype = item.mime_type.split("/")[1]?.toUpperCase() ?? "";
   return item.media_type === "video" ? `${subtype} Video` : `${subtype} Image`;
 }
+
+// Only something shaped like a real extension (".jpg", ".mp4", ".webm") —
+// not whatever follows the last dot in a name like "Menu v1.2".
+export function splitExtension(name: string): { base: string; ext: string } {
+  const match = /\.(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{1,8}$/.exec(name);
+  if (!match || match.index === 0) return { base: name, ext: "" };
+  return { base: name.slice(0, match.index), ext: match[0] };
+}
+
+// A file's name as the dashboard shows it: without its extension, which
+// the Kind column (or the thumbnail) already makes plain.
+export function displayName(name: string): string {
+  return splitExtension(name).base;
+}

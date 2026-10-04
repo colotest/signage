@@ -12,7 +12,7 @@ export async function createFolder(name: string, parentId: string | null = null)
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("folders")
-    .insert({ name: trimmed, parent_id: parentId })
+    .insert({ name: trimmed, parent_id: parentId, created_by: user.id })
     .select()
     .single();
   if (error) throw new Error(error.message);

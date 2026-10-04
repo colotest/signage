@@ -68,22 +68,35 @@ function collectMediaIds(node: FolderNode): string[] {
 export type SortKey = "name" | "kind" | "resolution" | "uploader" | "size" | "date";
 export type SortDir = "asc" | "desc";
 
-type Uploaded = Pick<MediaItem, "uploaded_by" | "uploaded_via_link">;
+type Uploaded = Pick<MediaItem, "uploaded_by" | "uploaded_via_link" | "upload_link_folder_id">;
 
-// User id → short name (see fetchUploaderNames), for every row's Uploaded
-// By without threading it through each level of the tree.
-const UploadersContext = createContext<Record<string, string>>({});
+// What every row's Uploaded By needs, without threading it through each
+// level of the tree: user id → short name (see fetchUploaderNames), and
+// folder id → name, for files that came in through a folder's upload link.
+type UploaderNames = { users: Record<string, string>; folders: Map<string, string> };
+const NO_UPLOADERS: Record<string, string> = {};
+const UploadersContext = createContext<UploaderNames>({ users: {}, folders: new Map() });
 
-function uploaderLabel(item: Uploaded, uploaders: Record<string, string>): string {
-  if (item.uploaded_via_link) return "Upload link";
-  return (item.uploaded_by && uploaders[item.uploaded_by]) || "";
+// A link upload reads as the shared folder it came in through ("Menus 🔗"),
+// or just "Upload link" if that folder has since been deleted.
+function uploaderLabel(item: Uploaded, names: UploaderNames): string {
+  if (item.uploaded_via_link) {
+    const folder = item.upload_link_folder_id && names.folders.get(item.upload_link_folder_id);
+    return folder ? `${folder} 🔗` : "Upload link";
+  }
+  return (item.uploaded_by && names.users[item.uploaded_by]) || "";
 }
 
 function useUploaderLabel(item: Uploaded): string {
   return uploaderLabel(item, useContext(UploadersContext));
 }
 
-function sortValue(item: MediaItem, key: SortKey, uploaders: Record<string, string>): string | number {
+function useCreatorLabel(folder: Folder): string {
+  const { users } = useContext(UploadersContext);
+  return (folder.created_by && users[folder.created_by]) || "";
+}
+
+function sortValue(item: MediaItem, key: SortKey, uploaders: UploaderNames): string | number {
   switch (key) {
     case "name":
       return item.name.toLowerCase();
@@ -130,7 +143,7 @@ export function FileTree({
   onUploadFiles,
   dropTargetFolderId,
   uploadLinks,
-  uploaders = {},
+  uploaders = NO_UPLOADERS,
 }: {
   className?: string;
   folders: Folder[];
@@ -200,13 +213,17 @@ export function FileTree({
     if (e.dataTransfer.files.length > 0) onUploadFiles?.(e.dataTransfer.files);
   }
 
+  const uploaderNames = useMemo<UploaderNames>(
+    () => ({ users: uploaders, folders: new Map(folders.map((f) => [f.id, f.name])) }),
+    [uploaders, folders],
+  );
   const { roots, rootFiles, rootDecks } = useMemo(() => buildTree(folders, media, decks), [folders, media, decks]);
 
   function sortFiles(items: MediaItem[]) {
     const copy = [...items];
     copy.sort((a, b) => {
-      const av = sortValue(a, sortKey, uploaders);
-      const bv = sortValue(b, sortKey, uploaders);
+      const av = sortValue(a, sortKey, uploaderNames);
+      const bv = sortValue(b, sortKey, uploaderNames);
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -227,7 +244,7 @@ export function FileTree({
       const value = (deck: DeckWithPages): string | number => {
         if (sortKey === "size") return deck.size_bytes ?? -1;
         if (sortKey === "date") return new Date(deck.created_at).getTime();
-        if (sortKey === "uploader") return uploaderLabel(deck, uploaders).toLowerCase();
+        if (sortKey === "uploader") return uploaderLabel(deck, uploaderNames).toLowerCase();
         return deck.name.toLowerCase();
       };
       const av = value(a);
@@ -302,7 +319,7 @@ export function FileTree({
 
   return (
     <UploadLinksContext.Provider value={uploadLinks ?? null}>
-    <UploadersContext.Provider value={uploaders}>
+    <UploadersContext.Provider value={uploaderNames}>
       {/* -mx-5 bleeds this whole section — header row included, so it stays
           aligned with the rows below it — out of the page's own left/right
           inset to reach the screen edges for more row width. -mt-10 pulls
@@ -878,6 +895,7 @@ function FolderRow({
   const { setNodeRef } = useDroppable({ id: `folder-${folder.id}` });
   const rowRef = useRef<HTMLDivElement | null>(null);
   const uploadLinks = useContext(UploadLinksContext);
+  const creator = useCreatorLabel(folder);
   const uploadLinkToken = uploadLinks?.[folder.id] ?? null;
 
   // The link is minted server-side, so the clipboard write happens after an
@@ -977,6 +995,7 @@ function FolderRow({
           />
         }
         date={formatDate(folder.created_at)}
+        uploader={creator}
       />
       {uploadLinkToken && (
         <span className="shrink-0 text-[12px]" title="Has an upload link" aria-label="Has an upload link">
@@ -986,7 +1005,7 @@ function FolderRow({
 
       <RowColumn width="w-28">Folder</RowColumn>
       <RowColumn width="w-44" />
-      <RowColumn width="w-28" />
+      <RowColumn width="w-28">{creator}</RowColumn>
       <RowColumn width="w-20">
         {itemCount} item{itemCount === 1 ? "" : "s"}
       </RowColumn>

@@ -137,6 +137,7 @@ export async function finalizeDeckReplace({
       height: page.height,
       uploaded_by: deck.uploaded_by,
       uploaded_via_link: deck.uploaded_via_link,
+      upload_link_folder_id: deck.upload_link_folder_id,
     });
     if (error) throw new Error(error.message);
   }

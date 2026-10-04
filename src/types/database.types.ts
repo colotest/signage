@@ -73,18 +73,22 @@ export type Database = {
           parent_id: string | null;
           name: string;
           created_at: string;
+          // Who made it (0028).
+          created_by: string | null;
         };
         Insert: {
           id?: string;
           parent_id?: string | null;
           name: string;
           created_at?: string;
+          created_by?: string | null;
         };
         Update: {
           id?: string;
           parent_id?: string | null;
           name?: string;
           created_at?: string;
+          created_by?: string | null;
         };
         Relationships: [
           {
@@ -143,6 +147,8 @@ export type Database = {
           // Who added it (0027): a signed-in user, or an upload link.
           uploaded_by: string | null;
           uploaded_via_link: boolean;
+          // The folder whose upload link it came in through (0028).
+          upload_link_folder_id: string | null;
         };
         Insert: {
           id?: string;
@@ -160,6 +166,7 @@ export type Database = {
           created_at?: string;
           uploaded_by?: string | null;
           uploaded_via_link?: boolean;
+          upload_link_folder_id?: string | null;
         };
         Update: {
           id?: string;
@@ -177,6 +184,7 @@ export type Database = {
           created_at?: string;
           uploaded_by?: string | null;
           uploaded_via_link?: boolean;
+          upload_link_folder_id?: string | null;
         };
         Relationships: [
           {
@@ -208,6 +216,8 @@ export type Database = {
           // Who added it (0027): a signed-in user, or an upload link.
           uploaded_by: string | null;
           uploaded_via_link: boolean;
+          // The folder whose upload link it came in through (0028).
+          upload_link_folder_id: string | null;
         };
         Insert: {
           id?: string;
@@ -220,6 +230,7 @@ export type Database = {
           created_at?: string;
           uploaded_by?: string | null;
           uploaded_via_link?: boolean;
+          upload_link_folder_id?: string | null;
         };
         Update: {
           id?: string;
@@ -232,6 +243,7 @@ export type Database = {
           created_at?: string;
           uploaded_by?: string | null;
           uploaded_via_link?: boolean;
+          upload_link_folder_id?: string | null;
         };
         Relationships: [
           {

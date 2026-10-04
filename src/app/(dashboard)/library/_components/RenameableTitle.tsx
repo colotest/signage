@@ -5,17 +5,11 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import type { KeyboardEvent } from "react";
 import { renameMediaItem } from "@/lib/actions/media";
 import { cn } from "@/lib/utils/cn";
+import { splitExtension } from "@/lib/utils/format";
 
 // The extension is kept out of the editable part entirely (Finder does the
 // same) — a dotfile-style name with no real extension (idx <= 0) is treated
 // as all base, nothing to protect.
-// Only something shaped like a real extension (".jpg", ".mp4", ".webm") —
-// not whatever follows the last dot in a name like "Menu v1.2".
-function splitExtension(name: string): { base: string; ext: string } {
-  const match = /\.(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{1,8}$/.exec(name);
-  if (!match || match.index === 0) return { base: name, ext: "" };
-  return { base: name.slice(0, match.index), ext: match[0] };
-}
 
 // selecting: the row is in selection mode, where the title is just part of
 // the row — a click on it reaches the row (ticking the file), and

@@ -27,14 +27,15 @@ export async function insertDeck(
     storagePath: string;
     sizeBytes: number;
     pages: DeckPageInput[];
-    // Who added it: a signed-in user's id, or "link" for an upload link.
-    uploadedBy: string | "link";
+    // Who added it: a signed-in user's id, or the folder whose upload link
+    // it came in through.
+    uploadedBy: string | { linkFolderId: string };
   },
 ) {
   const uploader =
-    uploadedBy === "link"
-      ? { uploaded_by: null, uploaded_via_link: true }
-      : { uploaded_by: uploadedBy, uploaded_via_link: false };
+    typeof uploadedBy === "string"
+      ? { uploaded_by: uploadedBy, uploaded_via_link: false, upload_link_folder_id: null }
+      : { uploaded_by: null, uploaded_via_link: true, upload_link_folder_id: uploadedBy.linkFolderId };
 
   const { data: deck, error: deckError } = await admin
     .from("decks")
