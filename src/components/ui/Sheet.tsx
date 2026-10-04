@@ -3,7 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils/cn";
 import { recentTrigger } from "@/lib/utils/lastTrigger";
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { MenuContainerContext } from "./Menu";
 
 // Renders as a centered popup on desktop (>=640px) and a fullscreen sheet on
@@ -50,20 +50,42 @@ export function Sheet({
 
   // On open: the content's ref attaches in the same commit it mounts, before
   // the first frame of its animation, so the origin is in place in time.
+  //
+  // Opened by pressing a button, the popup is launched from it: the button
+  // keeps growing to its full pressed size instead of springing back
+  // (data-launching), while the popup holds off, invisible, for
+  // --popup-hold — time for its contents to be built and laid out before
+  // anything has to move. Then it takes over from the enlarged button and
+  // grows into place, and the button, hidden beneath by then, snaps back
+  // without animating (landLaunch).
   const attachContent = useCallback((node: HTMLDivElement | null) => {
     contentRef.current = node;
     setContentNode(node);
     if (!node) return;
-    triggerRef.current = recentTrigger();
-    measureOrigin(node, triggerRef.current);
+    const trigger = recentTrigger();
+    triggerRef.current = trigger;
+    const launch = canLaunch(trigger);
+    if (launch) trigger.setAttribute("data-launching", "");
+    measureOrigin(node, trigger, launch);
+    if (launch && node.hasAttribute("data-origin")) {
+      node.style.removeProperty("--popup-hold");
+    } else {
+      node.style.setProperty("--popup-hold", "0ms");
+      landLaunch(trigger);
+    }
   }, []);
 
   // On close: measured again, as the button may have moved since (the
   // list behind scrolled, the window resized). Before paint, so the exit
   // animation starts from the fresh values.
   useLayoutEffect(() => {
-    if (!open && contentRef.current) measureOrigin(contentRef.current, triggerRef.current);
+    if (open || !contentRef.current) return;
+    landLaunch(triggerRef.current);
+    measureOrigin(contentRef.current, triggerRef.current, false);
   }, [open]);
+
+  // Never leave a button stuck enlarged, however the popup goes away.
+  useEffect(() => () => landLaunch(triggerRef.current), []);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -83,6 +105,9 @@ export function Sheet({
         <Dialog.Overlay className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 sm:fixed sm:backdrop-blur-sm" />
         <Dialog.Content
           ref={attachContent}
+          onAnimationEnd={(e) => {
+            if (e.target === e.currentTarget && e.animationName === "sheet-grow") landLaunch(triggerRef.current);
+          }}
           // Focus the sheet itself on open, without scrolling anything into
           // view: by default Radix focuses the first button inside, while
           // the sheet is still sliding in from below the screen — and iOS
@@ -141,25 +166,35 @@ export function Sheet({
 // desktop; full width from the top of the page (which never scrolls) on a
 // phone. No connected, visible trigger means no data-origin, so the plain
 // slide plays instead.
-function measureOrigin(node: HTMLElement, trigger: HTMLElement | null) {
+// When launching, the button is still on its way to its full pressed size,
+// so that size is what's measured: its layout size times --press-scale,
+// around its current centre (scaling doesn't move it).
+function measureOrigin(node: HTMLElement, trigger: HTMLElement | null, launching: boolean) {
   const rect = trigger?.isConnected ? trigger.getBoundingClientRect() : null;
-  if (!rect || !rect.width || !rect.height || !node.offsetWidth || !node.offsetHeight) {
+  if (!trigger || !rect || !rect.width || !rect.height || !node.offsetWidth || !node.offsetHeight) {
     node.removeAttribute("data-origin");
     return;
   }
   const desktop = window.matchMedia("(min-width: 640px)").matches;
   const centerX = window.innerWidth / 2;
   const centerY = desktop ? window.innerHeight / 2 : node.offsetHeight / 2;
-  const style = getComputedStyle(trigger!);
+  const style = getComputedStyle(trigger);
+  const layoutWidth = trigger.offsetWidth || rect.width;
+  const layoutHeight = trigger.offsetHeight || rect.height;
+  const swells = launching && !trigger.matches(".press-ghost-fit");
+  const pressScale = parseFloat(style.getPropertyValue("--press-scale")) || 1.15;
+  const width = swells ? layoutWidth * pressScale : rect.width;
+  const height = swells ? layoutHeight * pressScale : rect.height;
   const solid = alphaOf(style.backgroundColor) >= 0.9;
   const clamp = (n: number) => Math.min(1, Math.max(0.05, n));
   // A solid trigger's colour covers the popup's content at the small end, so
   // it can squash to exactly the button's shape. Otherwise the content
   // shows throughout, so it keeps its proportions (uniform scale).
-  const uniform = clamp(Math.max(rect.width / node.offsetWidth, rect.height / node.offsetHeight));
-  const scaleX = solid ? clamp(rect.width / node.offsetWidth) : uniform;
-  const scaleY = solid ? clamp(rect.height / node.offsetHeight) : uniform;
-  const radius = Math.min(parseFloat(style.borderTopLeftRadius) || 0, rect.width / 2, rect.height / 2);
+  const uniform = clamp(Math.max(width / node.offsetWidth, height / node.offsetHeight));
+  const scaleX = solid ? clamp(width / node.offsetWidth) : uniform;
+  const scaleY = solid ? clamp(height / node.offsetHeight) : uniform;
+  const radius =
+    Math.min(parseFloat(style.borderTopLeftRadius) || 0, layoutWidth / 2, layoutHeight / 2) * (width / layoutWidth);
   node.style.setProperty("--origin-dx", `${rect.left + rect.width / 2 - centerX}px`);
   node.style.setProperty("--origin-dy", `${rect.top + rect.height / 2 - centerY}px`);
   node.style.setProperty("--origin-scale-x", `${scaleX}`);
@@ -169,6 +204,29 @@ function measureOrigin(node: HTMLElement, trigger: HTMLElement | null) {
   node.style.setProperty("--origin-bg", style.backgroundColor);
   node.toggleAttribute("data-origin-solid", solid);
   node.setAttribute("data-origin", "");
+}
+
+// Launching needs a button with press feedback to hand over from, and
+// motion: with reduced motion the popup just fades in, with no hold.
+function canLaunch(trigger: HTMLElement | null): trigger is HTMLElement {
+  return (
+    trigger instanceof HTMLButtonElement &&
+    !trigger.matches(".no-press") &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+// Back to resting size at once, with no spring-back: by now the popup
+// covers it (or is already shrinking back onto it, which is measured
+// against its resting size). data-landing switches transitions off for the
+// one style change, then gets out of the way.
+function landLaunch(trigger: HTMLElement | null) {
+  if (!trigger?.hasAttribute("data-launching")) return;
+  trigger.setAttribute("data-landing", "");
+  trigger.removeAttribute("data-launching");
+  void getComputedStyle(trigger, "::after").opacity;
+  void trigger.offsetWidth;
+  requestAnimationFrame(() => trigger.removeAttribute("data-landing"));
 }
 
 // The alpha of a computed colour: rgb()/rgba(), or the "/ alpha" form that
