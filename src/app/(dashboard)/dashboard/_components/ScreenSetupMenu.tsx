@@ -103,7 +103,7 @@ export function ScreenSetupMenu({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-10 mt-2 w-56 rounded-[var(--radius-md)] border border-border glass-material p-3 shadow-[var(--shadow-float)]">
+        <div className="menu-pop absolute left-0 top-full z-10 mt-2 w-56 origin-top-left rounded-[var(--radius-md)] border border-border glass-material p-3 shadow-[var(--shadow-float)]">
           <button
             type="button"
             onClick={() => {

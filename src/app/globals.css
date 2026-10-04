@@ -65,6 +65,9 @@
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
   /* Overshoots slightly past its end value — for things that pop back. */
   --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Gentler overshoot, for things growing from small (menus, pop-ins) —
+     ease-pop's would carry a 0.25 → 1 growth some 10% past full size. */
+  --ease-bounce: cubic-bezier(0.3, 1.3, 0.5, 1);
 
   --font-system:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
@@ -159,22 +162,34 @@ body {
   animation: drag-pickup 180ms var(--ease-spring) forwards;
 }
 
-/* Small dropdown menus grow out of the corner they hang from (set
-   transform-origin on the menu itself, e.g. origin-top-right). */
+/* Small dropdown menus grow out of the button they hang from, with a
+   little bounce as they settle — set transform-origin on the menu itself,
+   at the corner nearest its button (e.g. origin-top-right). */
 @keyframes menu-pop {
   from {
     opacity: 0;
-    transform: scale(0.92) translateY(-4px);
+    transform: scale(0.25);
+  }
+  40% {
+    opacity: 1;
   }
 }
 
 .menu-pop {
-  animation: menu-pop 180ms var(--ease-spring);
+  animation: menu-pop 420ms var(--ease-bounce);
+}
+
+/* For controls that appear in place of, or next to, the one just pressed
+   (a Delete turning into Confirm/Cancel, the ✕ beside a playlist's +) —
+   the same growth, from the side the press came from (set transform-origin). */
+.pop-in {
+  animation: menu-pop 380ms var(--ease-bounce);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .menu-pop {
-    animation-name: sheet-fade-in;
+  .menu-pop,
+  .pop-in {
+    animation: sheet-fade-in 180ms ease-out;
   }
 }
 
@@ -231,6 +246,43 @@ body {
 
   .sheet-content[data-state="closed"] {
     animation: sheet-fade-out 200ms ease-in forwards;
+  }
+}
+
+/* Opened from a button (data-origin, see Sheet): instead of sliding up from
+   the screen's edge, the popup grows out of that button — starting at its
+   size and position and with its corner radius — and on close shrinks back
+   into it. --origin-* are measured by Sheet; the radius is pre-divided by
+   the start scale, so it reads as the button's own once scaled down. */
+@keyframes sheet-grow {
+  from {
+    transform: translate(var(--origin-dx), var(--origin-dy)) scale(var(--origin-scale));
+    border-radius: var(--origin-radius);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-shrink {
+  70% {
+    opacity: 1;
+  }
+  to {
+    transform: translate(var(--origin-dx), var(--origin-dy)) scale(var(--origin-scale));
+    border-radius: var(--origin-radius);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet-content[data-origin][data-state="open"] {
+    animation: sheet-grow 560ms var(--ease-spring);
+  }
+
+  .sheet-content[data-origin][data-state="closed"] {
+    animation: sheet-shrink 360ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
   }
 }
 
@@ -358,8 +410,10 @@ body {
 
 /* Press feedback for every button, after iOS/macOS 26: while held it
    swells slightly and lights up from where it was touched (--press-x/y,
-   set by PressOrigin), with its top rim catching more light; on release it
-   settles back with a touch of overshoot and the glow fades out.
+   set by PressEffects), with its top rim catching more light; on release it
+   settles back with a touch of overshoot and the glow fades out. Dragged
+   while held, it's pulled after the pointer (liquid drag, data-liquid
+   below).
 
    Unlayered on purpose — it has to beat Tailwind's own transition-*
    utilities, which would otherwise replace the scale transition, so the
@@ -377,6 +431,7 @@ body {
 button:not(.no-press) {
   transition:
     scale 480ms var(--ease-pop),
+    transform 480ms var(--ease-pop),
     color 150ms ease,
     background-color 150ms ease,
     border-color 150ms ease,
@@ -395,9 +450,17 @@ button:not(.no-press) {
    app's many idle buttons don't each hold a layer. */
 button:not(.no-press):not(.press-ghost-fit):not(:disabled):active {
   scale: 1.06;
-  will-change: scale;
+  will-change: scale, transform;
   transition-duration: 160ms;
   transition-timing-function: ease-out;
+}
+
+/* Liquid drag: PressEffects writes --liquid (shift + stretch toward the
+   pointer) while a held button is dragged. It follows through the held
+   state's 160ms transition, which gives it a slight, fluid lag, and springs
+   back on release with the same overshoot as the swell. */
+button[data-liquid] {
+  transform: var(--liquid);
 }
 
 button:not(.no-press)::after {

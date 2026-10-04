@@ -502,7 +502,7 @@ export function MobileFileMenuButton({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
+        <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-40 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
           <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
           <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
           <SortMenuItem label="Date Added" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />

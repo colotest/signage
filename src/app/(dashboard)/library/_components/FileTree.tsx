@@ -823,7 +823,7 @@ function RowMenu({ label, children }: { label: string; children: React.ReactNode
       {open && (
         <div
           onClick={() => setOpen(false)}
-          className="absolute right-0 top-full z-20 mt-1 w-48 rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]"
+          className="menu-pop absolute right-0 top-full z-20 mt-1 w-48 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]"
         >
           {children}
         </div>

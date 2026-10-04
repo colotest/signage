@@ -507,7 +507,7 @@ function UserRowMenu({
       {open && (
         <div className="menu-pop absolute right-0 top-full z-20 mt-1 w-44 origin-top-right rounded-[var(--radius-md)] border border-border glass-material p-1 shadow-[var(--shadow-float)]">
           {confirmingDelete ? (
-            <div className="px-2.5 py-1.5">
+            <div className="pop-in origin-top px-2.5 py-1.5">
               <p className="mb-1.5 text-[12px] text-muted">Delete this account?</p>
               <div className="flex items-center gap-3 text-[13px]">
                 <button

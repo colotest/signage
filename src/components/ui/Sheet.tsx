@@ -2,12 +2,15 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils/cn";
-import type { ReactNode } from "react";
+import { recentTrigger } from "@/lib/utils/lastTrigger";
+import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
 
 // Renders as a centered popup on desktop (>=640px) and a fullscreen sheet on
-// mobile, purely via CSS breakpoints. Either way it slides up from the bottom
-// edge of the screen to open and back down to close (sheet-content in
-// globals.css) — Radix keeps it mounted until that exit animation ends.
+// mobile, purely via CSS breakpoints. Either way it grows out of the button
+// that opened it and shrinks back into it on close (data-origin, see
+// measureOrigin) — or, with no such button to hand, slides up from the
+// bottom edge of the screen and back down (sheet-content in globals.css).
+// Radix keeps it mounted until the exit animation ends.
 export function Sheet({
   open,
   onOpenChange,
@@ -39,6 +42,25 @@ export function Sheet({
   titleLeading?: ReactNode;
   titleAddon?: ReactNode;
 }) {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  // On open: the content's ref attaches in the same commit it mounts, before
+  // the first frame of its animation, so the origin is in place in time.
+  const attachContent = useCallback((node: HTMLDivElement | null) => {
+    contentRef.current = node;
+    if (!node) return;
+    triggerRef.current = recentTrigger();
+    measureOrigin(node, triggerRef.current);
+  }, []);
+
+  // On close: measured again, as the button may have moved since (the
+  // list behind scrolled, the window resized). Before paint, so the exit
+  // animation starts from the fresh values.
+  useLayoutEffect(() => {
+    if (!open && contentRef.current) measureOrigin(contentRef.current, triggerRef.current);
+  }, [open]);
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -56,6 +78,7 @@ export function Sheet({
             in the screen previews behind. */}
         <Dialog.Overlay className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 sm:fixed sm:backdrop-blur-sm" />
         <Dialog.Content
+          ref={attachContent}
           // Focus the sheet itself on open, without scrolling anything into
           // view: by default Radix focuses the first button inside, while
           // the sheet is still sliding in from below the screen — and iOS
@@ -101,4 +124,30 @@ export function Sheet({
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+// Where the popup should grow from: the offset from its own resting centre
+// to the trigger's, the scale that shrinks it to the trigger's size, and the
+// corner radius that, at that scale, matches the trigger's own. Measured
+// against where the popup ends up rather than where it is — mid-animation,
+// its on-screen box is still transformed: centred in the viewport on
+// desktop; full width from the top of the page (which never scrolls) on a
+// phone. No connected, visible trigger means no data-origin, so the plain
+// slide plays instead.
+function measureOrigin(node: HTMLElement, trigger: HTMLElement | null) {
+  const rect = trigger?.isConnected ? trigger.getBoundingClientRect() : null;
+  if (!rect || !rect.width || !rect.height || !node.offsetWidth || !node.offsetHeight) {
+    node.removeAttribute("data-origin");
+    return;
+  }
+  const desktop = window.matchMedia("(min-width: 640px)").matches;
+  const centerX = window.innerWidth / 2;
+  const centerY = desktop ? window.innerHeight / 2 : node.offsetHeight / 2;
+  const scale = Math.min(1, Math.max(0.05, Math.max(rect.width / node.offsetWidth, rect.height / node.offsetHeight)));
+  const radius = Math.min(parseFloat(getComputedStyle(trigger!).borderTopLeftRadius) || 0, rect.width / 2, rect.height / 2);
+  node.style.setProperty("--origin-dx", `${rect.left + rect.width / 2 - centerX}px`);
+  node.style.setProperty("--origin-dy", `${rect.top + rect.height / 2 - centerY}px`);
+  node.style.setProperty("--origin-scale", `${scale}`);
+  node.style.setProperty("--origin-radius", `${radius / scale}px`);
+  node.setAttribute("data-origin", "");
 }
