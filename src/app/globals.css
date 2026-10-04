@@ -670,10 +670,11 @@ button[data-landing] {
   will-change: scale, transform;
 }
 
-/* Liquid drag: PressEffects writes --liquid (shift + stretch toward the
-   pointer) every frame while a held button is dragged, and while it springs
-   back after — it does its own easing, so transform has no transition. */
-button[data-liquid] {
+/* Liquid drag (see lib/animation/liquid): --liquid (shift + stretch toward
+   the pointer) is written every frame while a held button — or a menu being
+   drag-selected through — is dragged, and while it springs back after. It
+   does its own easing, so transform has no transition. */
+[data-liquid] {
   transform: var(--liquid);
 }
 

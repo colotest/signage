@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { pullLiquid, releaseLiquid } from "@/lib/animation/liquid";
 import { rememberTrigger } from "@/lib/utils/lastTrigger";
 
 // Buttons that press-and-drag with the pointer. Rows and menu items
@@ -22,15 +23,6 @@ const RELEASE_GRACE_MS = 60;
 // compositing layer (data-press-ready).
 const SETTLE_MS = 1000;
 
-// Liquid drag's shape, as the five numbers of matrix(a, b, b, d, x, y);
-// REST is no change at all.
-type Shape = [number, number, number, number, number];
-const REST: Shape = [1, 0, 1, 0, 0];
-// Per-frame spring for liquid drag (60fps frames): how hard it pulls
-// towards its target, and how much speed it keeps from frame to frame.
-const SPRING_STIFFNESS = 0.14;
-const SPRING_DAMPING = 0.68;
-
 // Pressed buttons swell by 15%, but by no more than this many px of extra
 // width: a full-width button would otherwise spill past its card.
 const MAX_SWELL_PX = 24;
@@ -44,27 +36,12 @@ const MAX_SWELL_PX = 24;
 //   follows it while dragging), and how much it swells (--press-scale).
 // - Remembers the pressed control, so a popup it opens can grow out of it
 //   (see lastTrigger and Sheet).
-// - Liquid drag, after iOS 26: dragging a held button pulls it after the
-//   pointer — shifted a few px that way and stretched along the drag, with
-//   rubber-band resistance — then it springs back on release. Written as
-//   --liquid (a matrix) plus data-liquid, which globals.css applies.
-//
-//   The shape is a plain matrix rather than rotate(angle) scale()
-//   rotate(-angle): the drag angle flips between +180° and -180° when
-//   dragging left, and a CSS transition between two such rotations spins
-//   the long way round — the stretch whirled through a full turn with every
-//   wobble. The matrix is the same for either angle. It's also eased here,
-//   with a small spring per frame, not by a CSS transition: interpolating
-//   matrices makes the browser decompose them into rotations again.
+// - Liquid drag (see lib/animation/liquid): dragging a held button pulls
+//   and stretches it after the pointer, and it springs back on release.
 export function PressEffects() {
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let drag: { el: HTMLElement; pointerId: number; x: number; y: number; reach: number } | null = null;
-    // Every button currently out of shape: its spring's current position
-    // and speed, and where it's being pulled to (rest once let go).
-    const liquids = new Map<HTMLElement, { at: Shape; speed: Shape; target: Shape }>();
-    let frame = 0;
-    let lastTick = 0;
     let press: { el: Element; pointerId: number; at: number; cancelled: boolean } | null = null;
     const timers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
 
@@ -103,50 +80,9 @@ export function PressEffects() {
       el.style.setProperty("--press-y", `${((e.clientY - rect.top) / rect.height) * 100}%`);
     }
 
-    function pullTo(el: HTMLElement, target: Shape) {
-      const liquid = liquids.get(el);
-      if (liquid) liquid.target = target;
-      else liquids.set(el, { at: [...REST], speed: [0, 0, 0, 0, 0], target });
-      el.setAttribute("data-liquid", "");
-      if (!frame) {
-        lastTick = performance.now();
-        frame = requestAnimationFrame(tick);
-      }
-    }
-
-    // A slightly underdamped spring on each of the matrix's five numbers:
-    // follows the finger with a soft lag, and overshoots rest a touch on
-    // release before settling — the "liquid" part.
-    function tick(now: number) {
-      // Whole 60fps steps, so it runs at the same speed at any frame rate;
-      // capped, so a stalled frame doesn't fling it.
-      const steps = Math.min(4, Math.max(1, Math.round((now - lastTick) / (1000 / 60))));
-      lastTick = now;
-      for (const [el, liquid] of liquids) {
-        let moving = false;
-        for (let i = 0; i < 5; i++) {
-          for (let n = 0; n < steps; n++) {
-            liquid.speed[i] = liquid.speed[i] * SPRING_DAMPING + (liquid.target[i] - liquid.at[i]) * SPRING_STIFFNESS;
-            liquid.at[i] += liquid.speed[i];
-          }
-          if (Math.abs(liquid.speed[i]) > 0.0005 || Math.abs(liquid.target[i] - liquid.at[i]) > 0.0005) moving = true;
-        }
-        const atRest = liquid.target === REST && !moving;
-        if (atRest) {
-          liquids.delete(el);
-          el.removeAttribute("data-liquid");
-          el.style.removeProperty("--liquid");
-        } else {
-          const [a, b, d, x, y] = liquid.at;
-          el.style.setProperty("--liquid", `matrix(${a}, ${b}, ${b}, ${d}, ${x}, ${y})`);
-        }
-      }
-      frame = liquids.size ? requestAnimationFrame(tick) : 0;
-    }
-
     function endDrag() {
       if (!drag) return;
-      if (liquids.has(drag.el)) pullTo(drag.el, REST);
+      releaseLiquid(drag.el);
       drag = null;
     }
 
@@ -177,26 +113,11 @@ export function PressEffects() {
 
     function handlePointerMove(e: PointerEvent) {
       if (!drag || e.pointerId !== drag.pointerId) return;
-      const dx = e.clientX - drag.x;
-      const dy = e.clientY - drag.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance < 2) return;
-      // tanh: follows the pointer at first, then resists harder the further
-      // it goes, never passing `reach`.
-      const pull = drag.reach * Math.tanh(distance / (drag.reach * 5));
-      const stretch = 0.1 * Math.tanh(distance / 80);
-      // Unit vector along the drag.
-      const ux = dx / distance;
-      const uy = dy / distance;
-      // Stretched by `stretch` along the drag and slimmed by half that across
-      // it, so a diagonal drag skews it: (1 + s)·uuᵀ + (1 - s/2)·vvᵀ, with v
-      // perpendicular to u — symmetric, so the same for u and -u.
-      const along = 1 + stretch;
-      const across = 1 - stretch / 2;
-      const a = along * ux * ux + across * uy * uy;
-      const d = along * uy * uy + across * ux * ux;
-      const b = (along - across) * ux * uy;
-      pullTo(drag.el, [a, b, d, ux * pull, uy * pull]);
+      pullLiquid(drag.el, e.clientX - drag.x, e.clientY - drag.y, {
+        reach: drag.reach,
+        stretch: 0.1,
+        stretchOver: 80,
+      });
       setPressPoint(drag.el, e);
     }
 
@@ -212,11 +133,6 @@ export function PressEffects() {
     return () => {
       endDrag();
       endPress(true);
-      cancelAnimationFrame(frame);
-      for (const el of liquids.keys()) {
-        el.removeAttribute("data-liquid");
-        el.style.removeProperty("--liquid");
-      }
       document.removeEventListener("pointerdown", handlePointerDown, { capture: true });
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerEnd);

@@ -11,6 +11,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { pullLiquid, releaseLiquid, type LiquidFeel } from "@/lib/animation/liquid";
 import { usePresence } from "@/lib/hooks/usePresence";
 import { cn } from "@/lib/utils/cn";
 
@@ -22,6 +23,12 @@ const GAP = 6;
 const MARGIN = 8;
 // Past this, a press counts as a drag rather than a wobbly tap.
 const DRAG_SLOP = 6;
+// While drag-selecting, the whole menu leans after the finger, as buttons
+// do when dragged (see lib/animation/liquid) — but gentler, being so much
+// bigger: a few px, and a few percent of stretch, built up over a longer
+// drag. It stretches about the point it grew from (its button), so it
+// reads as being pulled away from there.
+const MENU_FEEL: LiquidFeel = { reach: 6, stretch: 0.035, stretchOver: 140 };
 
 // Where menus opened inside a popup render: the popup's own content (see
 // Sheet). Radix makes everything outside an open dialog unclickable, and
@@ -42,7 +49,8 @@ export const MenuContainerContext = createContext<HTMLElement | null>(null);
 //   toggle) or Escape.
 // - Drag-select (unless dragSelect={false}, for panels of controls rather
 //   than lists of options): press an option, slide to another, and letting
-//   go there picks that one instead — the highlight follows the finger.
+//   go there picks that one instead — the highlight follows the finger, and
+//   the menu itself leans and stretches a little after it (MENU_FEEL).
 export function Menu({
   open,
   onClose,
@@ -135,6 +143,7 @@ export function Menu({
     if (!mounted || !menu || !dragSelect) return;
     let drag: { pointerId: number; x: number; y: number; moved: boolean; over: Element | null } | null = null;
     let swallowClicksUntil = 0;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     function highlight(item: Element | null) {
       if (!drag || drag.over === item) return;
@@ -152,6 +161,7 @@ export function Menu({
       if (!drag) return;
       highlight(null);
       menu!.removeAttribute("data-dragging");
+      releaseLiquid(menu!);
       drag = null;
     }
 
@@ -177,6 +187,7 @@ export function Menu({
         menu!.setAttribute("data-dragging", "");
       }
       highlight(itemAt(e.clientX, e.clientY));
+      if (!reducedMotion.matches) pullLiquid(menu!, e.clientX - drag.x, e.clientY - drag.y, MENU_FEEL);
     }
 
     function handlePointerUp(e: PointerEvent) {
