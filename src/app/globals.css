@@ -218,6 +218,19 @@ body {
   }
 }
 
+/* A held, dragged link in a menu (Download is one) would otherwise be
+   picked up by the browser's own drag-and-drop, which takes the pointer
+   away from drag-select; and a long press on iOS opens a link preview. Menu
+   also cancels dragstart, for browsers that ignore -webkit-user-drag. */
+.menu-pop {
+  -webkit-touch-callout: none;
+}
+
+.menu-pop a,
+.menu-pop img {
+  -webkit-user-drag: none;
+}
+
 /* Drag-select in menus (see Menu): while a press is being dragged across
    the options, the one under the finger shows as pressed — not the one the
    press started on, which stays data-pressed throughout. */
@@ -534,7 +547,6 @@ body {
 button:not(.no-press) {
   transition:
     scale 960ms var(--ease-pop),
-    transform 960ms var(--ease-pop),
     color 150ms ease,
     background-color 150ms ease,
     border-color 150ms ease,
@@ -570,9 +582,8 @@ button[data-landing] {
 }
 
 /* Liquid drag: PressEffects writes --liquid (shift + stretch toward the
-   pointer) while a held button is dragged. It follows through the held
-   state's 320ms transition, which gives it a slight, fluid lag, and springs
-   back on release with the same overshoot as the swell. */
+   pointer) every frame while a held button is dragged, and while it springs
+   back after — it does its own easing, so transform has no transition. */
 button[data-liquid] {
   transform: var(--liquid);
 }
@@ -647,9 +658,7 @@ button.press-ghost::after {
    plays (or costs anything) under the popup. */
 button[data-launching]:not(.press-ghost-fit) {
   scale: var(--press-scale, 1.15);
-  transition:
-    scale var(--popup-hold) ease-out,
-    transform 0s;
+  transition: scale var(--popup-hold) ease-out;
 }
 
 button[data-launching]::after {

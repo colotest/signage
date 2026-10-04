@@ -200,8 +200,16 @@ export function Menu({
       }
     }
 
+    // A held link (Download) would otherwise be picked up by the browser's
+    // own drag-and-drop, which takes the pointer away from drag-select
+    // (see also .menu-pop in globals.css).
+    function handleDragStart(e: DragEvent) {
+      e.preventDefault();
+    }
+
     menu.addEventListener("pointerdown", handlePointerDown);
     menu.addEventListener("click", handleClick, true);
+    menu.addEventListener("dragstart", handleDragStart);
     document.addEventListener("pointermove", handlePointerMove, { passive: true });
     document.addEventListener("pointerup", handlePointerUp);
     document.addEventListener("pointercancel", end);
@@ -209,6 +217,7 @@ export function Menu({
       end();
       menu.removeEventListener("pointerdown", handlePointerDown);
       menu.removeEventListener("click", handleClick, true);
+      menu.removeEventListener("dragstart", handleDragStart);
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
       document.removeEventListener("pointercancel", end);
