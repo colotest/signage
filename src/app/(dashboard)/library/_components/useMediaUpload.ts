@@ -5,6 +5,7 @@ import { useState } from "react";
 import { createUploadUrl, finalizeMediaUpload } from "@/lib/actions/media";
 import { createDeckUploadUrls, finalizeDeckUpload } from "@/lib/actions/decks";
 import { inspectFile } from "@/lib/media/inspectFile";
+import { prepareImage } from "@/lib/media/prepareImage";
 import { renderPdfPages } from "@/lib/media/renderPdfPages";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { MediaType } from "@/types/domain";
@@ -64,9 +65,11 @@ export function useMediaUpload(targetFolderId: string | null, actions: UploadAct
             contentType: file.type,
           });
 
+          // What actually goes up — see prepareImage.
+          const upload = mediaType === "image" ? await prepareImage(file) : file;
           const [metadata, { error: uploadError }] = await Promise.all([
-            inspectFile(file, mediaType),
-            supabase.storage.from("media").uploadToSignedUrl(storagePath, token, file),
+            inspectFile(upload, mediaType),
+            supabase.storage.from("media").uploadToSignedUrl(storagePath, token, upload),
           ]);
           if (uploadError) throw uploadError;
 
@@ -77,7 +80,7 @@ export function useMediaUpload(targetFolderId: string | null, actions: UploadAct
             storagePath,
             mediaType,
             mimeType: file.type,
-            sizeBytes: file.size,
+            sizeBytes: upload.size,
             width: metadata.width,
             height: metadata.height,
             durationSeconds: metadata.durationSeconds,
