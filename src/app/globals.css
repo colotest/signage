@@ -352,9 +352,10 @@ body {
    separately, its glyph (.sheet-ghost-glyph). Both start out exactly on the
    button. The shape scales along with the popup to its full size; the glyph
    only travels with the popup's centre, staying the size it was. Opening,
-   both fade out as the popup grows; closing, they fade back in as it shrinks,
-   so the button — glyph included — is already back by the time the popup
-   is gone. Their movement uses the popup's own timing exactly (separate
+   both are gone within the first quarter of the popup's growth (140ms of
+   560ms) — any longer and the popup read as blue for too long. Closing,
+   they fade back in as it shrinks, so the button — glyph included — is
+   already back by the time the popup is gone. Their movement uses the popup's own timing exactly (separate
    animations from the fades, so it isn't split into keyframe segments), so
    they stay locked to it. Created and removed by Sheet. */
 /* absolute, not fixed — like the popup itself on a phone (see Sheet): iOS
@@ -429,14 +430,14 @@ body {
   animation:
     ghost-to-popup 560ms var(--ease-spring) var(--popup-hold) forwards,
     ghost-square-off 120ms ease-in-out var(--popup-hold) forwards,
-    ghost-fade-out 320ms ease-in-out var(--popup-hold) forwards,
+    ghost-fade-out 140ms ease-in var(--popup-hold) forwards,
     sheet-hold var(--popup-hold) linear;
 }
 
 .sheet-ghost-glyph[data-mode="open"] {
   animation:
     glyph-to-popup 560ms var(--ease-spring) var(--popup-hold) forwards,
-    ghost-fade-out 140ms ease-in var(--popup-hold) forwards,
+    ghost-fade-out 100ms ease-in var(--popup-hold) forwards,
     sheet-hold var(--popup-hold) linear;
 }
 
