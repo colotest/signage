@@ -6,6 +6,43 @@ import { ScreenPage } from "@/components/screenPages";
 import { mediaPublicUrl } from "@/types/domain";
 import type { FitMode, MediaItem } from "@/types/domain";
 
+// A thumbnail that keeps the file's own proportions inside a fixed slot,
+// for list rows: the slot is what keeps names and columns aligned down the
+// list, while the picture inside is cut to its own shape rather than
+// cropped square. Older uploads carry no dimensions (they predate the
+// metadata we record now) — those fill the slot and letterbox themselves
+// in it, which still shows the picture whole, just without a box cut to
+// its shape.
+export function MediaThumbSlot({
+  item,
+  slotWidth,
+  slotHeight,
+  className,
+}: {
+  item?: MediaItem | null;
+  slotWidth: number;
+  slotHeight: number;
+  className?: string;
+}) {
+  const ratio = item?.width && item.height ? item.width / item.height : null;
+  const height = ratio ? Math.min(slotHeight, slotWidth / ratio) : slotHeight;
+  const width = ratio ? height * ratio : slotWidth;
+
+  return (
+    <span
+      className={`flex shrink-0 items-center justify-center ${className ?? ""}`}
+      style={{ width: slotWidth, height: slotHeight }}
+    >
+      <span
+        className="block overflow-hidden rounded-[5px] bg-black/[.04] dark:bg-white/[.06]"
+        style={{ width, height }}
+      >
+        {item && <MediaThumb item={item} fit={ratio ? "cover" : "contain"} sizes={`${slotWidth * 2}px`} />}
+      </span>
+    </span>
+  );
+}
+
 export function MediaThumb({
   item,
   fit = "cover",

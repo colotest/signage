@@ -4,7 +4,7 @@ import { DndContext, closestCenter, type DragEndEvent, type SensorDescriptor, ty
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { MediaThumb } from "@/components/MediaThumb";
+import { MediaThumbSlot } from "@/components/MediaThumb";
 import { animateEntrance, animateRemoval } from "@/lib/animation/listMotion";
 import { usePresenceList, type PresenceState } from "@/lib/animation/usePresenceList";
 import { displayName, kindLabel } from "@/lib/utils/format";
@@ -174,9 +174,9 @@ function PlaylistEntryRow({
         </button>
       )}
 
-      <div className="h-12 w-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-black/[.05] dark:bg-white/[.08]">
-        <MediaThumb item={entry.media_item} />
-      </div>
+      {/* Same slot the file browser's rows use, so a file looks the same
+          wherever it's listed. */}
+      <MediaThumbSlot item={entry.media_item} slotWidth={64} slotHeight={48} />
 
       <span className="min-w-0 flex-1 truncate text-[14px]">{displayName(entry.media_item.name)}</span>
 

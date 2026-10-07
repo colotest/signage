@@ -4,7 +4,7 @@ import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, 
 import { useRouter } from "next/navigation";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Menu } from "@/components/ui/Menu";
-import { MediaThumb } from "@/components/MediaThumb";
+import { MediaThumbSlot } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
@@ -466,7 +466,7 @@ export function FileTree({
               the first row still clears it.
               Hidden on mobile — the mobile equivalent is the round "⋯" sort
               button next to the Upload pill (LibraryView). */}
-          <div className="hidden absolute inset-x-0 top-[52px] z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)]/65 px-4 py-2 text-[12px] text-muted backdrop-blur-xl sm:flex">
+          <div className="hidden absolute inset-x-0 top-[52px] z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)]/65 px-4 py-2 text-[14px] text-muted backdrop-blur-xl sm:flex">
             <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} className="flex-1" />
             <SortButton
               label="Kind"
@@ -749,10 +749,29 @@ function RowInfo({ title, date, uploader }: { title: React.ReactNode; date: stri
   return (
     <div className="flex min-w-0 flex-1 flex-col items-start [&>*]:max-w-full">
       {title}
-      <span className="truncate text-[10px] text-muted @5xl:hidden">
+      <span className="truncate text-[12px] text-muted @5xl:hidden">
         {uploader ? `${uploader} · ${date}` : date}
       </span>
     </div>
+  );
+}
+
+// Every row leads with a slot this size, whatever sits in it — a
+// thumbnail, a folder's icon, the new-folder row's faded one — so names
+// start at the same place down the list and all rows stand the same height.
+const ROW_SLOT_W = 64;
+const ROW_SLOT_H = 48;
+
+// A folder has no preview of its own — its icon takes the same slot, so it
+// lines up with the thumbnails above and below it.
+function RowIcon({ children, faded = false }: { children: React.ReactNode; faded?: boolean }) {
+  return (
+    <span
+      className={cn("flex shrink-0 items-center justify-center text-[26px] leading-none", faded && "opacity-40")}
+      style={{ width: ROW_SLOT_W, height: ROW_SLOT_H }}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -774,7 +793,7 @@ function RowInfo({ title, date, uploader }: { title: React.ReactNode; date: stri
 // that. The sort bar's buttons follow the same breakpoints.
 function RowColumn({ width, wide = false, children }: { width: string; wide?: boolean; children?: React.ReactNode }) {
   return (
-    <span className={cn("hidden shrink-0 truncate text-[12px] text-muted", wide ? "@5xl:block" : "@3xl:block", width)}>
+    <span className={cn("hidden shrink-0 truncate text-[14px] text-muted", wide ? "@5xl:block" : "@3xl:block", width)}>
       {children}
     </span>
   );
@@ -1023,7 +1042,7 @@ function FolderRow({
       >
         <Chevron open={isExpanded} />
       </button>
-      <span className="shrink-0">📁</span>
+      <RowIcon>📁</RowIcon>
 
       <RowInfo
         title={
@@ -1035,7 +1054,7 @@ function FolderRow({
                 router.refresh();
               });
             }}
-            className="truncate text-[13px] font-medium"
+            className="truncate text-[15px] font-medium"
           />
         }
         date={formatDate(folder.created_at)}
@@ -1157,9 +1176,7 @@ function FileRow({
     >
       <Checkbox visible={selectionMode} state={selected} onChange={onToggleSelect} collapsedClassName="-mr-2" />
       <div style={{ width: depth * 20 }} className="shrink-0" />
-      <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
-        <MediaThumb item={item} />
-      </div>
+      <MediaThumbSlot item={item} slotWidth={ROW_SLOT_W} slotHeight={ROW_SLOT_H} />
 
       <RowInfo
         title={
@@ -1167,7 +1184,7 @@ function FileRow({
             id={item.id}
             name={item.name}
             selecting={selectionMode}
-            className="truncate text-[13px] font-medium"
+            className="truncate text-[15px] font-medium"
           />
         }
         date={formatDate(item.created_at)}
@@ -1272,7 +1289,7 @@ function NewFolderRow({
     >
       <div style={{ width: depth * 20 + (parentId === null ? 0 : 20) }} className="shrink-0" />
       <span aria-hidden className="h-4 w-4 shrink-0" />
-      <span className="shrink-0 opacity-40">📁</span>
+      <RowIcon faded>📁</RowIcon>
 
       <div className="flex min-w-0 flex-1 items-center">
         <input
@@ -1283,7 +1300,7 @@ function NewFolderRow({
             if (e.key === "Enter") submit(e.currentTarget.value);
             if (e.key === "Escape") onDone();
           }}
-          className="w-full min-w-0 max-w-64 rounded-[var(--radius-sm)] border border-accent bg-transparent px-2 py-1 text-[13px] outline-none"
+          className="w-full min-w-0 max-w-64 rounded-[var(--radius-sm)] border border-accent bg-transparent px-2 py-1 text-[15px] outline-none"
         />
       </div>
 
@@ -1435,9 +1452,7 @@ function DeckRow({
       />
       <div style={{ width: depth * 20 }} className="shrink-0" />
       {/* The first page stands in for the deck, the way a cover does. */}
-      <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
-        {cover && <MediaThumb item={cover} />}
-      </div>
+      <MediaThumbSlot item={cover} slotWidth={ROW_SLOT_W} slotHeight={ROW_SLOT_H} />
 
       <RowInfo
         title={
@@ -1450,7 +1465,7 @@ function DeckRow({
               name={deck.name}
               selecting={selectionMode}
               onRename={renameDeck}
-              className="truncate text-[13px] font-medium"
+              className="truncate text-[15px] font-medium"
             />
             <button
               type="button"
