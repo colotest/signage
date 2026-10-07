@@ -3,14 +3,25 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils/cn";
 import { recentTrigger } from "@/lib/utils/lastTrigger";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { MenuContainerContext } from "./Menu";
 
-// Renders as a centered popup on desktop (>=640px) and a fullscreen sheet on
-// mobile, purely via CSS breakpoints. Either way it grows out of the button
-// that opened it and shrinks back into it on close (data-origin, see
-// measureOrigin) — or, with no such button to hand, slides up from the
-// bottom edge of the screen and back down (sheet-content in globals.css).
+// Renders as a centered popup on desktop (>=640px) and as an iOS page sheet
+// on a phone, purely via CSS breakpoints. On desktop it grows out of the
+// button that opened it and shrinks back into it on close (data-origin, see
+// measureOrigin), or slides up when there's no such button to hand. On a
+// phone it always slides up from the bottom edge, stopping just short of the
+// top, while the page behind recedes into a card (app-shell in globals.css);
+// it can be pulled back down by its header to dismiss it (useSheetDrag).
 // Radix keeps it mounted until the exit animation ends.
 export function Sheet({
   open,
@@ -47,6 +58,7 @@ export function Sheet({
   const triggerRef = useRef<HTMLElement | null>(null);
   // Menus opened from inside render into the popup itself (see Menu).
   const [contentNode, setContentNode] = useState<HTMLDivElement | null>(null);
+  const dragHandlers = useSheetDrag(contentRef, () => onOpenChange(false));
 
   // On open: the content's ref attaches in the same commit it mounts, before
   // the first frame of its animation, so the origin is in place in time.
@@ -57,12 +69,14 @@ export function Sheet({
   // --popup-hold — time for its contents to be built and laid out before
   // anything has to move. Then it takes over from the enlarged button and
   // grows into place, and the button, hidden beneath by then, snaps back
-  // without animating (landLaunch).
+  // without animating (landLaunch). Not on a phone, where the page sheet
+  // always slides up from the bottom edge instead.
   const attachContent = useCallback((node: HTMLDivElement | null) => {
     contentRef.current = node;
     setContentNode(node);
     if (!node) return;
-    const trigger = recentTrigger();
+    setDragProgress(0);
+    const trigger = isDesktop() ? recentTrigger() : null;
     triggerRef.current = trigger;
     const launch = canLaunch(trigger);
     if (launch) trigger.setAttribute("data-launching", "");
@@ -92,6 +106,14 @@ export function Sheet({
       node.setAttribute("data-animating", "");
       spawnGhost(origin, "close", null);
     }
+  }, [open]);
+
+  // On a phone, Safari's status bar goes black along with the backdrop the
+  // page recedes onto, instead of staying a white block above it.
+  useEffect(() => {
+    if (!open || isDesktop()) return;
+    darkenStatusBar();
+    return restoreStatusBar;
   }, [open]);
 
   // Never leave a button stuck enlarged, or a ghost on screen, however the
@@ -144,18 +166,35 @@ export function Sheet({
             // strips, which otherwise paint straight over the popup's own
             // rounded corners and square them off. Clipping to this box's
             // shape keeps the corners round whatever sits at the edges.
-            // h-[109lvh] and absolute: as the overlay — full screen on a phone
-            // means right down behind Safari's toolbar, showing what's there,
-            // with the content keeping its own clearance from it.
+            // absolute, and down to 109lvh: as the overlay — on a phone it
+            // runs right down behind Safari's toolbar, showing what's there,
+            // with the content keeping its own clearance from it. From the
+            // top it stops just short, as an iOS page sheet does, leaving
+            // the receded page's top edge showing above its rounded corners.
             "sheet-content absolute z-50 sm:fixed flex flex-col overflow-hidden bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
-            "inset-x-0 top-0 h-[109lvh] rounded-none",
+            "inset-x-0 top-[var(--sheet-top)] h-[calc(109lvh-var(--sheet-top))] rounded-t-[var(--sheet-radius)]",
             "sm:inset-auto sm:h-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md sm:max-h-[85vh] sm:rounded-[var(--radius-lg)]",
             contentClassName,
           )}
         >
           <MenuContainerContext.Provider value={contentNode}>
-            <div className={cn("flex items-center justify-between gap-3 border-b border-border px-5 py-4", headerClassName)}>
+            {/* The grabber, as on an iOS sheet: a hint that the header can be
+                pulled down. pointer-events-none, so a press on it lands on
+                the header, which does the dragging. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute left-1/2 top-[5px] z-30 h-[5px] w-9 -translate-x-1/2 rounded-full bg-muted/50 sm:hidden"
+            />
+            {/* touch-none on a phone: a pull on the header moves the sheet,
+                not anything Safari would otherwise do with the gesture. */}
+            <div
+              {...dragHandlers}
+              className={cn(
+                "flex touch-none items-center justify-between gap-3 border-b border-border px-5 py-4 sm:touch-auto",
+                headerClassName,
+              )}
+            >
               <div className="relative flex min-w-0 items-center gap-3">
                 {titleLeading}
                 <Dialog.Title className={cn("min-w-0 truncate text-[17px] font-semibold", titleClassName)}>
@@ -171,6 +210,99 @@ export function Sheet({
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+// Pull-down-to-dismiss on a phone, as on an iOS sheet: dragged by its
+// header, the sheet follows the finger down (and resists being pulled up),
+// with the page behind coming forward out of its receded state as it goes.
+// Let go far enough or fast enough and it closes from where it is; otherwise
+// it springs back. Moved via the separate `translate` property, which
+// composes with the open/close animations' `transform` — so a close plays
+// on from the dragged position rather than jumping back first.
+function useSheetDrag(contentRef: RefObject<HTMLDivElement | null>, close: () => void) {
+  const drag = useRef<{ id: number; startY: number; lastY: number; lastT: number; v: number; offset: number } | null>(
+    null,
+  );
+
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    const node = contentRef.current;
+    if (!node || e.button !== 0 || isDesktop()) return;
+    // Controls in the header (the Done tick, the "⋯" and its dropdown) keep
+    // their own presses.
+    if ((e.target as Element).closest("button, a, input, textarea, select, label, .menu-pop")) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { id: e.pointerId, startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, v: 0, offset: 0 };
+    node.style.transition = "none";
+    document.documentElement.setAttribute("data-sheet-dragging", "");
+  }
+
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = drag.current;
+    const node = contentRef.current;
+    if (!d || !node || e.pointerId !== d.id) return;
+    const dt = e.timeStamp - d.lastT;
+    if (dt > 0) d.v = (e.clientY - d.lastY) / dt;
+    d.lastY = e.clientY;
+    d.lastT = e.timeStamp;
+    const dy = e.clientY - d.startY;
+    // Upwards it gives only a little, and less the further it's pulled.
+    d.offset = dy >= 0 ? dy : -8 * Math.log1p(-dy / 24);
+    node.style.translate = `0 ${d.offset}px`;
+    setDragProgress(Math.max(0, d.offset) / window.innerHeight);
+  }
+
+  function onPointerEnd(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = drag.current;
+    const node = contentRef.current;
+    if (!d || e.pointerId !== d.id) return;
+    drag.current = null;
+    document.documentElement.removeAttribute("data-sheet-dragging");
+    if (!node) return;
+    const flung = d.v > 0.5 && d.offset > 10;
+    if (e.type === "pointerup" && (flung || d.offset > window.innerHeight * 0.25)) {
+      close();
+      return;
+    }
+    node.style.transition = "translate 450ms var(--ease-spring)";
+    node.style.translate = "";
+    setDragProgress(0);
+  }
+
+  return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
+}
+
+// How far (0–1) the sheet has been pulled down: the receded page behind it
+// and the dimming over that follow it (globals.css).
+function setDragProgress(p: number) {
+  document.documentElement.style.setProperty("--sheet-drag", `${Math.min(1, p)}`);
+}
+
+// Safari paints its status bar in the page's theme-color (root layout) — it
+// can't be made see-through from a regular tab — so while a sheet's open
+// that turns black, matching the backdrop the page recedes onto
+// (globals.css). Straight away on open, as the backdrop shows from the first
+// frame; back only once the close (500ms) has the page covering it again.
+const savedThemeColors = new Map<HTMLMetaElement, string>();
+let statusBarTimer: number | undefined;
+
+function darkenStatusBar() {
+  window.clearTimeout(statusBarTimer);
+  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
+    if (!savedThemeColors.has(meta)) savedThemeColors.set(meta, meta.content);
+    meta.content = "#000000";
+  });
+}
+
+function restoreStatusBar() {
+  window.clearTimeout(statusBarTimer);
+  statusBarTimer = window.setTimeout(() => {
+    savedThemeColors.forEach((content, meta) => (meta.content = content));
+    savedThemeColors.clear();
+  }, 500);
+}
+
+function isDesktop() {
+  return window.matchMedia("(min-width: 640px)").matches;
 }
 
 // What the popup grows from and shrinks back into: the trigger as it looks
@@ -200,9 +332,9 @@ type Origin = {
 // to the trigger's, and the scale that shrinks it to the trigger's size.
 // Measured against where the popup ends up rather than where it is —
 // mid-animation, its on-screen box is still transformed: centred in the
-// viewport on desktop; full width from the top of the page (which never
-// scrolls) on a phone. No connected, visible trigger means no data-origin,
-// so the plain slide plays instead.
+// viewport. On a phone it's a page sheet, which always slides up from the
+// bottom edge — so there, as with no connected, visible trigger, there's no
+// data-origin and the plain slide plays instead.
 //
 // When launching, the button is still on its way to its full pressed size,
 // so that size is what's measured: its layout size times --press-scale,
@@ -214,13 +346,12 @@ type Origin = {
 // scale) and fades instead (no data-origin-solid).
 function measureOrigin(node: HTMLElement, trigger: HTMLElement | null, launching: boolean): Origin | null {
   const rect = trigger?.isConnected ? trigger.getBoundingClientRect() : null;
-  if (!trigger || !rect || !rect.width || !rect.height || !node.offsetWidth || !node.offsetHeight) {
+  if (!isDesktop() || !trigger || !rect || !rect.width || !rect.height || !node.offsetWidth || !node.offsetHeight) {
     node.removeAttribute("data-origin");
     return null;
   }
-  const desktop = window.matchMedia("(min-width: 640px)").matches;
   const popupX = window.innerWidth / 2;
-  const popupY = desktop ? window.innerHeight / 2 : node.offsetHeight / 2;
+  const popupY = window.innerHeight / 2;
   const style = getComputedStyle(trigger);
   const layoutWidth = trigger.offsetWidth || rect.width;
   const layoutHeight = trigger.offsetHeight || rect.height;

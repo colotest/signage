@@ -19,8 +19,9 @@ export default async function DashboardLayout({
 
   return (
     <ViewerProvider viewer={{ ...user, isAdmin: isAdmin(user) }}>
-      {/* app-shell-height, not plain lvh/svh/dvh — see the root layout for why. */}
-      <div className="app-shell-height flex flex-col bg-background">
+      {/* app-shell-height, not plain lvh/svh/dvh — see the root layout for why.
+          app-shell: recedes behind a popup on a phone (see globals.css). */}
+      <div className="app-shell app-shell-height flex flex-col bg-background">
         <Header />
         <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6">{children}</main>
       </div>

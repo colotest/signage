@@ -488,6 +488,70 @@ body {
   }
 }
 
+/* On a phone, popups present as iOS page sheets: the sheet stops just short
+   of the top of the screen, with large rounded top corners, and the page
+   behind it recedes — shrinking back into a rounded card on black, its top
+   edge peeking out above the sheet — then comes forward again as the sheet
+   goes. --sheet-drag (0–1, set by Sheet while the sheet's pulled down) brings
+   it forward part way, and lifts the dimming with it. */
+.sheet-content {
+  --sheet-top: 20px;
+  --sheet-radius: 32px;
+}
+
+.sheet-overlay {
+  opacity: calc(1 - var(--sheet-drag, 0));
+}
+
+@media (max-width: 639.98px) {
+  .app-shell {
+    overflow: hidden;
+    transform-origin: 50% 0;
+  }
+
+  html:has(.sheet-content[data-state="open"]) .app-shell {
+    transform: translateY(calc(8px * (1 - var(--sheet-drag, 0)))) scale(calc(0.93 + 0.07 * var(--sheet-drag, 0)));
+    border-radius: calc(22px * (1 - var(--sheet-drag, 0)));
+  }
+
+  /* Black around the receded card at once; back to normal only once the
+     card has grown back over it. */
+  body {
+    transition: background-color 0s linear 500ms;
+  }
+
+  html:has(.sheet-content[data-state="open"]) body {
+    background: #000;
+    transition-delay: 0s;
+  }
+
+  .sheet-overlay[data-state="open"] {
+    animation: sheet-fade-in 500ms var(--ease-spring);
+  }
+
+  .sheet-overlay[data-state="closed"] {
+    animation: sheet-fade-out 500ms var(--ease-spring) forwards;
+  }
+}
+
+@media (max-width: 639.98px) and (prefers-reduced-motion: no-preference) {
+  .app-shell {
+    transition:
+      transform 500ms var(--ease-spring),
+      border-radius 500ms var(--ease-spring);
+  }
+
+  html[data-sheet-dragging] .app-shell {
+    transition: none;
+  }
+
+  /* The slower, smoother iOS sheet curve both ways: the stock close (a
+     quick ease-in) would leave the receded page behind. */
+  .sheet-content[data-state="closed"] {
+    animation: sheet-slide-down 500ms var(--ease-spring) forwards;
+  }
+}
+
 /* lvh alone (see root layout) still stops short of the true screen edge
    by roughly Safari's own floating bottom toolbar height. That's *browser
    chrome*, not a device safe area, so it was never going to show up in
