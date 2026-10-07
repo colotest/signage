@@ -765,15 +765,27 @@ function RowInfo({ title, date, uploader }: { title: React.ReactNode; date: stri
 const ROW_SLOT_W = 48;
 const ROW_SLOT_H = 48;
 
-// A folder has no preview of its own — its icon takes the same slot, so it
-// lines up with the thumbnails above and below it.
-function RowIcon({ children, faded = false }: { children: React.ReactNode; faded?: boolean }) {
+// A folder has no preview of its own — its icon takes the same slot a
+// thumbnail would, so it lines up with the rows above and below it. Its
+// expand arrow rides inside that same slot rather than ahead of it, which
+// is what puts a folder's name on the same line as its sibling files'
+// instead of a chevron's width further in.
+function RowIcon({
+  children,
+  before,
+  faded = false,
+}: {
+  children: React.ReactNode;
+  before?: React.ReactNode;
+  faded?: boolean;
+}) {
   return (
     <span
-      className={cn("flex shrink-0 items-center justify-center text-[26px] leading-none", faded && "opacity-40")}
+      className={cn("flex shrink-0 items-center justify-center gap-0.5", faded && "opacity-40")}
       style={{ width: ROW_SLOT_W, height: ROW_SLOT_H }}
     >
-      {children}
+      {before}
+      <span className="text-[24px] leading-none">{children}</span>
     </span>
   );
 }
@@ -1037,15 +1049,20 @@ function FolderRow({
         collapsedClassName="-mr-2"
       />
       <div style={{ width: depth * 20 }} className="shrink-0" />
-      <button
-        type="button"
-        onClick={handleChevronClick}
-        className="no-press shrink-0 text-muted hover:text-foreground"
-        aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+      <RowIcon
+        before={
+          <button
+            type="button"
+            onClick={handleChevronClick}
+            className="no-press shrink-0 text-muted hover:text-foreground"
+            aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+          >
+            <Chevron open={isExpanded} />
+          </button>
+        }
       >
-        <Chevron open={isExpanded} />
-      </button>
-      <RowIcon>📁</RowIcon>
+        📁
+      </RowIcon>
 
       <RowInfo
         title={
@@ -1291,8 +1308,9 @@ function NewFolderRow({
       className="flex items-center gap-2 border-b border-border px-4 py-2 last:border-0"
     >
       <div style={{ width: depth * 20 + (parentId === null ? 0 : 20) }} className="shrink-0" />
-      <span aria-hidden className="h-4 w-4 shrink-0" />
-      <RowIcon faded>📁</RowIcon>
+      <RowIcon faded before={<span aria-hidden className="h-4 w-4 shrink-0" />}>
+        📁
+      </RowIcon>
 
       <div className="flex min-w-0 flex-1 items-center">
         <input
