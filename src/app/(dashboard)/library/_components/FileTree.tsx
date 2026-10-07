@@ -364,7 +364,10 @@ export function FileTree({
         onDragOver={handleNativeDragOver}
         onDragLeave={handleNativeDragLeave}
         onDrop={handleNativeDrop}
-        className={cn("relative -mx-5 -mt-20 -mb-5 flex min-h-0 flex-col sm:pt-10", className)}
+        // @container: the desktop columns below show by how wide the tree
+        // itself is, not the screen — the Playback Menu's popup is far
+        // narrower than the Library page on the same screen.
+        className={cn("@container relative -mx-5 -mt-20 -mb-5 flex min-h-0 flex-col sm:pt-10", className)}
       >
         {/* overflow-x-hidden (not scroll) is the point — file details and
             row actions live behind the "⋯" menu precisely so a narrow row
@@ -471,7 +474,7 @@ export function FileTree({
               active={sortKey}
               dir={sortDir}
               onClick={onToggleSort}
-              className="w-28 shrink-0"
+              className="hidden w-28 shrink-0 @3xl:inline-flex"
             />
             <SortButton
               label="Resolution & Duration"
@@ -479,7 +482,7 @@ export function FileTree({
               active={sortKey}
               dir={sortDir}
               onClick={onToggleSort}
-              className="w-44 shrink-0"
+              className="hidden w-44 shrink-0 @3xl:inline-flex"
             />
             <SortButton
               label="Uploaded By"
@@ -487,7 +490,7 @@ export function FileTree({
               active={sortKey}
               dir={sortDir}
               onClick={onToggleSort}
-              className="w-28 shrink-0"
+              className="hidden w-28 shrink-0 @5xl:inline-flex"
             />
             <SortButton
               label="Size"
@@ -495,7 +498,7 @@ export function FileTree({
               active={sortKey}
               dir={sortDir}
               onClick={onToggleSort}
-              className="w-20 shrink-0"
+              className="hidden w-20 shrink-0 @3xl:inline-flex"
             />
             <SortButton
               label="Date Added"
@@ -503,8 +506,10 @@ export function FileTree({
               active={sortKey}
               dir={sortDir}
               onClick={onToggleSort}
-              className="w-40 shrink-0 mr-9"
+              className="hidden w-40 shrink-0 @5xl:inline-flex"
             />
+            {/* Over the rows' "⋯" menu (28px), whichever columns show. */}
+            <span aria-hidden className="w-7 shrink-0" />
           </div>
         </div>
         {isDraggingOsFile && <UploadDropOverlay folderName={uploadTargetFolderName} />}
@@ -744,7 +749,7 @@ function RowInfo({ title, date, uploader }: { title: React.ReactNode; date: stri
   return (
     <div className="flex min-w-0 flex-1 flex-col items-start [&>*]:max-w-full">
       {title}
-      <span className="truncate text-[10px] text-muted sm:hidden">
+      <span className="truncate text-[10px] text-muted @5xl:hidden">
         {uploader ? `${uploader} · ${date}` : date}
       </span>
     </div>
@@ -759,8 +764,20 @@ function RowInfo({ title, date, uploader }: { title: React.ReactNode; date: stri
 // the name column flexes: a row gap 2px wider than the bar's cost the name
 // column 2px per column, which is what left file and deck rows sitting up
 // to 10px left of their headers while folder rows looked right.
-function RowColumn({ width, children }: { width: string; children?: React.ReactNode }) {
-  return <span className={cn("hidden shrink-0 truncate text-[12px] text-muted sm:block", width)}>{children}</span>;
+//
+// They show by the tree's own width (it's an @container), not the
+// screen's: together they take ~800px before the name gets any, so in a
+// narrower tree (the Playback Menu's desktop popup) they'd squeeze the
+// name column down to nothing. Kind, Resolution & Duration and Size show
+// from 768px; the `wide` ones (Uploaded By, Date Added) only from 1024px,
+// with RowInfo's stacked uploader/date line standing in for them below
+// that. The sort bar's buttons follow the same breakpoints.
+function RowColumn({ width, wide = false, children }: { width: string; wide?: boolean; children?: React.ReactNode }) {
+  return (
+    <span className={cn("hidden shrink-0 truncate text-[12px] text-muted", wide ? "@5xl:block" : "@3xl:block", width)}>
+      {children}
+    </span>
+  );
 }
 
 export function ThreeDotIcon({ className }: { className?: string }) {
@@ -1032,11 +1049,11 @@ function FolderRow({
 
       <RowColumn width="w-28">Folder</RowColumn>
       <RowColumn width="w-44" />
-      <RowColumn width="w-28">{creator}</RowColumn>
+      <RowColumn width="w-28" wide>{creator}</RowColumn>
       <RowColumn width="w-20">
         {itemCount} item{itemCount === 1 ? "" : "s"}
       </RowColumn>
-      <RowColumn width="w-40">{formatDate(folder.created_at)}</RowColumn>
+      <RowColumn width="w-40" wide>{formatDate(folder.created_at)}</RowColumn>
 
       <RowMenu label={`${folder.name} actions`}>
         <MenuInfo>
@@ -1159,9 +1176,9 @@ function FileRow({
 
       <RowColumn width="w-28">{kindLabel(item)}</RowColumn>
       <RowColumn width="w-44">{dimensions}</RowColumn>
-      <RowColumn width="w-28">{uploader}</RowColumn>
+      <RowColumn width="w-28" wide>{uploader}</RowColumn>
       <RowColumn width="w-20">{item.media_type === "page" ? null : formatBytes(item.size_bytes)}</RowColumn>
-      <RowColumn width="w-40">{formatDate(item.created_at)}</RowColumn>
+      <RowColumn width="w-40" wide>{formatDate(item.created_at)}</RowColumn>
 
       <RowMenu label={`${item.name} actions`}>
         <MenuInfo>{kindLabel(item)}</MenuInfo>
@@ -1305,9 +1322,9 @@ function NewFolderRow({
 
       <RowColumn width="w-28">Folder</RowColumn>
       <RowColumn width="w-44" />
-      <RowColumn width="w-28" />
+      <RowColumn width="w-28" wide />
       <RowColumn width="w-20" />
-      <RowColumn width="w-40" />
+      <RowColumn width="w-40" wide />
       {/* Keeps the columns clear of the row menu's own width, which this
           row doesn't have. */}
       <span aria-hidden className="w-7 shrink-0" />
@@ -1461,9 +1478,9 @@ function DeckRow({
           `${deck.pages.length} ${deck.pages.length === 1 ? "page" : "pages"}`,
         )}
       </RowColumn>
-      <RowColumn width="w-28">{uploader}</RowColumn>
+      <RowColumn width="w-28" wide>{uploader}</RowColumn>
       <RowColumn width="w-20">{formatBytes(deck.size_bytes)}</RowColumn>
-      <RowColumn width="w-40">{formatDate(deck.created_at)}</RowColumn>
+      <RowColumn width="w-40" wide>{formatDate(deck.created_at)}</RowColumn>
 
       <RowMenu label={`${deck.name} actions`}>
         <MenuInfo>
