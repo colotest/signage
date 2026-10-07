@@ -176,7 +176,7 @@ function PlaylistEntryRow({
 
       {/* Same slot the file browser's rows use, so a file looks the same
           wherever it's listed. */}
-      <MediaThumbSlot item={entry.media_item} slotWidth={64} slotHeight={48} />
+      <MediaThumbSlot item={entry.media_item} slotWidth={48} slotHeight={48} />
 
       <span className="min-w-0 flex-1 truncate text-[14px]">{displayName(entry.media_item.name)}</span>
 

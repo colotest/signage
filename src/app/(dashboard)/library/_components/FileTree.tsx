@@ -759,7 +759,10 @@ function RowInfo({ title, date, uploader }: { title: React.ReactNode; date: stri
 // Every row leads with a slot this size, whatever sits in it — a
 // thumbnail, a folder's icon, the new-folder row's faded one — so names
 // start at the same place down the list and all rows stand the same height.
-const ROW_SLOT_W = 64;
+// Square, so a wide picture is held to the same width a tall one is held
+// to in height: every preview then sits within the same bounds, however
+// it's shaped.
+const ROW_SLOT_W = 48;
 const ROW_SLOT_H = 48;
 
 // A folder has no preview of its own — its icon takes the same slot, so it
