@@ -284,13 +284,17 @@ function useSheetDrag(
 
 // How far (0–1) the sheet has been pulled down. The receded page comes
 // forward by that much (the same transform as html[data-sheet-open]
-// .app-shell, eased back towards none) and the dimming lifts with it. 0
-// hands both back to the stylesheet.
+// .app-shell, eased back towards none), the dimming lifts with it, and the
+// status bar's tint heads back towards the header's colour. 0 hands all
+// three back to the stylesheet.
 function setDragProgress(overlay: HTMLElement | null, p: number) {
   const shell = document.querySelector<HTMLElement>(".app-shell");
   p = Math.min(1, p);
-  if (shell) shell.style.transform = p ? `translateY(${12 * (1 - p)}px) scale(${0.93 + 0.07 * p})` : "";
+  if (shell) shell.style.transform = p ? `translateY(${8 * (1 - p)}px) scale(${0.93 + 0.07 * p})` : "";
   if (overlay) overlay.style.opacity = p ? `${1 - p}` : "";
+  if (statusTint) {
+    statusTint.style.backgroundColor = p ? `color-mix(in srgb, var(--surface) ${Math.round(p * 100)}%, #000)` : "";
+  }
 }
 
 // A sheet presented on a phone, as far as the rest of the page is
@@ -306,17 +310,17 @@ function setDragProgress(overlay: HTMLElement | null, p: number) {
 //   anything absolute, like this sheet and its dimming, doesn't count, nor
 //   do pseudo-elements. Without one it falls back to <body>'s background,
 //   which is also what it fills behind its toolbar with while things move.
-//   So: a real fixed strip, black, over the top edge — exactly the gap above
-//   the receded page, so it changes nothing you can see — and <body> left a
-//   colour that never shows as a fill (globals.css).
+//   So: a real fixed strip over the top edge, black but barely visible
+//   (.sheet-status-tint), and <body> left a colour that never shows as a
+//   fill (globals.css).
 const SHEET_CLOSE_MS = 500;
 let dismissTimer: number | undefined;
 let statusTint: HTMLElement | null = null;
 
 function presentSheet() {
   window.clearTimeout(dismissTimer);
-  // The strip goes in first, and is styled, so that it fades in from
-  // transparent rather than appearing at once.
+  // The strip goes in first, and is styled, so that its colour turns from
+  // the header's to black rather than being black at once.
   if (!statusTint) {
     statusTint = document.createElement("div");
     statusTint.className = "sheet-status-tint";
@@ -337,6 +341,7 @@ function dismissSheet() {
   // From wherever a drag left it, the page eases back from there.
   const shell = document.querySelector<HTMLElement>(".app-shell");
   if (shell) shell.style.transform = "";
+  statusTint?.style.removeProperty("background-color");
   dismissTimer = window.setTimeout(() => {
     root.removeAttribute("data-sheet-shown");
     statusTint?.remove();

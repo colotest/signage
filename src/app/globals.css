@@ -498,7 +498,7 @@ body {
    run on its own: no border-radius or clipping on the page, which would
    have it repainted, playing previews and all, for every frame. */
 .sheet-content {
-  --sheet-top: 24px;
+  --sheet-top: 20px;
   --sheet-radius: 32px;
 }
 
@@ -508,7 +508,7 @@ body {
   }
 
   html[data-sheet-open] .app-shell {
-    transform: translateY(12px) scale(0.93);
+    transform: translateY(8px) scale(0.93);
   }
 
   /* The card's rounded top corners: black quarter-circle masks over the
@@ -562,27 +562,30 @@ body {
 
   /* What Safari tints its status bar after while a sheet's open (see
      presentSheet): fixed, full width and over 10px deep at the top edge.
-     Exactly the gap above the receded card (translateY(12px) above), and
-     over the dimming, which leaves it black there anyway. Fades in and out
-     with the card moving away from the top edge, and out quicker as it
-     comes back up, so it never shows over the page itself. Hit-testable
-     (pointer-events: auto, as the open dialog makes <body> none): Safari
-     finds it by hit-testing, which would otherwise pass straight through.
-     A tap on it closes the sheet, as one on the dimming does. */
+     Safari reads its background-color whatever its opacity, as long as
+     that's 0.1 or more — so at 0.15 it does its job while all but invisible
+     over whatever's there. Its colour goes from the header's (what the
+     status bar shows otherwise) to black as the sheet comes up, and
+     straight back as it goes, so the status bar follows the page receding
+     and returning (Safari snaps rather than fading, but follows along as
+     the colour changes). Hit-testable (pointer-events: auto, as the open
+     dialog makes <body> none): Safari finds it by hit-testing, which would
+     otherwise pass straight through. A tap on it closes the sheet, as one
+     on the dimming does. */
   .sheet-status-tint {
     position: fixed;
     inset: 0 0 auto;
     z-index: 45;
-    height: 12px;
-    background: #000;
+    height: 11px;
+    background: var(--surface);
     pointer-events: auto;
-    opacity: 0;
-    transition: opacity 150ms ease-out;
+    opacity: 0.15;
+    transition: background-color 350ms var(--ease-spring);
   }
 
   html[data-sheet-open] .sheet-status-tint {
-    opacity: 1;
-    transition-duration: 250ms;
+    background: #000;
+    transition-duration: 500ms;
   }
 
   html[data-sheet-shown] .app-shell * {
@@ -615,7 +618,8 @@ body {
   }
 
   html[data-sheet-dragging] .app-shell,
-  html[data-sheet-dragging] .sheet-overlay {
+  html[data-sheet-dragging] .sheet-overlay,
+  html[data-sheet-dragging] .sheet-status-tint {
     transition: none;
   }
 
