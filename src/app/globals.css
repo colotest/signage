@@ -493,9 +493,18 @@ body {
    behind it dims — all the way to black by the time the sheet is up — then
    comes back as the sheet goes. Driven by attributes Sheet sets on <html>
    (presentSheet there), and by inline styles while the sheet's pulled down.
-   Only opacity, transforms and one 11px strip's colour ever animate here. */
+   Only opacity, transforms and one 11px strip's colour ever animate here.
+   --sheet-top: as high as the sheet can go — right up to the status bar's
+   tint strip (.sheet-status-tint), which has to be the first thing Safari
+   finds at the top edge, and over 10px deep, to count. Any higher and the
+   sheet would cover it (Safari then ignores the sheet, absolute as it is,
+   and tints after <body>), or the strip would have to lie over the sheet,
+   showing as a grey band across it. */
+:root {
+  --sheet-top: 11px;
+}
+
 .sheet-content {
-  --sheet-top: 20px;
   --sheet-radius: 32px;
 }
 
@@ -525,7 +534,7 @@ body {
     position: fixed;
     inset: 0 0 auto;
     z-index: 45;
-    height: 11px;
+    height: var(--sheet-top);
     background: var(--surface);
     pointer-events: auto;
     opacity: 0.15;
