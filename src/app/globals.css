@@ -492,37 +492,69 @@ body {
    of the top of the screen, with large rounded top corners, and the page
    behind it recedes — shrinking back into a rounded card on black, its top
    edge peeking out above the sheet — then comes forward again as the sheet
-   goes. --sheet-drag (0–1, set by Sheet while the sheet's pulled down) brings
-   it forward part way, and lifts the dimming with it. */
+   goes. Driven by attributes Sheet sets on <html> (presentSheet there), and
+   by inline styles while the sheet's pulled down.
+   Only transform and opacity ever animate here, which the compositor can
+   run on its own: no border-radius or clipping on the page, which would
+   have it repainted, playing previews and all, for every frame. */
 .sheet-content {
   --sheet-top: 20px;
   --sheet-radius: 32px;
 }
 
-.sheet-overlay {
-  opacity: calc(1 - var(--sheet-drag, 0));
-}
-
 @media (max-width: 639.98px) {
   .app-shell {
-    overflow: hidden;
     transform-origin: 50% 0;
   }
 
-  html:has(.sheet-content[data-state="open"]) .app-shell {
-    transform: translateY(calc(8px * (1 - var(--sheet-drag, 0)))) scale(calc(0.93 + 0.07 * var(--sheet-drag, 0)));
-    border-radius: calc(22px * (1 - var(--sheet-drag, 0)));
+  html[data-sheet-open] .app-shell {
+    transform: translateY(8px) scale(0.93);
   }
 
-  /* Black around the receded card at once; back to normal only once the
-     card has grown back over it. */
-  body {
-    transition: background-color 0s linear 500ms;
+  /* The card's rounded top corners: black quarter-circle masks over the
+     page's own square ones, faded in rather than the page itself being
+     re-clipped. 24px, so they read as 22px once the page is scaled down. */
+  .app-shell::before,
+  .app-shell::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    z-index: 40;
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+    opacity: 0;
   }
 
-  html:has(.sheet-content[data-state="open"]) body {
+  .app-shell::before {
+    left: 0;
+    background: radial-gradient(circle at 100% 100%, transparent 23.5px, #000 24px);
+  }
+
+  .app-shell::after {
+    right: 0;
+    background: radial-gradient(circle at 0 100%, transparent 23.5px, #000 24px);
+  }
+
+  html[data-sheet-open] .app-shell::before,
+  html[data-sheet-open] .app-shell::after {
+    opacity: 1;
+  }
+
+  /* Not sticky while receded, so Safari tints its status bar after the
+     black behind the page rather than the white header (see Sheet). The
+     page never scrolls, so it stays exactly where it was. */
+  html[data-sheet-open] .app-shell > header {
+    position: relative;
+  }
+
+  html[data-sheet-shown] body {
     background: #000;
-    transition-delay: 0s;
+  }
+
+  html[data-sheet-shown] .app-shell * {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 
   .sheet-overlay[data-state="open"] {
@@ -536,12 +568,21 @@ body {
 
 @media (max-width: 639.98px) and (prefers-reduced-motion: no-preference) {
   .app-shell {
-    transition:
-      transform 500ms var(--ease-spring),
-      border-radius 500ms var(--ease-spring);
+    transition: transform 500ms var(--ease-spring);
   }
 
-  html[data-sheet-dragging] .app-shell {
+  .app-shell::before,
+  .app-shell::after {
+    transition: opacity 500ms var(--ease-spring);
+  }
+
+  /* Easing back after a drag that didn't close it. */
+  .sheet-overlay {
+    transition: opacity 450ms var(--ease-spring);
+  }
+
+  html[data-sheet-dragging] .app-shell,
+  html[data-sheet-dragging] .sheet-overlay {
     transition: none;
   }
 

@@ -22,6 +22,9 @@ import { MenuContainerContext } from "./Menu";
 // phone it always slides up from the bottom edge, stopping just short of the
 // top, while the page behind recedes into a card (app-shell in globals.css);
 // it can be pulled back down by its header to dismiss it (useSheetDrag).
+// The page's part in that is driven by attributes on <html> (presentSheet),
+// not by CSS watching for the sheet, so nothing has to be re-matched across
+// the page while it animates.
 // Radix keeps it mounted until the exit animation ends.
 export function Sheet({
   open,
@@ -58,7 +61,10 @@ export function Sheet({
   const triggerRef = useRef<HTMLElement | null>(null);
   // Menus opened from inside render into the popup itself (see Menu).
   const [contentNode, setContentNode] = useState<HTMLDivElement | null>(null);
-  const dragHandlers = useSheetDrag(contentRef, () => onOpenChange(false));
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const dragHandlers = useSheetDrag(contentRef, overlayRef, () => onOpenChange(false));
+  // Whether this sheet is the one presented on a phone (see presentSheet).
+  const presentedRef = useRef(false);
 
   // On open: the content's ref attaches in the same commit it mounts, before
   // the first frame of its animation, so the origin is in place in time.
@@ -75,7 +81,13 @@ export function Sheet({
     contentRef.current = node;
     setContentNode(node);
     if (!node) return;
-    setDragProgress(0);
+    // On a phone: the page recedes and Safari's bars go dark from this very
+    // frame, and the blurs inside stay off while the sheet slides up.
+    if (!isDesktop()) {
+      presentedRef.current = true;
+      presentSheet();
+      if (prefersMotion()) node.setAttribute("data-animating", "");
+    }
     const trigger = isDesktop() ? recentTrigger() : null;
     triggerRef.current = trigger;
     const launch = canLaunch(trigger);
@@ -100,6 +112,11 @@ export function Sheet({
   useLayoutEffect(() => {
     const node = contentRef.current;
     if (open || !node) return;
+    if (presentedRef.current) {
+      presentedRef.current = false;
+      dismissSheet();
+      if (prefersMotion()) node.setAttribute("data-animating", "");
+    }
     landLaunch(triggerRef.current);
     const origin = measureOrigin(node, triggerRef.current, false);
     if (origin && prefersMotion()) {
@@ -108,20 +125,13 @@ export function Sheet({
     }
   }, [open]);
 
-  // On a phone, Safari's status bar goes black along with the backdrop the
-  // page recedes onto, instead of staying a white block above it.
-  useEffect(() => {
-    if (!open || isDesktop()) return;
-    darkenStatusBar();
-    return restoreStatusBar;
-  }, [open]);
-
   // Never leave a button stuck enlarged, or a ghost on screen, however the
   // popup goes away.
   useEffect(
     () => () => {
       landLaunch(triggerRef.current);
       clearGhosts();
+      if (presentedRef.current) dismissSheet();
     },
     [],
   );
@@ -141,11 +151,13 @@ export function Sheet({
             covers the whole screen, and a full-screen backdrop blur under it
             would still be recomputed for every frame of whatever's playing
             in the screen previews behind. */}
-        <Dialog.Overlay className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 sm:fixed sm:backdrop-blur-sm" />
+        <Dialog.Overlay ref={overlayRef} className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 sm:fixed sm:backdrop-blur-sm" />
         <Dialog.Content
           ref={attachContent}
           onAnimationEnd={(e) => {
-            if (e.target !== e.currentTarget || e.animationName !== "sheet-grow") return;
+            if (e.target !== e.currentTarget) return;
+            if (e.animationName === "sheet-slide-up") e.currentTarget.removeAttribute("data-animating");
+            if (e.animationName !== "sheet-grow") return;
             landLaunch(triggerRef.current);
             e.currentTarget.removeAttribute("data-animating");
           }}
@@ -179,13 +191,6 @@ export function Sheet({
           )}
         >
           <MenuContainerContext.Provider value={contentNode}>
-            {/* The grabber, as on an iOS sheet: a hint that the header can be
-                pulled down. pointer-events-none, so a press on it lands on
-                the header, which does the dragging. */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute left-1/2 top-[5px] z-30 h-[5px] w-9 -translate-x-1/2 rounded-full bg-muted/50 sm:hidden"
-            />
             {/* touch-none on a phone: a pull on the header moves the sheet,
                 not anything Safari would otherwise do with the gesture. */}
             <div
@@ -214,12 +219,18 @@ export function Sheet({
 
 // Pull-down-to-dismiss on a phone, as on an iOS sheet: dragged by its
 // header, the sheet follows the finger down (and resists being pulled up),
-// with the page behind coming forward out of its receded state as it goes.
+// with the page behind coming forward out of its receded state, and the
+// dimming lifting, as it goes — set straight on those two elements, the only
+// ones that change, so a move restyles nothing else.
 // Let go far enough or fast enough and it closes from where it is; otherwise
 // it springs back. Moved via the separate `translate` property, which
 // composes with the open/close animations' `transform` — so a close plays
 // on from the dragged position rather than jumping back first.
-function useSheetDrag(contentRef: RefObject<HTMLDivElement | null>, close: () => void) {
+function useSheetDrag(
+  contentRef: RefObject<HTMLDivElement | null>,
+  overlayRef: RefObject<HTMLDivElement | null>,
+  close: () => void,
+) {
   const drag = useRef<{ id: number; startY: number; lastY: number; lastT: number; v: number; offset: number } | null>(
     null,
   );
@@ -248,7 +259,7 @@ function useSheetDrag(contentRef: RefObject<HTMLDivElement | null>, close: () =>
     // Upwards it gives only a little, and less the further it's pulled.
     d.offset = dy >= 0 ? dy : -8 * Math.log1p(-dy / 24);
     node.style.translate = `0 ${d.offset}px`;
-    setDragProgress(Math.max(0, d.offset) / window.innerHeight);
+    setDragProgress(overlayRef.current, Math.max(0, d.offset) / window.innerHeight);
   }
 
   function onPointerEnd(e: ReactPointerEvent<HTMLDivElement>) {
@@ -265,40 +276,63 @@ function useSheetDrag(contentRef: RefObject<HTMLDivElement | null>, close: () =>
     }
     node.style.transition = "translate 450ms var(--ease-spring)";
     node.style.translate = "";
-    setDragProgress(0);
+    setDragProgress(overlayRef.current, 0);
   }
 
   return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
 }
 
-// How far (0–1) the sheet has been pulled down: the receded page behind it
-// and the dimming over that follow it (globals.css).
-function setDragProgress(p: number) {
-  document.documentElement.style.setProperty("--sheet-drag", `${Math.min(1, p)}`);
+// How far (0–1) the sheet has been pulled down. The receded page comes
+// forward by that much (the same transform as html[data-sheet-open]
+// .app-shell, eased back towards none) and the dimming lifts with it. 0
+// hands both back to the stylesheet.
+function setDragProgress(overlay: HTMLElement | null, p: number) {
+  const shell = document.querySelector<HTMLElement>(".app-shell");
+  p = Math.min(1, p);
+  if (shell) shell.style.transform = p ? `translateY(${8 * (1 - p)}px) scale(${0.93 + 0.07 * p})` : "";
+  if (overlay) overlay.style.opacity = p ? `${1 - p}` : "";
 }
 
-// Safari paints its status bar in the page's theme-color (root layout) — it
-// can't be made see-through from a regular tab — so while a sheet's open
-// that turns black, matching the backdrop the page recedes onto
-// (globals.css). Straight away on open, as the backdrop shows from the first
-// frame; back only once the close (500ms) has the page covering it again.
+// A sheet presented on a phone, as far as the rest of the page is
+// concerned (globals.css):
+// - data-sheet-open: the page recedes into a card, and the header stops
+//   being sticky. Safari tints its status bar after a sticky or fixed
+//   element at the top edge — the white header — and with none there it
+//   takes the page's own background instead, black by then.
+// - data-sheet-shown: from the moment it opens until its close has played
+//   out (500ms) — black behind the receded page, and the page's blurs off,
+//   as nobody can see them under the dimming and they'd otherwise be
+//   re-rendered every frame the page moves.
+// theme-color goes black for the same span, for the Safaris that still
+// tint after it.
+const SHEET_CLOSE_MS = 500;
 const savedThemeColors = new Map<HTMLMetaElement, string>();
-let statusBarTimer: number | undefined;
+let dismissTimer: number | undefined;
 
-function darkenStatusBar() {
-  window.clearTimeout(statusBarTimer);
+function presentSheet() {
+  window.clearTimeout(dismissTimer);
+  const root = document.documentElement;
+  root.setAttribute("data-sheet-open", "");
+  root.setAttribute("data-sheet-shown", "");
   document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
     if (!savedThemeColors.has(meta)) savedThemeColors.set(meta, meta.content);
     meta.content = "#000000";
   });
 }
 
-function restoreStatusBar() {
-  window.clearTimeout(statusBarTimer);
-  statusBarTimer = window.setTimeout(() => {
+function dismissSheet() {
+  window.clearTimeout(dismissTimer);
+  const root = document.documentElement;
+  root.removeAttribute("data-sheet-open");
+  root.removeAttribute("data-sheet-dragging");
+  // From wherever a drag left it, the page eases back from there.
+  const shell = document.querySelector<HTMLElement>(".app-shell");
+  if (shell) shell.style.transform = "";
+  dismissTimer = window.setTimeout(() => {
+    root.removeAttribute("data-sheet-shown");
     savedThemeColors.forEach((content, meta) => (meta.content = content));
     savedThemeColors.clear();
-  }, 500);
+  }, SHEET_CLOSE_MS);
 }
 
 function isDesktop() {
