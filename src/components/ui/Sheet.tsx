@@ -289,35 +289,44 @@ function useSheetDrag(
 function setDragProgress(overlay: HTMLElement | null, p: number) {
   const shell = document.querySelector<HTMLElement>(".app-shell");
   p = Math.min(1, p);
-  if (shell) shell.style.transform = p ? `translateY(${8 * (1 - p)}px) scale(${0.93 + 0.07 * p})` : "";
+  if (shell) shell.style.transform = p ? `translateY(${12 * (1 - p)}px) scale(${0.93 + 0.07 * p})` : "";
   if (overlay) overlay.style.opacity = p ? `${1 - p}` : "";
 }
 
 // A sheet presented on a phone, as far as the rest of the page is
 // concerned (globals.css):
-// - data-sheet-open: the page recedes into a card, and the header stops
-//   being sticky. Safari tints its status bar after a sticky or fixed
-//   element at the top edge — the white header — and with none there it
-//   takes the page's own background instead, black by then.
+// - data-sheet-open: the page recedes into a card.
 // - data-sheet-shown: from the moment it opens until its close has played
 //   out (500ms) — black behind the receded page, and the page's blurs off,
 //   as nobody can see them under the dimming and they'd otherwise be
 //   re-rendered every frame the page moves.
-// theme-color goes black for the same span, for the Safaris that still
-// tint after it.
+// - The status bar: iOS 26 Safari ignores theme-color, and tints its bars
+//   after whatever fixed or sticky element it finds 4px in from the middle
+//   of each screen edge (at least 10px deep and nearly full width) —
+//   anything absolute, like this sheet and its dimming, doesn't count, nor
+//   do pseudo-elements. Without one it falls back to <body>'s background,
+//   which is also what it fills behind its toolbar with while things move.
+//   So: a real fixed strip, black, over the top edge — exactly the gap above
+//   the receded page, so it changes nothing you can see — and <body> left a
+//   colour that never shows as a fill (globals.css).
 const SHEET_CLOSE_MS = 500;
-const savedThemeColors = new Map<HTMLMetaElement, string>();
 let dismissTimer: number | undefined;
+let statusTint: HTMLElement | null = null;
 
 function presentSheet() {
   window.clearTimeout(dismissTimer);
+  // The strip goes in first, and is styled, so that it fades in from
+  // transparent rather than appearing at once.
+  if (!statusTint) {
+    statusTint = document.createElement("div");
+    statusTint.className = "sheet-status-tint";
+    statusTint.setAttribute("aria-hidden", "true");
+    document.body.append(statusTint);
+    void getComputedStyle(statusTint).opacity;
+  }
   const root = document.documentElement;
   root.setAttribute("data-sheet-open", "");
   root.setAttribute("data-sheet-shown", "");
-  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
-    if (!savedThemeColors.has(meta)) savedThemeColors.set(meta, meta.content);
-    meta.content = "#000000";
-  });
 }
 
 function dismissSheet() {
@@ -330,8 +339,8 @@ function dismissSheet() {
   if (shell) shell.style.transform = "";
   dismissTimer = window.setTimeout(() => {
     root.removeAttribute("data-sheet-shown");
-    savedThemeColors.forEach((content, meta) => (meta.content = content));
-    savedThemeColors.clear();
+    statusTint?.remove();
+    statusTint = null;
   }, SHEET_CLOSE_MS);
 }
 
