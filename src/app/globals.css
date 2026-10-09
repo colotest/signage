@@ -490,88 +490,37 @@ body {
 
 /* On a phone, popups present as iOS page sheets: the sheet stops just short
    of the top of the screen, with large rounded top corners, and the page
-   behind it recedes — shrinking back into a rounded card on black, its top
-   edge peeking out above the sheet — then comes forward again as the sheet
-   goes. Driven by attributes Sheet sets on <html> (presentSheet there), and
-   by inline styles while the sheet's pulled down.
-   Only transform and opacity ever animate here, which the compositor can
-   run on its own: no border-radius or clipping on the page, which would
-   have it repainted, playing previews and all, for every frame. */
+   behind it dims — all the way to black by the time the sheet is up — then
+   comes back as the sheet goes. Driven by attributes Sheet sets on <html>
+   (presentSheet there), and by inline styles while the sheet's pulled down.
+   Only opacity, transforms and one 11px strip's colour ever animate here. */
 .sheet-content {
   --sheet-top: 20px;
   --sheet-radius: 32px;
 }
 
 @media (max-width: 639.98px) {
-  .app-shell {
-    transform-origin: 50% 0;
-  }
-
-  html[data-sheet-open] .app-shell {
-    transform: translateY(8px) scale(0.93);
-  }
-
-  /* The card's rounded top corners: black quarter-circle masks over the
-     page's own square ones, faded in rather than the page itself being
-     re-clipped. 24px, so they read as 22px once the page is scaled down. */
-  .app-shell::before,
-  .app-shell::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    z-index: 40;
-    width: 24px;
-    height: 24px;
-    pointer-events: none;
-    opacity: 0;
-  }
-
-  .app-shell::before {
-    left: 0;
-    background: radial-gradient(circle at 100% 100%, transparent 23.5px, #000 24px);
-  }
-
-  .app-shell::after {
-    right: 0;
-    background: radial-gradient(circle at 0 100%, transparent 23.5px, #000 24px);
-  }
-
-  html[data-sheet-open] .app-shell::before,
-  html[data-sheet-open] .app-shell::after {
-    opacity: 1;
-  }
-
-  /* Black behind the receded page — as a layer of its own, not <body>'s
-     background: Safari fills the strip behind its toolbar with that while
-     the sheet slides (see presentSheet in Sheet), which in black blotted
-     out the sheet coming up beneath it. In the sheet's own colour, the
-     fill and the sheet are one. Negative z-index: under the page, which
-     covers it everywhere but the gaps around the receded card. */
+  /* Safari fills the strip behind its toolbar with <body>'s background
+     while the sheet slides (see presentSheet in Sheet). In the sheet's own
+     colour, the fill and the sheet are one. */
   html[data-sheet-shown] body {
     background: var(--surface);
-  }
-
-  html[data-sheet-shown] body::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto;
-    z-index: -1;
-    height: 109lvh;
-    background: #000;
   }
 
   /* What Safari tints its status bar after while a sheet's open (see
      presentSheet): fixed, full width and over 10px deep at the top edge.
      Safari reads its background-color whatever its opacity, as long as
      that's 0.1 or more — so at 0.15 it does its job while all but invisible
-     over whatever's there. Its colour goes from the header's (what the
-     status bar shows otherwise) to black as the sheet comes up, and
-     straight back as it goes, so the status bar follows the page receding
-     and returning (Safari snaps rather than fading, but follows along as
-     the colour changes). Hit-testable (pointer-events: auto, as the open
-     dialog makes <body> none): Safari finds it by hit-testing, which would
-     otherwise pass straight through. A tap on it closes the sheet, as one
-     on the dimming does. */
+     over whatever's there. Its colour is the header's (what the status bar
+     shows otherwise) dimmed exactly as the page is: black over a colour at
+     opacity t is that colour mixed with black by t, so with the same
+     timing as the dimming (500ms, ease-spring, both ways) it's the header's
+     current hue all along — true black once the sheet's up. Safari snaps
+     rather than fading, but follows along as the colour changes.
+     Hit-testable (pointer-events: auto, as the open dialog makes <body>
+     none): Safari finds it by hit-testing, which would otherwise pass
+     straight through. A tap on it closes the sheet, as one on the dimming
+     does. */
   .sheet-status-tint {
     position: fixed;
     inset: 0 0 auto;
@@ -580,14 +529,14 @@ body {
     background: var(--surface);
     pointer-events: auto;
     opacity: 0.15;
-    transition: background-color 350ms var(--ease-spring);
   }
 
   html[data-sheet-open] .sheet-status-tint {
     background: #000;
-    transition-duration: 500ms;
   }
 
+  /* The page's blurs are lost under the dimming anyway, and would otherwise
+     be re-rendered every frame it changes. */
   html[data-sheet-shown] .app-shell * {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
@@ -603,28 +552,22 @@ body {
 }
 
 @media (max-width: 639.98px) and (prefers-reduced-motion: no-preference) {
-  .app-shell {
-    transition: transform 500ms var(--ease-spring);
+  /* The dimming eases back after a drag that didn't close it; the tint
+     follows it, in step, everywhere. */
+  .sheet-overlay,
+  .sheet-status-tint {
+    transition:
+      opacity 500ms var(--ease-spring),
+      background-color 500ms var(--ease-spring);
   }
 
-  .app-shell::before,
-  .app-shell::after {
-    transition: opacity 500ms var(--ease-spring);
-  }
-
-  /* Easing back after a drag that didn't close it. */
-  .sheet-overlay {
-    transition: opacity 450ms var(--ease-spring);
-  }
-
-  html[data-sheet-dragging] .app-shell,
   html[data-sheet-dragging] .sheet-overlay,
   html[data-sheet-dragging] .sheet-status-tint {
     transition: none;
   }
 
   /* The slower, smoother iOS sheet curve both ways: the stock close (a
-     quick ease-in) would leave the receded page behind. */
+     quick ease-in) would leave the dimming behind. */
   .sheet-content[data-state="closed"] {
     animation: sheet-slide-down 500ms var(--ease-spring) forwards;
   }

@@ -20,7 +20,7 @@ import { MenuContainerContext } from "./Menu";
 // button that opened it and shrinks back into it on close (data-origin, see
 // measureOrigin), or slides up when there's no such button to hand. On a
 // phone it always slides up from the bottom edge, stopping just short of the
-// top, while the page behind recedes into a card (app-shell in globals.css);
+// top, while the page behind dims to black (globals.css);
 // it can be pulled back down by its header to dismiss it (useSheetDrag).
 // The page's part in that is driven by attributes on <html> (presentSheet),
 // not by CSS watching for the sheet, so nothing has to be re-matched across
@@ -81,7 +81,7 @@ export function Sheet({
     contentRef.current = node;
     setContentNode(node);
     if (!node) return;
-    // On a phone: the page recedes and Safari's bars go dark from this very
+    // On a phone: the page dims and Safari's bars go dark from this very
     // frame, and the blurs inside stay off while the sheet slides up.
     if (!isDesktop()) {
       presentedRef.current = true;
@@ -150,8 +150,14 @@ export function Sheet({
             Blurred only as the desktop's centred popup: on a phone the sheet
             covers the whole screen, and a full-screen backdrop blur under it
             would still be recomputed for every frame of whatever's playing
-            in the screen previews behind. */}
-        <Dialog.Overlay ref={overlayRef} className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black/40 sm:fixed sm:backdrop-blur-sm" />
+            in the screen previews behind.
+            Black outright on a phone, faded in: the page dims all the way
+            to black as the sheet comes up, Safari's status bar along with it
+            (see presentSheet). */}
+        <Dialog.Overlay
+          ref={overlayRef}
+          className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black sm:fixed sm:bg-black/40 sm:backdrop-blur-sm"
+        />
         <Dialog.Content
           ref={attachContent}
           onAnimationEnd={(e) => {
@@ -181,8 +187,8 @@ export function Sheet({
             // absolute, and down to 109lvh: as the overlay — on a phone it
             // runs right down behind Safari's toolbar, showing what's there,
             // with the content keeping its own clearance from it. From the
-            // top it stops just short, as an iOS page sheet does, leaving
-            // the receded page's top edge showing above its rounded corners.
+            // top it stops just short, as an iOS page sheet does, leaving the
+            // dimmed page showing above its rounded corners.
             "sheet-content absolute z-50 sm:fixed flex flex-col overflow-hidden bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
             "inset-x-0 top-[var(--sheet-top)] h-[calc(109lvh-var(--sheet-top))] rounded-t-[var(--sheet-radius)]",
             "sm:inset-auto sm:h-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
@@ -219,9 +225,9 @@ export function Sheet({
 
 // Pull-down-to-dismiss on a phone, as on an iOS sheet: dragged by its
 // header, the sheet follows the finger down (and resists being pulled up),
-// with the page behind coming forward out of its receded state, and the
-// dimming lifting, as it goes — set straight on those two elements, the only
-// ones that change, so a move restyles nothing else.
+// with the dimming over the page lifting, and the status bar's tint with it,
+// as it goes — set straight on those two elements, the only ones that
+// change, so a move restyles nothing else.
 // Let go far enough or fast enough and it closes from where it is; otherwise
 // it springs back. Moved via the separate `translate` property, which
 // composes with the open/close animations' `transform` — so a close plays
@@ -282,28 +288,39 @@ function useSheetDrag(
   return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
 }
 
-// How far (0–1) the sheet has been pulled down. The receded page comes
-// forward by that much (the same transform as html[data-sheet-open]
-// .app-shell, eased back towards none), the dimming lifts with it, and the
-// status bar's tint heads back towards the header's colour. 0 hands all
-// three back to the stylesheet.
+// How far (0–1) the sheet has been pulled down: the dimming lifts by that
+// much, and the status bar's tint (the header's colour, dimmed the same
+// way) with it. 0 hands both back to the stylesheet.
+// The tint is mixed here as plain rgb(), not color-mix(): easing back from a
+// color-mix() would be interpolated in a different colour space (oklab)
+// from the dimming's, and drift off its hue on the way.
 function setDragProgress(overlay: HTMLElement | null, p: number) {
-  const shell = document.querySelector<HTMLElement>(".app-shell");
   p = Math.min(1, p);
-  if (shell) shell.style.transform = p ? `translateY(${8 * (1 - p)}px) scale(${0.93 + 0.07 * p})` : "";
   if (overlay) overlay.style.opacity = p ? `${1 - p}` : "";
   if (statusTint) {
-    statusTint.style.backgroundColor = p ? `color-mix(in srgb, var(--surface) ${Math.round(p * 100)}%, #000)` : "";
+    const surface = getComputedStyle(document.documentElement).getPropertyValue("--surface");
+    const rgb = surfaceChannels(surface).map((c) => Math.round(c * p));
+    statusTint.style.backgroundColor = p ? `rgb(${rgb.join(", ")})` : "";
   }
+}
+
+// The palette's --surface as its three channels: hex as written (#rrggbb,
+// or #rgb once the build has shortened it), or rgb().
+function surfaceChannels(color: string) {
+  const rgb = color.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/);
+  if (rgb) return rgb.slice(1, 4).map(Number);
+  let digits = color.trim().replace("#", "");
+  if (digits.length === 3) digits = [...digits].map((d) => d + d).join("");
+  const n = parseInt(digits, 16) || 0;
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
 // A sheet presented on a phone, as far as the rest of the page is
 // concerned (globals.css):
-// - data-sheet-open: the page recedes into a card.
+// - data-sheet-open: the status bar's tint heads for black.
 // - data-sheet-shown: from the moment it opens until its close has played
-//   out (500ms) — black behind the receded page, and the page's blurs off,
-//   as nobody can see them under the dimming and they'd otherwise be
-//   re-rendered every frame the page moves.
+//   out (500ms) — the page's blurs off, as nobody can see them under the
+//   dimming and they'd otherwise be re-rendered every frame it changes.
 // - The status bar: iOS 26 Safari ignores theme-color, and tints its bars
 //   after whatever fixed or sticky element it finds 4px in from the middle
 //   of each screen edge (at least 10px deep and nearly full width) —
@@ -338,9 +355,8 @@ function dismissSheet() {
   const root = document.documentElement;
   root.removeAttribute("data-sheet-open");
   root.removeAttribute("data-sheet-dragging");
-  // From wherever a drag left it, the page eases back from there.
-  const shell = document.querySelector<HTMLElement>(".app-shell");
-  if (shell) shell.style.transform = "";
+  // From wherever a drag left it, the tint eases back from there (the
+  // dimming fades out from its own inline opacity).
   statusTint?.style.removeProperty("background-color");
   dismissTimer = window.setTimeout(() => {
     root.removeAttribute("data-sheet-shown");
