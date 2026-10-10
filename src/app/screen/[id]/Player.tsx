@@ -704,6 +704,17 @@ export function Player({
         } as CSSProperties
       }
     >
+      {/* A thin black band along the panel's very edge, painted as part of
+          the background — underneath the content, so it only ever shows
+          where the background would. The TVs lay out at 960×539, a hair
+          off 16:9, so media that's exactly 16:9 (or 9:16) fitted inside
+          leaves a sliver of background along two edges; on a white
+          background that reads as a fine light line, where black
+          disappears into the bezel instead. Anything actually drawn there
+          covers it, so a white image on a white background still runs
+          seamlessly into it. Outside the rotation wrapper, so it always
+          follows the physical edge. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 border-2 border-black" />
       {/* A screen mounted rotated N degrees counterclockwise needs its
           content rotated N degrees clockwise to cancel that out and land
           upright for the viewer — that's the whole point: media never has
