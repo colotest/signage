@@ -5,6 +5,7 @@ import { useEffect, useOptimistic, useRef, useState, useTransition } from "react
 import type { CSSProperties } from "react";
 import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/MediaThumb";
+import { NoContentPlaceholder } from "@/components/NoContentPlaceholder";
 import { setScreenBackground, setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import type {
@@ -42,6 +43,11 @@ const PREVIEW_SHORT = 180;
 const BORDER_WIDTH = 7;
 const FRAME_LONG = PREVIEW_LONG + BORDER_WIDTH * 2;
 const FRAME_SHORT = PREVIEW_SHORT + BORDER_WIDTH * 2;
+
+// The screen size the empty-screen placeholder is laid out at before being
+// shrunk into the preview — a 1080p screen, so its text and QR code keep
+// the same proportions to the frame they have on the real thing.
+const PLACEHOLDER_SCALE = PREVIEW_LONG / 1920;
 
 const FADE_MS = 150;
 const FRAME_ROTATE_MS = 300;
@@ -323,7 +329,16 @@ export function ScreenTile({
                   )}
                 </span>
               ) : (
-                <span className="px-2 text-center text-[11px] text-muted">No content assigned</span>
+                <div
+                  className="origin-top-left"
+                  style={{
+                    width: contentWidth / PLACEHOLDER_SCALE,
+                    height: contentHeight / PLACEHOLDER_SCALE,
+                    transform: `scale(${PLACEHOLDER_SCALE})`,
+                  }}
+                >
+                  <NoContentPlaceholder />
+                </div>
               )}
               {paused && !offline && (
                 <span className="absolute inset-0 flex items-center justify-center bg-black/40">

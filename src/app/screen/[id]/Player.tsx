@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
@@ -17,8 +17,7 @@ import type {
   ScreenTransitionSpeed,
 } from "@/types/domain";
 import { loadFromCache, saveToCache } from "@/lib/cache/playerCache";
-import { brandFont } from "@/lib/fonts";
-import { QrCode } from "@/components/QrCode";
+import { NoContentPlaceholder } from "@/components/NoContentPlaceholder";
 import { ScreenPage } from "@/components/screenPages";
 import { useScheduledSwitch, type PendingTimer } from "./useScheduledSwitch";
 import { useStatusReport } from "./useStatusReport";
@@ -730,30 +729,6 @@ export function Player({
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-// The QR code's target depends on the origin this player happens to be
-// served from (custom domain, *.vercel.app, localhost), which is only known
-// client-side. useSyncExternalStore reads it straight from `window` in the
-// browser while the server snapshot stays null, so hydration still matches
-// the server's QR-less render — without an effect setting state after mount.
-const noSubscribe = () => () => {};
-
-function NoContentPlaceholder() {
-  const dashboardUrl = useSyncExternalStore(
-    noSubscribe,
-    () => `${window.location.origin}/dashboard`,
-    () => null,
-  );
-
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-6">
-      <span className={`${brandFont.className} text-[40px] uppercase tracking-tight text-[var(--screen-ink)]`}>
-        Colo Cloud
-      </span>
-      {dashboardUrl && <QrCode value={dashboardUrl} size={200} />}
     </div>
   );
 }
