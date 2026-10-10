@@ -27,7 +27,7 @@ export function Header() {
     // (root layout), which *does* work in a regular tab, only paints a
     // flat color — so the header matches that flatly instead of relying
     // on a blur effect the status bar area can't share. header-top-safe-area
-    // (globals.css) is the normal 12px on desktop, but 0 on touch devices —
+    // (globals.css) is 6px on desktop, but 0 on touch devices —
     // no extra clearance looked best there on device.
     //
     // z-30 beats everything a page puts in its own stacking order — section
@@ -39,9 +39,9 @@ export function Header() {
     //
     // --shadow-bar: a soft falloff under the hairline, so the page reads as
     // passing beneath the header rather than butting up against it.
-    <header className="header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border bg-[var(--surface)] px-5 pb-3 shadow-[var(--shadow-bar)]">
+    <header className="header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border bg-[var(--surface)] px-5 pb-1.5 shadow-[var(--shadow-bar)]">
       <nav className="flex items-center gap-5">
-        <span className={`${brandFont.className} mt-[0.1em] text-[38px] uppercase tracking-tight`}>
+        <span className={`${brandFont.className} mt-[0.1em] text-[28.5px] uppercase tracking-tight`}>
           Colo Cloud
         </span>
         {NAV_ITEMS.map((item) => (

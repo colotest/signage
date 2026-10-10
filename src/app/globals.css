@@ -604,9 +604,9 @@ body {
    changing its coefficient produced no visible difference at all, which
    only makes sense if the term itself is 0. On mobile, no extra clearance
    is wanted at all — padding-top: 0 looked best on device. Desktop keeps
-   the normal 12px. */
+   6px. */
 .header-top-safe-area {
-  padding-top: 12px;
+  padding-top: 6px;
 }
 
 @media (pointer: coarse) {
