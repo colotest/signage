@@ -44,10 +44,10 @@ const BORDER_WIDTH = 7;
 const FRAME_LONG = PREVIEW_LONG + BORDER_WIDTH * 2;
 const FRAME_SHORT = PREVIEW_SHORT + BORDER_WIDTH * 2;
 
-// The screen size the empty-screen placeholder is laid out at before being
-// shrunk into the preview — a 1080p screen, so its text and QR code keep
-// the same proportions to the frame they have on the real thing.
-const PLACEHOLDER_SCALE = PREVIEW_LONG / 1920;
+// The long edge the empty-screen placeholder is laid out at before being
+// shrunk into the preview, when the screen hasn't said what its own is
+// (see placeholderScale below): a 1080p screen at no browser scaling.
+const DEFAULT_LAYOUT_LONG = 1920;
 
 const FADE_MS = 150;
 const FRAME_ROTATE_MS = 300;
@@ -158,6 +158,15 @@ export function ScreenTile({
     status?.online && status.positionMs !== null && status.seenAt !== null
       ? { positionMs: status.positionMs, reportedAt: status.seenAt, paused: status.paused, loop: playlist.length === 1 }
       : undefined;
+
+  // The placeholder is drawn at the size the screen's browser actually
+  // lays its page out at, then shrunk to fit — so its text and QR code take
+  // up the same share of the tile as they do of the TV. A TV whose browser
+  // scales by 2× lays out a 1080p panel at 960×540, making them twice as
+  // large there. The long edge is what counts: a rotated screen lays its
+  // content out at the same size, just turned.
+  const layoutLong = status?.viewport ? Math.max(status.viewport.width, status.viewport.height) : DEFAULT_LAYOUT_LONG;
+  const placeholderScale = PREVIEW_LONG / layoutLong;
 
   const playerPath = `/screen/${screen.id}`;
 
@@ -332,9 +341,9 @@ export function ScreenTile({
                 <div
                   className="origin-top-left"
                   style={{
-                    width: contentWidth / PLACEHOLDER_SCALE,
-                    height: contentHeight / PLACEHOLDER_SCALE,
-                    transform: `scale(${PLACEHOLDER_SCALE})`,
+                    width: contentWidth / placeholderScale,
+                    height: contentHeight / placeholderScale,
+                    transform: `scale(${placeholderScale})`,
                   }}
                 >
                   <NoContentPlaceholder />

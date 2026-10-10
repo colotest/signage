@@ -498,6 +498,8 @@ export type Database = {
           media_item_id: string | null;
           paused: boolean;
           position_ms: number | null;
+          viewport_width: number | null;
+          viewport_height: number | null;
           last_seen_at: string;
           disconnected_at: string | null;
         };
@@ -507,6 +509,8 @@ export type Database = {
           media_item_id?: string | null;
           paused?: boolean;
           position_ms?: number | null;
+          viewport_width?: number | null;
+          viewport_height?: number | null;
           last_seen_at?: string;
           disconnected_at?: string | null;
         };
@@ -516,6 +520,8 @@ export type Database = {
           media_item_id?: string | null;
           paused?: boolean;
           position_ms?: number | null;
+          viewport_width?: number | null;
+          viewport_height?: number | null;
           last_seen_at?: string;
           disconnected_at?: string | null;
         };
@@ -531,6 +537,8 @@ export type Database = {
           disconnected: boolean;
           age_ms: number;
           position_ms: number | null;
+          viewport_width: number | null;
+          viewport_height: number | null;
         };
         Relationships: [];
       };
@@ -580,6 +588,10 @@ export type Database = {
           p_paused: boolean;
           p_position_ms?: number | null;
         };
+        Returns: undefined;
+      };
+      report_screen_viewport: {
+        Args: { p_screen_id: number; p_session_id: string; p_width: number; p_height: number };
         Returns: undefined;
       };
       report_screen_offline: {

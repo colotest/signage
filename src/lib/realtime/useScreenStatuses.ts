@@ -20,15 +20,23 @@ export type ScreenLiveStatus = {
   // Local-clock ms of the last report, for "last seen …" and for playing
   // the preview on from positionMs; null if never.
   seenAt: number | null;
+  // The size, in CSS pixels, the player lays its page out at — sent once
+  // per page load. null until it has (or before 0029 has been run).
+  viewport: { width: number; height: number } | null;
 };
 
 type Entry = {
   mediaItemId: string | null;
   paused: boolean;
   positionMs: number | null;
+  viewport: { width: number; height: number } | null;
   disconnected: boolean;
   seenAt: number;
 };
+
+function viewportOf(row: { viewport_width?: number | null; viewport_height?: number | null }) {
+  return row.viewport_width && row.viewport_height ? { width: row.viewport_width, height: row.viewport_height } : null;
+}
 
 // The safety net under the realtime events: a missed event, or a dashboard
 // socket that's quietly died, costs at most this long.
@@ -44,6 +52,7 @@ function fromRows(rows: ScreenStatusRow[], receivedAt: number) {
       paused: row.paused,
       // undefined until 0026 has been run.
       positionMs: row.position_ms ?? null,
+      viewport: viewportOf(row),
       disconnected: row.disconnected,
       seenAt: receivedAt - row.age_ms,
     });
@@ -130,6 +139,7 @@ export function useScreenStatuses(initial: ScreenStatusRow[] | null) {
             mediaItemId: row.media_item_id,
             paused: row.paused,
             positionMs: row.position_ms ?? null,
+            viewport: viewportOf(row),
             disconnected: row.disconnected_at !== null,
             seenAt: reported ? receivedAt : (prev.get(row.screen_id)?.seenAt ?? receivedAt),
           });
@@ -164,7 +174,7 @@ export function useScreenStatuses(initial: ScreenStatusRow[] | null) {
   function statusOf(screenId: number): ScreenLiveStatus | null {
     if (!available) return null;
     const entry = entries.get(screenId);
-    if (!entry) return { online: false, mediaItemId: null, paused: false, positionMs: null, seenAt: null };
+    if (!entry) return { online: false, mediaItemId: null, paused: false, positionMs: null, seenAt: null, viewport: null };
     const online = !entry.disconnected && judgedAt - entry.seenAt < OFFLINE_AFTER_MS;
     return {
       online,
@@ -172,6 +182,7 @@ export function useScreenStatuses(initial: ScreenStatusRow[] | null) {
       paused: entry.paused,
       positionMs: entry.positionMs,
       seenAt: entry.seenAt,
+      viewport: entry.viewport,
     };
   }
 

@@ -49,6 +49,12 @@ export function useStatusReport({
     latestRef.current = { mediaItemId, paused };
   });
 
+  // The page's layout size goes up once per load, after the first report
+  // that lands (it updates the row that report creates) — never on the
+  // heartbeat. A call of its own, so a database without 0029 yet only
+  // loses this, not the status report itself.
+  const viewportSentRef = useRef(false);
+
   const reportRef = useRef(() => {});
   useEffect(() => {
     reportRef.current = () => {
@@ -63,7 +69,22 @@ export function useStatusReport({
           p_position_ms: video ? Math.round(video.currentTime * 1000) : null,
         })
         .then(({ error }) => {
-          if (error) console.warn("Status report failed", error.message);
+          if (error) {
+            console.warn("Status report failed", error.message);
+            return;
+          }
+          if (viewportSentRef.current) return;
+          viewportSentRef.current = true;
+          supabase
+            .rpc("report_screen_viewport", {
+              p_screen_id: screenId,
+              p_session_id: sessionId,
+              p_width: window.innerWidth,
+              p_height: window.innerHeight,
+            })
+            .then(({ error }) => {
+              if (error) console.warn("Viewport report failed", error.message);
+            });
         });
     };
   }, [supabase, screenId, sessionId, videoRef]);
