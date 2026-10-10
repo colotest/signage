@@ -54,8 +54,8 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
 
-  // Supabase Storage media (images/videos/PDFs): stale-while-revalidate so
-  // already-shown content keeps playing offline, and updates in the background.
+  // Supabase Storage media (images/videos/PDFs): kept locally, so a screen
+  // downloads each file once and keeps playing it offline.
   if (url.pathname.includes(MEDIA_PATH)) {
     // Range requests — how <video> streams and buffers — must always go
     // straight to the network. Cache Storage keys entries by URL alone, with
@@ -73,7 +73,7 @@ self.addEventListener("fetch", (event) => {
           // an entry if Player.tsx's whole-file prefetch already landed
           // one, in which case serve the requested slice straight out of
           // it instead of going to the network at all.
-          const cachedFull = await cache.match(request.url);
+          const cachedFull = await cache.match(request.url, { ignoreVary: true });
           if (cachedFull) {
             const sliced = await sliceCachedResponse(cachedFull, request.headers.get("range"));
             if (sliced) return sliced;
@@ -84,16 +84,22 @@ self.addEventListener("fetch", (event) => {
       return;
     }
 
+    // Cache-first, with no revalidation: a media URL's content never
+    // changes (a replaced file is uploaded under a new path), so a copy
+    // that's here is always current, and checking again would only spend
+    // the venue's bandwidth re-downloading it. Player.tsx deletes entries
+    // once nothing on this screen plays them any more. ignoreVary: the
+    // whole-file prefetch and the <img>/pdf.js requests for the same file
+    // differ in headers a Vary could name, but never in content.
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
-        const cached = await cache.match(request);
-        const network = fetch(request)
-          .then((response) => {
-            if (response.ok) cache.put(request, response.clone());
-            return response;
-          })
-          .catch(() => cached);
-        return cached ?? network;
+        const cached = await cache.match(request.url, { ignoreVary: true });
+        if (cached) return cached;
+        const response = await fetch(request);
+        // ok is false for an opaque (no-cors) response, which can't be
+        // checked for success and so is never kept.
+        if (response.ok) cache.put(request.url, response.clone());
+        return response;
       }),
     );
     return;

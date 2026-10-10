@@ -27,6 +27,24 @@ const PdfSlide = dynamic(() => import("./PdfSlide"), { ssr: false });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
+// Same name and path test as sw.js, which owns this cache.
+const MEDIA_CACHE_NAME = "signage-player-v2";
+const MEDIA_PATH = "/storage/v1/object/public/";
+
+// Deletes every media file sw.js has kept that isn't in `keep`. The page
+// and its scripts live in the same cache, and are left alone.
+async function pruneMediaCache(keep: Set<string>) {
+  if (typeof caches === "undefined") return;
+  try {
+    const cache = await caches.open(MEDIA_CACHE_NAME);
+    for (const request of await cache.keys()) {
+      if (request.url.includes(MEDIA_PATH) && !keep.has(request.url)) await cache.delete(request);
+    }
+  } catch {
+    // Storage unavailable — nothing to tidy, and playback doesn't depend on it.
+  }
+}
+
 // How many times a single playlist item is allowed to force itself a fresh
 // <video> element before giving up — see handleAutoRefresh below.
 const MAX_AUTO_REFRESH_ATTEMPTS = 1;
@@ -423,34 +441,41 @@ export function Player({
     }
   }, []);
 
-  // The <video> element only ever issues Range requests, which sw.js
-  // deliberately never caches (a cached partial response would get replayed
-  // for the wrong byte range later — see that file). So nothing about
-  // playing a video ever leaves a local copy behind, and every play is a
-  // live fetch against Supabase's origin over whatever the venue's
-  // connection happens to be that moment — on a slow link that reads as a
-  // long white screen while enough of the file trickles in. A plain GET
-  // (no Range header) is the one request shape the service worker *does*
-  // cache in full, so proactively firing one per video here — well before
-  // it's due to play — gives sw.js a complete local copy to slice Range
-  // requests out of instead of ever hitting the network live. Waits for
-  // the service worker to actually be controlling the page first, since a
-  // prefetch that lands before that would just be an ordinary uncached
-  // fetch.
+  // sw.js keeps media for good once it has a complete copy, but the
+  // <video> element (and pdf.js) only ever issue Range requests, which it
+  // never caches — a cached partial response would get replayed for the
+  // wrong byte range later (see that file). A plain GET is the one request
+  // shape it keeps in full, so every file in the playlist is fetched whole
+  // here up front: videos and PDFs then play from Range slices of the local
+  // copy, and every item, images included, is on hand before it's due and
+  // offline. Waits for the service worker to actually be controlling the
+  // page first, since a prefetch that lands before that would just be an
+  // ordinary uncached fetch.
+  //
+  // Then anything kept for a file this screen no longer plays (or is about
+  // to, for timed playback) is deleted, so a TV stick's storage doesn't
+  // fill up with every file it has ever shown.
   const prefetchedUrlsRef = useRef<Set<string>>(new Set());
+  const timerUrlsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     let cancelled = false;
-    navigator.serviceWorker.ready.then(() => {
+    navigator.serviceWorker.ready.then(async () => {
       if (cancelled) return;
+      const keep = new Set(timerUrlsRef.current);
       for (const item of playlist) {
-        if (item.media_item.media_type !== "video") continue;
+        if (item.media_item.media_type === "page") continue; // rendered in code, nothing to fetch
         const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
+        keep.add(url);
         if (prefetchedUrlsRef.current.has(url)) continue;
         prefetchedUrlsRef.current.add(url);
         fetch(url).catch(() => {
           prefetchedUrlsRef.current.delete(url); // let a failed attempt retry on the next playlist change
         });
+      }
+      await pruneMediaCache(keep);
+      for (const url of prefetchedUrlsRef.current) {
+        if (!keep.has(url)) prefetchedUrlsRef.current.delete(url);
       }
     });
     return () => {
@@ -470,10 +495,14 @@ export function Player({
     for (const media of items) {
       if (media.media_type === "page") continue; // rendered in code, nothing to fetch
       const url = mediaPublicUrl(SUPABASE_URL, media.storage_path);
+      timerUrlsRef.current.add(url); // kept by the prune above until it's switched to
       if (prefetchedUrlsRef.current.has(url)) continue;
       prefetchedUrlsRef.current.add(url);
       if (media.media_type === "image") {
         const img = new Image();
+        // Must match the slide's own <img>, or the browser treats them as
+        // two different requests and this decode goes to waste.
+        img.crossOrigin = "anonymous";
         img.src = url;
         img.decode().catch(() => prefetchedUrlsRef.current.delete(url));
         preloadedImagesRef.current.push(img);
@@ -492,6 +521,10 @@ export function Player({
   // until then; samePlayback keeps the arriving copy from restarting it. If
   // the database's copy somehow got here first, there's nothing to do.
   function fireTimer(timer: PendingTimer) {
+    // Its media is the playlist now, which keeps it from being pruned.
+    for (const entry of timer.entries) {
+      timerUrlsRef.current.delete(mediaPublicUrl(SUPABASE_URL, entry.media_item.storage_path));
+    }
     const items: PlaylistItemWithMedia[] = timer.entries.map((entry, i) => ({
       id: `scheduled-${timer.id}-${entry.id}`,
       screen_id: screen.id,
@@ -784,8 +817,11 @@ function Slide({
     return <PdfSlide url={url} fit={fitMode} />;
   }
 
+  // crossOrigin: without it the request is no-cors, and its (opaque)
+  // response is one sw.js can't keep — so the image would be downloaded
+  // afresh every time it comes round.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={url} alt={item.media_item.name} className={`h-full w-full ${fitClass}`} />;
+  return <img src={url} alt={item.media_item.name} crossOrigin="anonymous" className={`h-full w-full ${fitClass}`} />;
 }
 
 // Keeps the autoPlay attribute for the initial start — browsers handle
