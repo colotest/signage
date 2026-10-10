@@ -9,7 +9,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -63,6 +62,15 @@ export function Sheet({
   const [contentNode, setContentNode] = useState<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dragHandlers = useSheetDrag(contentRef, overlayRef, () => onOpenChange(false));
+  // The status bar's tint strip lies over the sheet's top edge on a phone
+  // (globals.css), so it takes the presses meant for the sheet there: a
+  // pull on it drags the sheet, as one on the header does (wired up in
+  // presentSheet) — and a tap on it doesn't count as one outside the sheet
+  // (onInteractOutside below).
+  const dragRef = useRef(dragHandlers);
+  useLayoutEffect(() => {
+    dragRef.current = dragHandlers;
+  });
   // Whether this sheet is the one presented on a phone (see presentSheet).
   const presentedRef = useRef(false);
 
@@ -85,7 +93,12 @@ export function Sheet({
     // frame, and the blurs inside stay off while the sheet slides up.
     if (!isDesktop()) {
       presentedRef.current = true;
-      presentSheet();
+      presentSheet((e) => {
+        const drag = dragRef.current;
+        if (e.type === "pointerdown") drag.onPointerDown(e);
+        else if (e.type === "pointermove") drag.onPointerMove(e);
+        else drag.onPointerUp(e);
+      });
       if (prefersMotion()) node.setAttribute("data-animating", "");
     }
     const trigger = isDesktop() ? recentTrigger() : null;
@@ -172,6 +185,9 @@ export function Sheet({
           // the sheet is still sliding in from below the screen — and iOS
           // Safari scrolls the page (never meant to scroll; see
           // app-shell-height) to reveal it, shifting the whole sheet with it.
+          onInteractOutside={(e) => {
+            if (e.target instanceof Element && e.target.closest(".sheet-status-tint")) e.preventDefault();
+          }}
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             (e.currentTarget as HTMLElement).focus({ preventScroll: true });
@@ -186,11 +202,10 @@ export function Sheet({
             // shape keeps the corners round whatever sits at the edges.
             // absolute, and down to 109lvh: as the overlay — on a phone it
             // runs right down behind Safari's toolbar, showing what's there,
-            // with the content keeping its own clearance from it. From the
-            // top it stops just short, as an iOS page sheet does, leaving the
-            // dimmed page showing above its rounded corners.
+            // with the content keeping its own clearance from it. Up top it
+            // meets the status bar, black by then (see presentSheet).
             "sheet-content absolute z-50 sm:fixed flex flex-col overflow-hidden bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
-            "inset-x-0 top-[var(--sheet-top)] h-[calc(109lvh-var(--sheet-top))] rounded-t-[var(--sheet-radius)]",
+            "inset-x-0 top-0 h-[109lvh] rounded-t-[var(--sheet-radius)]",
             "sm:inset-auto sm:h-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md sm:max-h-[85vh] sm:rounded-[var(--radius-lg)]",
             contentClassName,
@@ -232,6 +247,11 @@ export function Sheet({
 // it springs back. Moved via the separate `translate` property, which
 // composes with the open/close animations' `transform` — so a close plays
 // on from the dragged position rather than jumping back first.
+// What the drag needs of a pointer event: React's, from the header, or the
+// DOM's own, from the status bar's tint strip lying over the sheet's top
+// edge (see the effect in Sheet).
+type DragPointerEvent = Pick<PointerEvent, "pointerId" | "clientY" | "timeStamp" | "button" | "type" | "target" | "currentTarget">;
+
 function useSheetDrag(
   contentRef: RefObject<HTMLDivElement | null>,
   overlayRef: RefObject<HTMLDivElement | null>,
@@ -241,19 +261,19 @@ function useSheetDrag(
     null,
   );
 
-  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+  function onPointerDown(e: DragPointerEvent) {
     const node = contentRef.current;
     if (!node || e.button !== 0 || isDesktop()) return;
     // Controls in the header (the Done tick, the "⋯" and its dropdown) keep
     // their own presses.
     if ((e.target as Element).closest("button, a, input, textarea, select, label, .menu-pop")) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
     drag.current = { id: e.pointerId, startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, v: 0, offset: 0 };
     node.style.transition = "none";
     document.documentElement.setAttribute("data-sheet-dragging", "");
   }
 
-  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+  function onPointerMove(e: DragPointerEvent) {
     const d = drag.current;
     const node = contentRef.current;
     if (!d || !node || e.pointerId !== d.id) return;
@@ -268,7 +288,7 @@ function useSheetDrag(
     setDragProgress(overlayRef.current, Math.max(0, d.offset) / window.innerHeight);
   }
 
-  function onPointerEnd(e: ReactPointerEvent<HTMLDivElement>) {
+  function onPointerEnd(e: DragPointerEvent) {
     const d = drag.current;
     const node = contentRef.current;
     if (!d || e.pointerId !== d.id) return;
@@ -327,14 +347,17 @@ function surfaceChannels(color: string) {
 //   anything absolute, like this sheet and its dimming, doesn't count, nor
 //   do pseudo-elements. Without one it falls back to <body>'s background,
 //   which is also what it fills behind its toolbar with while things move.
-//   So: a real fixed strip over the top edge, black but barely visible
+//   So: a real fixed strip over the top edge, black but painting nothing
 //   (.sheet-status-tint), and <body> left a colour that never shows as a
 //   fill (globals.css).
 const SHEET_CLOSE_MS = 500;
 let dismissTimer: number | undefined;
 let statusTint: HTMLElement | null = null;
+// Where presses on the strip go: the presented sheet's drag.
+let onStripPointer: ((e: PointerEvent) => void) | null = null;
 
-function presentSheet() {
+function presentSheet(onPointer: (e: PointerEvent) => void) {
+  onStripPointer = onPointer;
   window.clearTimeout(dismissTimer);
   // The strip goes in first, and is styled, so that its colour turns from
   // the header's to black rather than being black at once.
@@ -342,6 +365,9 @@ function presentSheet() {
     statusTint = document.createElement("div");
     statusTint.className = "sheet-status-tint";
     statusTint.setAttribute("aria-hidden", "true");
+    for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
+      statusTint.addEventListener(type, (e) => onStripPointer?.(e as PointerEvent));
+    }
     document.body.append(statusTint);
     void getComputedStyle(statusTint).opacity;
   }
@@ -355,6 +381,7 @@ function dismissSheet() {
   const root = document.documentElement;
   root.removeAttribute("data-sheet-open");
   root.removeAttribute("data-sheet-dragging");
+  onStripPointer = null;
   // From wherever a drag left it, the tint eases back from there (the
   // dimming fades out from its own inline opacity).
   statusTint?.style.removeProperty("background-color");

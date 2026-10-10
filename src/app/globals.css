@@ -493,17 +493,7 @@ body {
    behind it dims — all the way to black by the time the sheet is up — then
    comes back as the sheet goes. Driven by attributes Sheet sets on <html>
    (presentSheet there), and by inline styles while the sheet's pulled down.
-   Only opacity, transforms and one 11px strip's colour ever animate here.
-   --sheet-top: as high as the sheet can go — right up to the status bar's
-   tint strip (.sheet-status-tint), which has to be the first thing Safari
-   finds at the top edge, and over 10px deep, to count. Any higher and the
-   sheet would cover it (Safari then ignores the sheet, absolute as it is,
-   and tints after <body>), or the strip would have to lie over the sheet,
-   showing as a grey band across it. */
-:root {
-  --sheet-top: 11px;
-}
-
+   Only opacity, transforms and one 11px strip's colour ever animate here. */
 .sheet-content {
   --sheet-radius: 32px;
 }
@@ -517,31 +507,38 @@ body {
   }
 
   /* What Safari tints its status bar after while a sheet's open (see
-     presentSheet): fixed, full width and over 10px deep at the top edge.
-     Safari reads its background-color whatever its opacity, as long as
-     that's 0.1 or more — so at 0.15 it does its job while all but invisible
-     over whatever's there. Its colour is the header's (what the status bar
+     presentSheet): fixed, full width and over 10px deep at the top edge,
+     where it has to be the first thing Safari finds — so over the sheet,
+     which reaches right up to the status bar. Safari finds it by
+     hit-testing, which goes by its box, and takes its colour from its
+     background-color as set, not from what's on screen — so it paints
+     nothing at all: an 11px box of padding, with the background clipped to
+     its empty content box. Its colour is the header's (what the status bar
      shows otherwise) dimmed exactly as the page is: black over a colour at
      opacity t is that colour mixed with black by t, so with the same
      timing as the dimming (500ms, ease-spring, both ways) it's the header's
      current hue all along — true black once the sheet's up. Safari snaps
      rather than fading, but follows along as the colour changes.
      Hit-testable (pointer-events: auto, as the open dialog makes <body>
-     none): Safari finds it by hit-testing, which would otherwise pass
-     straight through. A tap on it closes the sheet, as one on the dimming
-     does. */
+     none), which would otherwise pass straight through. Presses on it are
+     the sheet's (see Sheet): a pull drags it, and a tap leaves it open. */
   .sheet-status-tint {
     position: fixed;
     inset: 0 0 auto;
-    z-index: 45;
-    height: var(--sheet-top);
-    background: var(--surface);
+    z-index: 55;
+    box-sizing: content-box;
+    height: 0;
+    padding-top: 11px;
+    background-color: var(--surface);
+    background-clip: content-box;
     pointer-events: auto;
-    opacity: 0.15;
+    touch-action: none;
   }
 
+  /* background-color, not the shorthand, which would reset the clip and
+     paint it after all. */
   html[data-sheet-open] .sheet-status-tint {
-    background: #000;
+    background-color: #000;
   }
 
   /* The page's blurs are lost under the dimming anyway, and would otherwise
