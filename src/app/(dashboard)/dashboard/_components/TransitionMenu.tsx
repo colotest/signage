@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Menu } from "@/components/ui/Menu";
 import { cn } from "@/lib/utils/cn";
 import type { ScreenBackground, ScreenSlideDirection, ScreenTransition, ScreenTransitionSpeed } from "@/types/domain";
-import { ThreeDotIcon } from "../../library/_components/FileTree";
+import { SlidersIcon } from "@/components/icons/SlidersIcon";
 
 // Wording sticks to what each one looks like rather than naming the
 // mechanism — and says where a video is treated differently, since the
@@ -80,7 +80,7 @@ export function TransitionMenu({
         aria-expanded={open}
         className="press-ghost-fit flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
-        <ThreeDotIcon className="h-4 w-4" />
+        <SlidersIcon className="h-[21px] w-[21px]" />
       </button>
 
       <Menu
