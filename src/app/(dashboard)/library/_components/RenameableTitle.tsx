@@ -19,18 +19,32 @@ export function RenameableTitle({
   name,
   className,
   selecting = false,
+  editing: editingProp,
+  onEditingChange,
   onRename,
 }: {
   id: string;
   name: string;
   className?: string;
   selecting?: boolean;
+  // Lets a row open the rename from somewhere else — its "⋯" menu — while
+  // a double-click on the name still works on its own. Left out, the title
+  // just keeps its own state.
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
   // What to save the new name with. Defaults to renaming a media item;
   // a PDF deck passes its own, which renames the deck's pages with it.
   onRename?: (id: string, name: string) => Promise<void>;
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
+  const [ownEditing, setOwnEditing] = useState(false);
+  const editing = editingProp ?? ownEditing;
+
+  function setEditing(next: boolean) {
+    setOwnEditing(next);
+    onEditingChange?.(next);
+  }
+
   const [, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   // Shown immediately on commit rather than waiting for router.refresh() to

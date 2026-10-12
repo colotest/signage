@@ -1139,6 +1139,9 @@ function FileRow({
   router: Router;
 }) {
   const [pending, startTransition] = useTransition();
+  // Held here rather than inside the title, so the "⋯" menu can open the
+  // rename too — a double-click on the name still does its own thing.
+  const [renaming, setRenaming] = useState(false);
   // Disabled during selection mode so picking files for a playlist and
   // reorganizing folders never compete for the same click-and-drag gesture.
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
@@ -1204,6 +1207,8 @@ function FileRow({
             id={item.id}
             name={item.name}
             selecting={selectionMode}
+            editing={renaming}
+            onEditingChange={setRenaming}
             className="truncate text-[15px] font-medium"
           />
         }
@@ -1218,6 +1223,9 @@ function FileRow({
       <RowColumn width="w-40" wide>{formatDate(item.created_at)}</RowColumn>
 
       <RowMenu label={`${item.name} actions`}>
+        {/* Grouped with the file's own details rather than the actions
+            below: it's about this file, not something done to it. */}
+        <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>
         <MenuInfo>{kindLabel(item)}</MenuInfo>
         {dimensions && <MenuInfo>{dimensions}</MenuInfo>}
         {item.media_type !== "page" && <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>}
