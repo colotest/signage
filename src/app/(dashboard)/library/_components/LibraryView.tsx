@@ -31,6 +31,7 @@ import { useLiveRefresh } from "@/lib/realtime/useLiveRefresh";
 import { FileTree, MENU_ITEM_CLASS, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
 import { Button } from "@/components/ui/Button";
+import { SearchField } from "./SearchField";
 import { UploadDropzone } from "./UploadDropzone";
 import { useMediaUpload } from "./useMediaUpload";
 
@@ -83,6 +84,8 @@ export function LibraryView({
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set());
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
@@ -373,22 +376,31 @@ export function LibraryView({
               overlaps up underneath it (see FileTree) so scrolled-past rows
               fade away rather than popping in and out below this row. */}
           <div className="relative z-10 flex items-center justify-between gap-3">
-            <h1 className="text-[28px] font-semibold tracking-tight">Media</h1>
-            <div className="flex items-center gap-3">
-              {/* Hidden while picking files for a playlist — there's nothing
-                  to upload to while the list is busy being a file picker,
-                  and the space is better spent on the list itself. Where an
-                  upload lands is shown by the highlighted folder itself. */}
+            {/* Open, the search field needs the row's spare width — the
+                title gives up its share of it rather than the field being
+                squeezed into what's left. */}
+            <h1 className={cn("text-[28px] font-semibold tracking-tight", searchOpen && "shrink-0 sm:shrink")}>
+              Media
+            </h1>
+            <div className={cn("flex items-center gap-3", searchOpen && "min-w-0 flex-1")}>
+              <SearchField open={searchOpen} onOpenChange={setSearchOpen} value={search} onChange={setSearch} />
+              {/* Upload and New Folder are hidden while picking files for a
+                  playlist — there's nothing to upload to while the list is
+                  busy being a file picker, and the space is better spent on
+                  the list itself. Search stays: picking through a long
+                  library is exactly when you want it. */}
               {activePlaylistId === null && (
                 <>
-                  {/* Desktop only: on mobile this lives in the "⋯" menu
-                      beside Upload, and the row of pills has no space for
-                      it. Either way it drops a name field in at the top of
-                      the list rather than the bottom. */}
+                  {/* On a phone the open search bar takes the whole row, so
+                      Upload steps out until it's closed. */}
+                  <span className={cn("shrink-0", searchOpen && "hidden sm:block")}>
+                    <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />
+                  </span>
+                  {/* Desktop only, at the row's far end — where the "⋯"
+                      stands on a phone, which is where it lives there. */}
                   <Button variant="secondary" className="hidden sm:inline-flex" onClick={() => setCreatingIn(null)}>
                     + New Folder
                   </Button>
-                  <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />
                 </>
               )}
               <MobileFileMenuButton
@@ -416,6 +428,7 @@ export function LibraryView({
             sortKey={sortKey}
             sortDir={sortDir}
             onToggleSort={toggleSort}
+            search={search}
             creatingIn={creatingIn}
             onCreatingChange={setCreatingIn}
             onUploadFiles={uploadFiles}

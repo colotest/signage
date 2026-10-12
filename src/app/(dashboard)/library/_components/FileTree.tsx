@@ -58,6 +58,29 @@ function buildTree(folders: Folder[], media: MediaItem[], decks: DeckWithPages[]
   return { roots, rootFiles, rootDecks, nodeById };
 }
 
+// Keeps what the query names: a file or deck whose name matches, and a
+// folder that either matches itself — in which case its whole contents come
+// with it, since that's the folder you asked for — or still holds something
+// that does. Everything else drops out, and whatever's left is shown
+// expanded (see searching below), so a match buried three folders deep is
+// on screen rather than behind a chevron.
+function matchesQuery(name: string, query: string) {
+  return name.toLowerCase().includes(query);
+}
+
+function filterNode(node: FolderNode, query: string): FolderNode | null {
+  if (matchesQuery(node.name, query)) return node;
+
+  const children = node.children.flatMap((child) => {
+    const kept = filterNode(child, query);
+    return kept ? [kept] : [];
+  });
+  const files = node.files.filter((file) => matchesQuery(file.name, query));
+  const decks = node.decks.filter((deck) => matchesQuery(deck.name, query));
+  if (children.length === 0 && files.length === 0 && decks.length === 0) return null;
+  return { ...node, children, files, decks };
+}
+
 // Everything a folder holds, deck pages included and in page order — what
 // ticking a folder's own checkbox selects.
 function collectMediaIds(node: FolderNode): string[] {
@@ -141,6 +164,7 @@ export function FileTree({
   sortKey,
   sortDir,
   onToggleSort,
+  search = "",
   creatingIn,
   onCreatingChange,
   onUploadFiles,
@@ -161,6 +185,9 @@ export function FileTree({
   sortKey: SortKey;
   sortDir: SortDir;
   onToggleSort: (key: SortKey) => void;
+  // What the header's search field holds, if anything — the list shows
+  // only what matches it.
+  search?: string;
   creatingIn: string | null | undefined;
   onCreatingChange: (id: string | null | undefined) => void;
   // Left out where the tree is only ever a file picker (the dashboard's
@@ -236,7 +263,36 @@ export function FileTree({
     () => ({ users: uploaders, folders: new Map(folders.map((f) => [f.id, f.name])) }),
     [uploaders, folders],
   );
-  const { roots, rootFiles, rootDecks } = useMemo(() => buildTree(folders, media, decks), [folders, media, decks]);
+  const query = search.trim().toLowerCase();
+  const searching = query.length > 0;
+  const { roots, rootFiles, rootDecks } = useMemo(() => {
+    const tree = buildTree(folders, media, decks);
+    if (!query) return tree;
+    return {
+      ...tree,
+      roots: tree.roots.flatMap((node) => {
+        const kept = filterNode(node, query);
+        return kept ? [kept] : [];
+      }),
+      rootFiles: tree.rootFiles.filter((file) => matchesQuery(file.name, query)),
+      rootDecks: tree.rootDecks.filter((deck) => matchesQuery(deck.name, query)),
+    };
+  }, [folders, media, decks, query]);
+
+  // While searching every folder left standing is open: what's left is the
+  // matches themselves, and they're no use shut away.
+  const shownExpanded = useMemo(() => {
+    if (!searching) return expanded;
+    const open = new Set<string>();
+    const walk = (nodes: FolderNode[]) => {
+      for (const node of nodes) {
+        open.add(node.id);
+        walk(node.children);
+      }
+    };
+    walk(roots);
+    return open;
+  }, [searching, expanded, roots]);
 
   function sortFiles(items: MediaItem[]) {
     const copy = [...items];
@@ -329,8 +385,12 @@ export function FileTree({
           className,
         )}
       >
-        <p className="text-[17px] font-medium">No files here</p>
-        <p className="text-sm text-muted">Upload images, videos, or PDFs, or create a folder to get started.</p>
+        <p className="text-[17px] font-medium">{searching ? "Nothing found" : "No files here"}</p>
+        <p className="text-sm text-muted">
+          {searching
+            ? `No file or folder matches “${search.trim()}”.`
+            : "Upload images, videos, or PDFs, or create a folder to get started."}
+        </p>
         {isDraggingOsFile && <UploadDropOverlay folderName={uploadTargetFolderName} />}
       </div>
     );
@@ -423,7 +483,7 @@ export function FileTree({
                   decks={sortDecks(rootDecks)}
                   depth={0}
                   isRoot
-                  expanded={expanded}
+                  expanded={shownExpanded}
                   onFolderRowClick={handleFolderRowClick}
                   onFolderChevronClick={handleFolderChevronClick}
                   onToggleDeck={toggleExpanded}

@@ -48,6 +48,7 @@ import {
   type PlaylistWithEntries,
 } from "../../library/_components/PlaylistSection";
 import { MobileFileMenuButton } from "../../library/_components/LibraryView";
+import { SearchField } from "../../library/_components/SearchField";
 import { UploadDropzone } from "../../library/_components/UploadDropzone";
 import { useMediaUpload } from "../../library/_components/useMediaUpload";
 import { Countdown, ScheduleDialog } from "./ScheduleDialog";
@@ -243,6 +244,8 @@ export function PlaybackMenu({
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const { uploading, status: uploadStatus, uploadFiles } = useMediaUpload(uploadTargetId);
 
   function startPicking() {
@@ -1074,9 +1077,16 @@ export function PlaybackMenu({
                     controls stay put while picking — uploading straight into
                     the picker is the point of having them here. */}
                 <div className="relative z-10 flex items-center justify-between gap-3">
-                  <h2 className="text-[22px] font-semibold tracking-tight">Media</h2>
-                  <div className="flex items-center gap-3">
-                    <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />
+                  {/* Open, the search field takes the row's spare width (see
+                      the Library's own header). */}
+                  <h2 className={cn("text-[22px] font-semibold tracking-tight", searchOpen && "shrink-0 sm:shrink")}>
+                    Media
+                  </h2>
+                  <div className={cn("flex items-center gap-3", searchOpen && "min-w-0 flex-1")}>
+                    <SearchField open={searchOpen} onOpenChange={setSearchOpen} value={search} onChange={setSearch} />
+                    <span className={cn("shrink-0", searchOpen && "hidden sm:block")}>
+                      <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />
+                    </span>
                     <MobileFileMenuButton
                       sortKey={sortKey}
                       sortDir={sortDir}
@@ -1088,6 +1098,7 @@ export function PlaybackMenu({
                 <FileTree
                   decks={library.decks}
                   uploaders={library.uploaders}
+                  search={search}
                   className="min-h-0 flex-1"
                   folders={library.folders}
                   media={library.media}
