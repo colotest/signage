@@ -11,6 +11,8 @@ export function InlineRename({
   className,
   startInEditMode = false,
   passClicks = false,
+  editing: editingProp,
+  onEditingChange,
 }: {
   value: string;
   onSave: (next: string) => void;
@@ -23,8 +25,20 @@ export function InlineRename({
   // click means "open/close" rather than "select", so the name is part of
   // the hit area. Only the double-click that starts editing is kept here.
   passClicks?: boolean;
+  // Lets a row open the rename from somewhere else — its "⋯" menu — while a
+  // double-click on the name still works on its own. Left out, the name
+  // just keeps its own state.
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
 }) {
-  const [editing, setEditing] = useState(startInEditMode);
+  const [ownEditing, setOwnEditing] = useState(startInEditMode);
+  const editing = editingProp ?? ownEditing;
+
+  function setEditing(next: boolean) {
+    setOwnEditing(next);
+    onEditingChange?.(next);
+  }
+
   // Shown the moment a rename commits rather than waiting for onSave's
   // server round trip to bring the new name back down as a prop — without
   // this, switching back to display mode would flash the stale `value`

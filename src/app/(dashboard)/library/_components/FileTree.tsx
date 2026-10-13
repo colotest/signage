@@ -1030,6 +1030,8 @@ function FolderRow({
   // but the droppable registration itself still needs to live here for hit
   // testing.
   const { setNodeRef } = useDroppable({ id: `folder-${folder.id}` });
+  // Held here so the "⋯" menu can open the rename too (see FileRow).
+  const [renaming, setRenaming] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const uploadLinks = useContext(UploadLinksContext);
   const creator = useCreatorLabel(folder);
@@ -1128,6 +1130,8 @@ function FolderRow({
         title={
           <InlineRename
             value={folder.name}
+            editing={renaming}
+            onEditingChange={setRenaming}
             onSave={(next) => {
               startTransition(async () => {
                 await renameFolder(folder.id, next);
@@ -1155,6 +1159,7 @@ function FolderRow({
       <RowColumn width="w-40" wide>{formatDate(folder.created_at)}</RowColumn>
 
       <RowMenu label={`${folder.name} actions`}>
+        <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>
         <MenuInfo>
           {itemCount} item{itemCount === 1 ? "" : "s"}
         </MenuInfo>
@@ -1498,6 +1503,7 @@ function DeckRow({
   const [pending, startTransition] = useTransition();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const uploader = useUploaderLabel(deck);
+  const [renaming, setRenaming] = useState(false);
   const cover = deck.pages[0];
   const fileName = `${deck.name}.pdf`;
 
@@ -1552,6 +1558,8 @@ function DeckRow({
             <RenameableTitle
               id={deck.id}
               name={deck.name}
+              editing={renaming}
+              onEditingChange={setRenaming}
               selecting={selectionMode}
               onRename={renameDeck}
               className="truncate text-[15px] font-medium"
@@ -1587,6 +1595,7 @@ function DeckRow({
       <RowColumn width="w-40" wide>{formatDate(deck.created_at)}</RowColumn>
 
       <RowMenu label={`${deck.name} actions`}>
+        <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>
         <MenuInfo>
           PDF · {deck.pages.length} {deck.pages.length === 1 ? "page" : "pages"}
         </MenuInfo>
