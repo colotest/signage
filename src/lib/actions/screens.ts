@@ -4,14 +4,7 @@ import { revalidatePath } from "next/cache";
 import { quote, recordActivity, screenName } from "@/lib/activity";
 import { requireAdmin, requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type {
-  FitMode,
-  ScreenBackground,
-  ScreenRotation,
-  ScreenSlideDirection,
-  ScreenTransition,
-  ScreenTransitionSpeed,
-} from "@/types/domain";
+import type { FitMode, ScreenRotation } from "@/types/domain";
 
 export async function createScreen() {
   // Adding screens is for admins only (see ScreenGrid).
@@ -72,58 +65,6 @@ export async function setFitMode(id: number, fitMode: FitMode) {
   revalidatePath("/dashboard");
 }
 
-export async function setScreenBackground(id: number, background: ScreenBackground) {
-  const user = await requireSession();
-  const admin = createAdminClient();
-  const { error } = await admin.from("screens").update({ background }).eq("id", id);
-  if (error) throw new Error(error.message);
-  recordActivity(user, {
-    action: "screen.background",
-    target: `screen:${id}`,
-    summary: async (admin) => `Set the background of screen ${await screenName(admin, id)} to ${background}`,
-  });
-  revalidatePath("/dashboard");
-}
-
-export async function setScreenTransition(id: number, transition: ScreenTransition) {
-  const user = await requireSession();
-  const admin = createAdminClient();
-  const { error } = await admin.from("screens").update({ transition }).eq("id", id);
-  if (error) throw new Error(error.message);
-  recordActivity(user, {
-    action: "screen.transition",
-    target: `screen:${id}`,
-    summary: async (admin) => `Set the transition on screen ${await screenName(admin, id)} to ${transition}`,
-  });
-  revalidatePath("/dashboard");
-}
-
-export async function setScreenTransitionSpeed(id: number, speed: ScreenTransitionSpeed) {
-  const user = await requireSession();
-  const admin = createAdminClient();
-  const { error } = await admin.from("screens").update({ transition_speed: speed }).eq("id", id);
-  if (error) throw new Error(error.message);
-  recordActivity(user, {
-    action: "screen.transition_speed",
-    target: `screen:${id}`,
-    summary: async (admin) => `Set the transition speed on screen ${await screenName(admin, id)} to ${speed}`,
-  });
-  revalidatePath("/dashboard");
-}
-
-export async function setScreenSlideDirection(id: number, direction: ScreenSlideDirection) {
-  const user = await requireSession();
-  const admin = createAdminClient();
-  const { error } = await admin.from("screens").update({ slide_direction: direction }).eq("id", id);
-  if (error) throw new Error(error.message);
-  recordActivity(user, {
-    action: "screen.slide_direction",
-    target: `screen:${id}`,
-    summary: async (admin) => `Set the slide direction on screen ${await screenName(admin, id)} to ${direction}`,
-  });
-  revalidatePath("/dashboard");
-}
-
 export async function setScreenRotation(id: number, rotation: ScreenRotation) {
   const user = await requireAdmin();
   const admin = createAdminClient();
@@ -134,15 +75,6 @@ export async function setScreenRotation(id: number, rotation: ScreenRotation) {
     target: `screen:${id}`,
     summary: async (admin) => `Rotated screen ${await screenName(admin, id)} to ${rotation}°`,
   });
-  revalidatePath("/dashboard");
-}
-
-export async function reorderScreens(orderedIds: number[]) {
-  const user = await requireSession();
-  const admin = createAdminClient();
-  const { error } = await admin.rpc("reorder_screens", { p_ids: orderedIds });
-  if (error) throw new Error(error.message);
-  recordActivity(user, { action: "screens.reorder", target: "screens", summary: "Reordered the screens" });
   revalidatePath("/dashboard");
 }
 

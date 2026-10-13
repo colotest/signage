@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { startTransition, useRef, useState, type PointerEvent } from "react";
-import { setFitMode } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import { FitIcon, FillIcon } from "@/components/icons/FitIcons";
 import type { FitMode } from "@/types/domain";
@@ -23,15 +22,16 @@ const OPTIONS: { value: FitMode; label: string; Icon: typeof FitIcon }[] = [
 // press shows on the pill — and the preview — straight away instead of after
 // the save and refresh, which used to invite a second press. Saves run one
 // after another, so quick back-and-forth switching always ends on whatever
-// was picked last.
+// was picked last. onSave persists it — on one screen, or on every screen
+// in a group.
 export function FitModeToggle({
-  screenId,
   fitMode,
   onOptimisticChange,
+  onSave,
 }: {
-  screenId: number;
   fitMode: FitMode;
   onOptimisticChange: (fitMode: FitMode) => void;
+  onSave: (fitMode: FitMode) => Promise<void>;
 }) {
   const router = useRouter();
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -40,7 +40,7 @@ export function FitModeToggle({
     if (next === fitMode) return;
     startTransition(async () => {
       onOptimisticChange(next);
-      const save = queueRef.current.then(() => setFitMode(screenId, next));
+      const save = queueRef.current.then(() => onSave(next));
       queueRef.current = save.catch(() => {});
       await save;
       router.refresh();

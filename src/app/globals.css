@@ -166,6 +166,30 @@ body {
   animation: drag-pickup 180ms var(--ease-spring) forwards;
 }
 
+/* A group tile's monitor label, while that screen is playing something
+   other than the group's setup: a slow, smooth fade out and back in.
+   Without motion it just stays dimmed. */
+@keyframes sync-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.sync-blink {
+  animation: sync-blink 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-blink {
+    animation: none;
+    opacity: 0.45;
+  }
+}
+
 /* Small dropdown menus grow out of the button they hang from, with a
    little bounce as they settle — set transform-origin on the menu itself,
    at the corner nearest its button (e.g. origin-top-right). */

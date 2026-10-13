@@ -35,6 +35,7 @@ export type Database = {
           transition: ScreenTransition;
           transition_speed: ScreenTransitionSpeed;
           slide_direction: ScreenSlideDirection;
+          live_setup_id: string | null;
           position: number;
           created_at: string;
           updated_at: string;
@@ -48,6 +49,7 @@ export type Database = {
           transition?: ScreenTransition;
           transition_speed?: ScreenTransitionSpeed;
           slide_direction?: ScreenSlideDirection;
+          live_setup_id?: string | null;
           position?: number;
           created_at?: string;
           updated_at?: string;
@@ -61,6 +63,7 @@ export type Database = {
           transition?: ScreenTransition;
           transition_speed?: ScreenTransitionSpeed;
           slide_direction?: ScreenSlideDirection;
+          live_setup_id?: string | null;
           position?: number;
           created_at?: string;
           updated_at?: string;
@@ -527,6 +530,126 @@ export type Database = {
         };
         Relationships: [];
       };
+      screen_groups: {
+        Row: {
+          id: string;
+          name: string;
+          grid_rows: number;
+          grid_cols: number;
+          fit_mode: FitMode;
+          position: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name?: string;
+          grid_rows?: number;
+          grid_cols?: number;
+          fit_mode?: FitMode;
+          position?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          grid_rows?: number;
+          grid_cols?: number;
+          fit_mode?: FitMode;
+          position?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      screen_group_members: {
+        Row: {
+          group_id: string;
+          screen_id: number;
+          slot: number;
+          created_at: string;
+        };
+        Insert: {
+          group_id: string;
+          screen_id: number;
+          slot: number;
+          created_at?: string;
+        };
+        Update: {
+          group_id?: string;
+          screen_id?: number;
+          slot?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      // A screen's or a group's playback setup — see 0030.
+      setups: {
+        Row: {
+          id: string;
+          screen_id: number | null;
+          group_id: string | null;
+          background: ScreenBackground;
+          transition: ScreenTransition;
+          transition_speed: ScreenTransitionSpeed;
+          slide_direction: ScreenSlideDirection;
+          committed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          screen_id?: number | null;
+          group_id?: string | null;
+          background?: ScreenBackground;
+          transition?: ScreenTransition;
+          transition_speed?: ScreenTransitionSpeed;
+          slide_direction?: ScreenSlideDirection;
+          committed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          screen_id?: number | null;
+          group_id?: string | null;
+          background?: ScreenBackground;
+          transition?: ScreenTransition;
+          transition_speed?: ScreenTransitionSpeed;
+          slide_direction?: ScreenSlideDirection;
+          committed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      setup_items: {
+        Row: {
+          id: string;
+          setup_id: string;
+          media_item_id: string;
+          position: number;
+          duration_seconds: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          setup_id: string;
+          media_item_id: string;
+          position: number;
+          duration_seconds?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          setup_id?: string;
+          media_item_id?: string;
+          position?: number;
+          duration_seconds?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "setup_items_media_item_id_fkey";
+            columns: ["media_item_id"];
+            isOneToOne: false;
+            referencedRelation: "media_items";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       screen_status_live: {
@@ -575,6 +698,22 @@ export type Database = {
       run_due_scheduled_playbacks: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      commit_setup: {
+        Args: { p_setup_id: string };
+        Returns: undefined;
+      };
+      reorder_setup_items: {
+        Args: { p_setup_id: string; p_ids: string[] };
+        Returns: undefined;
+      };
+      reorder_dashboard: {
+        Args: { p_keys: string[] };
+        Returns: undefined;
+      };
+      move_group_member: {
+        Args: { p_group_id: string; p_screen_id: number; p_slot: number };
+        Returns: undefined;
       };
       log_activity: {
         Args: { p_user_id: string; p_user_email: string; p_action: string; p_target: string | null; p_summary: string };

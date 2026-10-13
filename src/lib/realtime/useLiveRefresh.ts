@@ -19,6 +19,11 @@ const LIVE_TABLES = [
   "playlists",
   "playlist_entries",
   "scheduled_playbacks",
+  // Groups and Playback Menu setups (0030).
+  "screen_groups",
+  "screen_group_members",
+  "setups",
+  "setup_items",
 ] as const;
 
 // A burst of changes (a multi-file upload, a reorder writing every row)

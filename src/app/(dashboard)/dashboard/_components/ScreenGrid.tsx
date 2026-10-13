@@ -13,18 +13,46 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { reorderScreens } from "@/lib/actions/screens";
+import { reorderDashboard } from "@/lib/actions/groups";
 import { runDueScheduledPlaybacks } from "@/lib/actions/schedules";
 import { useLiveRefresh } from "@/lib/realtime/useLiveRefresh";
-import { useScreenStatuses, type ScreenLiveStatus, type ScreenStatusRow } from "@/lib/realtime/useScreenStatuses";
+import { useScreenStatuses, type ScreenStatusRow } from "@/lib/realtime/useScreenStatuses";
 import { cn } from "@/lib/utils/cn";
-import type { MediaItem, PlaylistItemWithMedia, ScheduledPlayback, Screen } from "@/types/domain";
+import type {
+  PlaylistItemWithMedia,
+  ScheduledPlayback,
+  Screen,
+  ScreenGroup,
+  ScreenGroupMember,
+  SetupWithItems,
+} from "@/types/domain";
 import { ScreenTile } from "./ScreenTile";
-import { AddScreenButton } from "./AddScreenButton";
+import { GroupTile, type GroupMemberView } from "./GroupTile";
+import { AddGroupButton, AddScreenButton } from "./AddScreenButton";
 import { useViewer } from "@/lib/auth/ViewerContext";
 import type { LibraryData } from "./PlaybackMenu";
 
-type ScreenWithPlaylist = Screen & { playlist: PlaylistItemWithMedia[]; schedules: ScheduledPlayback[] };
+type ScreenWithPlaylist = Screen & {
+  playlist: PlaylistItemWithMedia[];
+  schedules: ScheduledPlayback[];
+  setup: SetupWithItems;
+};
+type GroupWithMembers = ScreenGroup & { members: ScreenGroupMember[]; setup: SetupWithItems };
+
+// Screens and groups share the grid and its one order (reorder_dashboard
+// in 0030); each tile's key says which it is.
+type Tile =
+  | { key: string; kind: "screen"; position: number; screen: ScreenWithPlaylist }
+  | { key: string; kind: "group"; position: number; group: GroupWithMembers };
+
+function tilesFrom(screens: ScreenWithPlaylist[], groups: GroupWithMembers[]): Tile[] {
+  const tiles: Tile[] = [
+    ...screens.map((screen) => ({ key: `s:${screen.id}`, kind: "screen" as const, position: screen.position, screen })),
+    ...groups.map((group) => ({ key: `g:${group.id}`, kind: "group" as const, position: group.position, group })),
+  ];
+  // Stable, so equal positions keep screens (by id) ahead of groups.
+  return tiles.sort((a, b) => a.position - b.position);
+}
 
 // A tile can be picked up from anywhere on it — except text fields and
 // links, where a press-and-drag means selecting text or dragging the link,
@@ -63,10 +91,12 @@ class TileTouchSensor extends TouchSensor {
 
 export function ScreenGrid({
   screens,
+  groups,
   statuses,
   library,
 }: {
   screens: ScreenWithPlaylist[];
+  groups: GroupWithMembers[];
   statuses: ScreenStatusRow[] | null;
   library: LibraryData;
 }) {
@@ -79,12 +109,19 @@ export function ScreenGrid({
   const mediaById = useMemo(() => new Map(library.media.map((m) => [m.id, m])), [library.media]);
   // Reordered locally the moment a tile is dropped, so it doesn't snap back
   // while the new order is saved.
-  const [ordered, setOrdered] = useState(screens);
-  const [prevScreens, setPrevScreens] = useState(screens);
-  if (screens !== prevScreens) {
-    setPrevScreens(screens);
-    setOrdered(screens);
+  const [ordered, setOrdered] = useState(() => tilesFrom(screens, groups));
+  const [prevData, setPrevData] = useState({ screens, groups });
+  if (screens !== prevData.screens || groups !== prevData.groups) {
+    setPrevData({ screens, groups });
+    setOrdered(tilesFrom(screens, groups));
   }
+
+  // What a group tile needs of each member screen: the screen, what's on
+  // air there, and its live status.
+  const memberViews = new Map<number, GroupMemberView>(
+    screens.map((screen) => [screen.id, { screen, playlist: screen.playlist, status: statusOf(screen.id) }]),
+  );
+  const screenOptions = screens.map((s) => ({ id: s.id, name: s.name }));
 
   // Desktop: a click-and-drag anywhere on the tile, with a few pixels of
   // travel first so plain clicks on its buttons still work. Touch: press and
@@ -97,11 +134,11 @@ export function ScreenGrid({
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = ordered.findIndex((s) => s.id === active.id);
-    const newIndex = ordered.findIndex((s) => s.id === over.id);
+    const oldIndex = ordered.findIndex((t) => t.key === active.id);
+    const newIndex = ordered.findIndex((t) => t.key === over.id);
     const next = arrayMove(ordered, oldIndex, newIndex);
     setOrdered(next);
-    reorderScreens(next.map((s) => s.id));
+    reorderDashboard(next.map((t) => t.key));
   }
 
   // Someone else's edits — here or on the Library page — land on this
@@ -119,10 +156,15 @@ export function ScreenGrid({
     // iOS Safari's floating toolbar with no way to scroll it clear.
     <div className="safari-toolbar-inset flex flex-col gap-5">
       {/* min-h-10: the Add Screen button's height, kept when it's hidden. */}
-      <div className="flex min-h-10 items-center justify-between">
+      <div className="flex min-h-10 items-center justify-between gap-3">
         <h1 className="text-[28px] font-semibold tracking-tight">Screens</h1>
-        {/* Adding screens is for admins (createScreen checks too). */}
-        {viewer.isAdmin && <AddScreenButton />}
+        {/* Adding screens and groups is for admins (the actions check too). */}
+        {viewer.isAdmin && (
+          <div className="flex shrink-0 items-center gap-2">
+            <AddGroupButton screens={screenOptions} />
+            <AddScreenButton />
+          </div>
+        )}
       </div>
 
       {ordered.length === 0 ? (
@@ -136,16 +178,30 @@ export function ScreenGrid({
         </div>
       ) : (
         <DndContext id="screen-grid" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={ordered.map((s) => s.id)} strategy={rectSortingStrategy}>
+          <SortableContext items={ordered.map((t) => t.key)} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-              {ordered.map((screen) => (
-                <SortableScreenTile
-                  key={screen.id}
-                  screen={screen}
-                  library={library}
-                  status={statusOf(screen.id)}
-                  mediaById={mediaById}
-                />
+              {ordered.map((tile) => (
+                <SortableTile key={tile.key} id={tile.key}>
+                  {tile.kind === "screen" ? (
+                    <ScreenTile
+                      screen={tile.screen}
+                      playlist={tile.screen.playlist}
+                      library={library}
+                      schedules={tile.screen.schedules}
+                      setup={tile.screen.setup}
+                      status={statusOf(tile.screen.id)}
+                      mediaById={mediaById}
+                    />
+                  ) : (
+                    <GroupTile
+                      group={tile.group}
+                      members={memberViews}
+                      screens={screenOptions}
+                      library={library}
+                      mediaById={mediaById}
+                    />
+                  )}
+                </SortableTile>
               ))}
             </div>
           </SortableContext>
@@ -187,18 +243,8 @@ function useFireTimersOnTime(runAts: string[]) {
 // otherwise start a text selection or pop the image preview menu instead.
 // The rename field opts back in — iOS Safari won't edit text inside a
 // user-select: none subtree.
-function SortableScreenTile({
-  screen,
-  library,
-  status,
-  mediaById,
-}: {
-  screen: ScreenWithPlaylist;
-  library: LibraryData;
-  status: ScreenLiveStatus | null;
-  mediaById: Map<string, MediaItem>;
-}) {
-  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: screen.id });
+function SortableTile({ id, children }: { id: string; children: React.ReactNode }) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
   return (
     <div
@@ -212,14 +258,7 @@ function SortableScreenTile({
       )}
     >
       <div className={cn("transition-transform duration-200 ease-[var(--ease-spring)]", isDragging && "scale-[1.03]")}>
-        <ScreenTile
-          screen={screen}
-          playlist={screen.playlist}
-          library={library}
-          schedules={screen.schedules}
-          status={status}
-          mediaById={mediaById}
-        />
+        {children}
       </div>
     </div>
   );

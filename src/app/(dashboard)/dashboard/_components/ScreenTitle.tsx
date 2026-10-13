@@ -2,21 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { renameScreen } from "@/lib/actions/screens";
 
 // Plain text by default — renaming used to start from pressing the title
 // itself, but that's now the wrench menu's "Rename" option instead (see
-// ScreenSetupMenu), which flips `editing` on from ScreenTile.
+// ScreenSetupMenu/GroupSetupMenu), which flips `editing` on from the tile.
+// onSave persists the new name: a screen's or a group's.
 export function ScreenTitle({
-  screenId,
   name,
   editing,
   onDoneEditing,
+  onSave,
 }: {
-  screenId: number;
   name: string;
   editing: boolean;
   onDoneEditing: () => void;
+  onSave: (name: string) => Promise<void>;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -40,7 +40,7 @@ export function ScreenTitle({
     if (!next || next === displayName) return;
     setDisplayName(next);
     startTransition(async () => {
-      await renameScreen(screenId, next);
+      await onSave(next);
       router.refresh();
     });
   }

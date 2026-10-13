@@ -1,7 +1,14 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchUploaderNames } from "@/lib/uploads/uploaders";
 import { ScreenGrid } from "./_components/ScreenGrid";
-import type { PlaylistEntryWithMedia, PlaylistItemWithMedia, ScheduledPlayback } from "@/types/domain";
+import type {
+  PlaylistEntryWithMedia,
+  PlaylistItemWithMedia,
+  ScheduledPlayback,
+  ScreenGroupMember,
+  SetupItemWithMedia,
+  SetupWithItems,
+} from "@/types/domain";
 import type { PlaylistWithEntries } from "../library/_components/PlaylistSection";
 import { decksWithPages } from "../library/page";
 
@@ -25,6 +32,10 @@ export default async function DashboardPage() {
     { data: decks, error: decksError },
     { data: statuses, error: statusesError },
     uploaders,
+    { data: groups, error: groupsError },
+    { data: members, error: membersError },
+    { data: setups, error: setupsError },
+    { data: setupItems, error: setupItemsError },
   ] = await Promise.all([
     admin
       .from("screens")
@@ -48,6 +59,18 @@ export default async function DashboardPage() {
     admin.from("decks").select("*").order("created_at", { ascending: false }),
     admin.from("screen_status_live").select("*"),
     fetchUploaderNames(admin),
+    admin
+      .from("screen_groups")
+      .select("*")
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
+    admin.from("screen_group_members").select("*").order("slot", { ascending: true }),
+    admin.from("setups").select("*"),
+    admin
+      .from("setup_items")
+      .select("*, media_item:media_items(*)")
+      .order("setup_id", { ascending: true })
+      .order("position", { ascending: true }),
   ]);
 
   if (screensError) throw new Error(screensError.message);
@@ -57,6 +80,15 @@ export default async function DashboardPage() {
   if (mediaError) throw new Error(mediaError.message);
   if (playlistsError) throw new Error(playlistsError.message);
   if (entriesError) throw new Error(entriesError.message);
+  // Groups and setups (0030) aren't optional: every Playback Menu edits a
+  // setup now, so there's nothing sensible to fall back to without them.
+  for (const err of [groupsError, membersError, setupsError, setupItemsError]) {
+    if (!err) continue;
+    if (err.code === "PGRST205" || err.code === "42P01") {
+      throw new Error("Screen groups need migration 0030_screen_groups_and_setups.sql — run it in Supabase's SQL Editor.");
+    }
+    throw new Error(err.message);
+  }
   // Tolerated until 0011_scheduled_playbacks.sql has been run — the table
   // simply isn't there yet, which shouldn't take the whole dashboard down.
   if (schedulesError) {
@@ -85,11 +117,46 @@ export default async function DashboardPage() {
     else schedulesByScreen.set(schedule.screen_id, [schedule]);
   }
 
-  const screensWithPlaylists = (screens ?? []).map((screen) => ({
-    ...screen,
-    playlist: playlistsByScreen.get(screen.id) ?? [],
-    schedules: schedulesByScreen.get(screen.id) ?? [],
-  }));
+  const itemsBySetup = new Map<string, SetupItemWithMedia[]>();
+  for (const item of (setupItems ?? []) as unknown as SetupItemWithMedia[]) {
+    const list = itemsBySetup.get(item.setup_id);
+    if (list) list.push(item);
+    else itemsBySetup.set(item.setup_id, [item]);
+  }
+  const setupByScreen = new Map<number, SetupWithItems>();
+  const setupByGroup = new Map<string, SetupWithItems>();
+  for (const setup of setups ?? []) {
+    const withItems = { ...setup, items: itemsBySetup.get(setup.id) ?? [] };
+    if (setup.screen_id !== null) setupByScreen.set(setup.screen_id, withItems);
+    if (setup.group_id !== null) setupByGroup.set(setup.group_id, withItems);
+  }
+
+  const screensWithPlaylists = (screens ?? []).flatMap((screen) => {
+    // The trigger in 0030 gives every screen one; a screen without would
+    // only be one inserted mid-render, which the next refresh brings in.
+    const setup = setupByScreen.get(screen.id);
+    if (!setup) return [];
+    return [
+      {
+        ...screen,
+        playlist: playlistsByScreen.get(screen.id) ?? [],
+        schedules: schedulesByScreen.get(screen.id) ?? [],
+        setup,
+      },
+    ];
+  });
+
+  const membersByGroup = new Map<string, ScreenGroupMember[]>();
+  for (const member of members ?? []) {
+    const list = membersByGroup.get(member.group_id);
+    if (list) list.push(member);
+    else membersByGroup.set(member.group_id, [member]);
+  }
+  const groupsWithMembers = (groups ?? []).flatMap((group) => {
+    const setup = setupByGroup.get(group.id);
+    if (!setup) return [];
+    return [{ ...group, members: membersByGroup.get(group.id) ?? [], setup }];
+  });
 
   const entriesByPlaylist = new Map<string, PlaylistEntryWithMedia[]>();
   for (const entry of (playlistEntries ?? []) as unknown as PlaylistEntryWithMedia[]) {
@@ -106,6 +173,7 @@ export default async function DashboardPage() {
   return (
     <ScreenGrid
       screens={screensWithPlaylists}
+      groups={groupsWithMembers}
       statuses={statusesError ? null : (statuses ?? [])}
       library={{
         folders: folders ?? [],

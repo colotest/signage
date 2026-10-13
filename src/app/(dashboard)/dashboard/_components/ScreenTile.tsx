@@ -2,28 +2,26 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
-import type { CSSProperties } from "react";
 import { Card } from "@/components/ui/Card";
-import { MediaThumb } from "@/components/MediaThumb";
-import { NoContentPlaceholder } from "@/components/NoContentPlaceholder";
-import { setScreenBackground, setScreenRotation } from "@/lib/actions/screens";
+import { renameScreen, setFitMode, setScreenRotation } from "@/lib/actions/screens";
 import { cn } from "@/lib/utils/cn";
 import type {
   MediaItem,
   PlaylistItemWithMedia,
   ScheduledPlayback,
   Screen,
-  ScreenBackground,
   ScreenRotation,
+  SetupWithItems,
 } from "@/types/domain";
 import type { ScreenLiveStatus } from "@/lib/realtime/useScreenStatuses";
-import { PauseIcon, PlaylistPlayIcon } from "@/components/icons/PlaybackIcons";
+import { PlaylistPlayIcon } from "@/components/icons/PlaybackIcons";
 import { ScreenTitle } from "./ScreenTitle";
 import { FitModeToggle } from "./FitModeToggle";
 import { useScreenControl } from "@/lib/realtime/useScreenControl";
 import { PlaybackControls } from "./PlaybackControls";
 import { PlaybackMenu, type LibraryData } from "./PlaybackMenu";
 import { ScreenSetupMenu } from "./ScreenSetupMenu";
+import { ScreenPreview } from "./ScreenPreview";
 import { useViewer } from "@/lib/auth/ViewerContext";
 
 // Preview "postage stamp" footprint — flipping just swaps these two, like
@@ -41,13 +39,8 @@ const PREVIEW_SHORT = 180;
 // by the border thickness on each side, so the border sits *outside* the
 // true 16:9 content area instead of eating into it.
 const BORDER_WIDTH = 7;
-const FRAME_LONG = PREVIEW_LONG + BORDER_WIDTH * 2;
+export const FRAME_LONG = PREVIEW_LONG + BORDER_WIDTH * 2;
 const FRAME_SHORT = PREVIEW_SHORT + BORDER_WIDTH * 2;
-
-// The long edge the empty-screen placeholder is laid out at before being
-// shrunk into the preview, when the screen hasn't said what its own is
-// (see placeholderScale below): a 1080p screen at no browser scaling.
-const DEFAULT_LAYOUT_LONG = 1920;
 
 const FADE_MS = 150;
 const FRAME_ROTATE_MS = 300;
@@ -70,16 +63,17 @@ export function ScreenTile({
   playlist,
   library,
   schedules,
+  setup,
   status,
   mediaById,
 }: {
   screen: Screen;
+  // What's on air — the preview's fallback (see ScreenPreview).
   playlist: PlaylistItemWithMedia[];
   library: LibraryData;
   schedules: ScheduledPlayback[];
-  // What the screen's player last reported (see useScreenStatuses); null
-  // until migration 0025 has run, in which case the preview falls back to
-  // the first assigned item.
+  // The screen's own setup, which its Playback Menu edits (see 0030).
+  setup: SetupWithItems;
   status: ScreenLiveStatus | null;
   mediaById: Map<string, MediaItem>;
 }) {
@@ -90,23 +84,6 @@ export function ScreenTile({
   // One control channel per tile, shared by the playback buttons and the
   // wrench menu's Reload.
   const { send } = useScreenControl(screen.id);
-  // Applied locally first so the pill moves on the press rather than after
-  // the round trip — same as the rotation control above it.
-  const [background, setBackground] = useState<ScreenBackground>(screen.background ?? "black");
-  const [prevBackground, setPrevBackground] = useState(screen.background);
-  if (screen.background !== prevBackground) {
-    setPrevBackground(screen.background);
-    setBackground(screen.background ?? "black");
-  }
-
-  function handleSelectBackground(next: ScreenBackground) {
-    if (next === background) return;
-    setBackground(next);
-    startTransition(async () => {
-      await setScreenBackground(screen.id, next);
-      router.refresh();
-    });
-  }
   // While the screen is online, paused is whatever its player reports —
   // with the button's own press shown straight away on top, until the
   // player's report of it (or anything newer) arrives. Offline or without
@@ -138,36 +115,10 @@ export function ScreenTile({
   const [previewTurns, setPreviewTurns] = useState(Math.round((screen.rotation ?? 0) / 90));
   const [contentHidden, setContentHidden] = useState(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   // Shared by the Fit/Fill pill and the preview, so both switch the moment
   // the pill is pressed (see FitModeToggle).
   const [fitMode, setOptimisticFitMode] = useOptimistic(screen.fit_mode);
-  // The live preview: what the player says is on screen right now. A
-  // reported id that's no longer in the library (deleted a moment ago)
-  // shows as nothing rather than guessing.
-  const shownItem = status
-    ? status.online && status.mediaItemId
-      ? (mediaById.get(status.mediaItemId) ?? null)
-      : null
-    : (playlist[0]?.media_item ?? null);
-  const offline = status !== null && !status.online;
-  // A video in the preview plays in step with the screen, or holds its
-  // paused frame. Paused here is the reported state, not the button's
-  // optimistic one — only a report says which frame it stopped on.
-  const videoSync =
-    status?.online && status.positionMs !== null && status.seenAt !== null
-      ? { positionMs: status.positionMs, reportedAt: status.seenAt, paused: status.paused, loop: playlist.length === 1 }
-      : undefined;
-
-  // The placeholder is drawn at the size the screen's browser actually
-  // lays its page out at, then shrunk to fit — so its text and QR code take
-  // up the same share of the tile as they do of the TV. A TV whose browser
-  // scales by 2× lays out a 1080p panel at 960×540, making them twice as
-  // large there. The long edge is what counts: a rotated screen lays its
-  // content out at the same size, just turned.
-  const layoutLong = status?.viewport ? Math.max(status.viewport.width, status.viewport.height) : DEFAULT_LAYOUT_LONG;
-  const placeholderScale = PREVIEW_LONG / layoutLong;
-
   const playerPath = `/screen/${screen.id}`;
 
   // The bordered frame rotates as one piece, but its content (thumbnail/
@@ -309,51 +260,22 @@ export function ScreenTile({
                 "relative overflow-hidden transition-opacity duration-150",
                 contentHidden ? "opacity-0" : "opacity-100",
               )}
-              // --screen-bg/--screen-ink mirror what the real screen shows
-              // behind its media (see Player), so a white-background screen
-              // previews white here too — the clock page and the letterbox
-              // area around a fitted image both read them.
-              style={
-                {
-                  width: contentWidth + BORDER_WIDTH * 2,
-                  height: contentHeight + BORDER_WIDTH * 2,
-                  border: `${BORDER_WIDTH}px solid #2e2e2e`,
-                  backgroundColor: background === "white" ? "#fff" : "#000",
-                  "--screen-bg": background === "white" ? "#fff" : "#000",
-                  "--screen-ink": background === "white" ? "#000" : "#fff",
-                } as CSSProperties
-              }
+              style={{
+                width: contentWidth + BORDER_WIDTH * 2,
+                height: contentHeight + BORDER_WIDTH * 2,
+                border: `${BORDER_WIDTH}px solid #2e2e2e`,
+              }}
             >
-              {shownItem ? (
-                <MediaThumb fit={fitMode} live item={shownItem} sizes={`${PREVIEW_LONG}px`} sync={videoSync} />
-              ) : offline ? (
-                <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-black text-center">
-                  <span className="text-[12px] font-medium text-white/70">Offline</span>
-                  {status.seenAt !== null && (
-                    // Server and browser can sit in different time zones,
-                    // so the first paint's time may differ from the SSR's.
-                    <span suppressHydrationWarning className="text-[11px] text-white/40">
-                      Last seen {formatSeenAt(status.seenAt)}
-                    </span>
-                  )}
-                </span>
-              ) : (
-                <div
-                  className="origin-top-left"
-                  style={{
-                    width: contentWidth / placeholderScale,
-                    height: contentHeight / placeholderScale,
-                    transform: `scale(${placeholderScale})`,
-                  }}
-                >
-                  <NoContentPlaceholder />
-                </div>
-              )}
-              {paused && !offline && (
-                <span className="absolute inset-0 flex items-center justify-center bg-black/40">
-                  <PauseIcon className="h-8 w-8 text-white" />
-                </span>
-              )}
+              <ScreenPreview
+                screen={screen}
+                playlist={playlist}
+                status={status}
+                mediaById={mediaById}
+                fitMode={fitMode}
+                paused={paused}
+                width={contentWidth}
+                height={contentHeight}
+              />
               <span className="absolute inset-0 hidden items-center justify-center bg-black/30 text-[12px] font-medium text-white group-hover/preview:flex">
                 Manage Content
               </span>
@@ -377,7 +299,7 @@ export function ScreenTile({
                 />
               )}
               <ScreenTitle
-                screenId={screen.id}
+                onSave={(name) => renameScreen(screen.id, name)}
                 name={screen.name}
                 editing={renaming}
                 onDoneEditing={() => setRenaming(false)}
@@ -397,7 +319,11 @@ export function ScreenTile({
             </div>
 
             <div className="flex items-center gap-2">
-              <FitModeToggle screenId={screen.id} fitMode={fitMode} onOptimisticChange={setOptimisticFitMode} />
+              <FitModeToggle
+                fitMode={fitMode}
+                onOptimisticChange={setOptimisticFitMode}
+                onSave={(next) => setFitMode(screen.id, next)}
+              />
               <PlaybackControls
                 send={send}
                 paused={paused}
@@ -422,27 +348,14 @@ export function ScreenTile({
       </div>
 
       <PlaybackMenu
-        screen={screen}
-        playlist={playlist}
+        title={screen.name}
+        setup={setup}
+        screenId={screen.id}
         library={library}
         schedules={schedules}
-        // Owned here rather than in the menu, so the preview above switches
-        // colour the moment it's picked.
-        background={background}
-        onSelectBackground={handleSelectBackground}
         open={menuOpen}
         onOpenChange={setMenuOpen}
       />
     </>
   );
-}
-
-// "14:32" today, "Mon 14:32" within the week, a date beyond that.
-function formatSeenAt(ms: number) {
-  const date = new Date(ms);
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const ageDays = (new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 86_400_000;
-  if (ageDays < 1) return time;
-  if (ageDays < 7) return `${date.toLocaleDateString([], { weekday: "short" })} ${time}`;
-  return date.toLocaleDateString([], { day: "numeric", month: "short" });
 }

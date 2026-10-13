@@ -7,6 +7,8 @@ A free (at base scale) web-based digital signage system for a single event venue
 ## How it fits together
 
 - **Dashboard** (`/dashboard`, `/library`, `/users`) — login-gated. Register screens, manage the media library, assign content to screens.
+- **Playback Menus and setups** — each screen's Playback Menu edits that screen's *setup*: its Now Playing list plus background, transition, speed and slide direction. Nothing reaches the TV until the menu's blue checkmark commits it; the white ✕ (or swiping the menu away) closes it and keeps the setup saved for later, leaving what's on air alone.
+- **Groups** — **+ New Group** (admins) picks screens and names the group. A group's tile has the same card as a screen's, acting on every screen in it, above a grid of small monitors showing each member's live picture, which admins can drag into place (grid size and Edit Group are in its wrench menu). A group has its own setup, so a screen can be set up one way on its own and another way in a group; whichever was committed last is what it shows, and a member whose screen is showing something other than the group's setup has its name fade in and out. Timed playback (alarm clocks, Calendar) stays per screen.
 - **Users** — everyone signs in with their own email and password, and every change they make is recorded against them. Three tiers: **super admin** > **admin** > **default**. Admins additionally get each screen's wrench menu (rename, rotation, reload, delete), **+ Add Screen**, and the **Users** page (under the avatar menu): every account, its change history, deleting accounts ranked below theirs, and single-use signup links (7 days) for new default users. The Server Actions enforce all of this themselves; hiding the controls is just the UI side.
 - **Player** (`/screen/{id}`) — no login, meant to be opened fullscreen on a TV/Fire Stick/kiosk browser. Subscribes to Supabase Realtime so playlist changes appear within about a second, and caches its last-known content so it keeps showing something if the network drops. It reports what it's showing (on every change, plus a 20-second heartbeat) to `screen_status`, which is where each dashboard tile's live preview and Online/Offline dot come from — a screen that stops reporting for 75 seconds (power cut, network gone) shows as Offline.
 - **Supabase** holds all persistent data (`screens`, `folders`, `media_items`, `playlist_items`) and the `media` storage bucket. Row-Level Security allows public reads (needed by the unauthenticated player) but denies all writes — every mutation goes through a Server Action using the `service_role` key, which checks the dashboard's session cookie itself first.
@@ -57,7 +59,7 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 
 1. On the dashboard, click **+ Add Screen** — this creates a screen and its player URL, shown on the tile as `/screen/{id}`.
 2. Open `https://your-app.vercel.app/screen/{id}` in the TV's browser (or a kiosk-mode browser app on a Fire Stick / Raspberry Pi) and make it fullscreen. No login is needed for this URL.
-3. Back on the dashboard, tap the screen tile to open its **Media Menu**, then **+ Add Content** to assign files from the library. The player updates automatically.
+3. Back on the dashboard, tap the screen tile to open its **Playback Menu**, then **+ Media** to pick files from the library, and press the blue checkmark to put them on the screen. The player updates automatically.
 
 ## Project structure
 

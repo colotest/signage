@@ -17,27 +17,29 @@ import {
 import { ListScroller } from "@/components/ListScroller";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
 import { cn } from "@/lib/utils/cn";
-import { AlarmClockIcon, CheckIcon, PlayIcon } from "@/components/icons/PlaybackIcons";
+import { AlarmClockIcon, CheckIcon, CloseIcon, PlayIcon } from "@/components/icons/PlaybackIcons";
 import { formatDuration } from "@/lib/utils/format";
 import {
-  addItemsToScreen,
-  reorderPlaylist,
-  unassignMedia,
-  updateItemDuration,
-} from "@/lib/actions/playlist";
+  addItemsToSetup,
+  commitSetup,
+  removeSetupItem,
+  reorderSetup,
+  updateSetupItemDuration,
+  updateSetupSettings,
+  type SetupSettings,
+} from "@/lib/actions/setups";
 import { cancelScheduledPlayback, schedulePlaylist } from "@/lib/actions/schedules";
-import { setScreenSlideDirection, setScreenTransition, setScreenTransitionSpeed } from "@/lib/actions/screens";
 import type {
   DeckWithPages,
   Folder,
   MediaItem,
-  PlaylistItemWithMedia,
   ScheduledPlayback,
-  Screen,
   ScreenBackground,
   ScreenSlideDirection,
   ScreenTransition,
   ScreenTransitionSpeed,
+  SetupItemWithMedia,
+  SetupWithItems,
 } from "@/types/domain";
 import { FileTree, type SortDir, type SortKey } from "../../library/_components/FileTree";
 import { SortableEntryList } from "../../library/_components/PlaylistEntryRow";
@@ -120,11 +122,20 @@ function timersFrom(schedules: ScheduledPlayback[]) {
   return new Map(schedules.filter((t) => !t.fired_at).map((t) => [t.playlist_id, new Date(t.run_at)]));
 }
 
-// A screen's playback, in one popup: its "Now Playing" list on top — which
-// IS the screen's playlist_items, so whatever sits in it is exactly what
-// the TV plays — and the Library's playlists below, each of which can be
-// dropped onto the front of Now Playing with its play button, or timed to
-// replace Now Playing outright at a set moment with its alarm clock.
+// A screen's — or a group's — playback, in one popup: its "Now Playing"
+// list on top, and the Library's playlists below, each of which can be
+// dropped onto the front of Now Playing with its play button, or (on a
+// screen) timed to replace Now Playing outright at a set moment with its
+// alarm clock.
+//
+// Everything here edits the menu's *setup* (see 0030): Now Playing and the
+// playback settings behind the sliders button. Nothing reaches a TV until
+// the checkmark commits the setup — onto the screen, or onto every screen
+// in the group. Closing any other way (the white ✕, a swipe down, a click
+// outside) leaves the setup saved as it is, ready to commit another time,
+// and whatever's on air untouched. So a screen can be set up one way in
+// its own menu and another in its group's, and whichever was committed
+// last is what it shows.
 //
 // Every write to Now Playing is applied locally first and then run through
 // a strictly serial queue, so rapid edits (adding files, playing a
@@ -133,26 +144,27 @@ function timersFrom(schedules: ScheduledPlayback[]) {
 // id until their insert resolves; anything queued later looks the real id
 // up at run time, by which point the insert ahead of it has finished.
 export function PlaybackMenu({
-  screen,
-  playlist,
+  title,
+  setup,
+  screenId,
   library,
   schedules,
-  background,
-  onSelectBackground,
   open,
   onOpenChange,
 }: {
-  screen: Screen;
-  playlist: PlaylistItemWithMedia[];
+  title: string;
+  setup: SetupWithItems;
+  // The screen this is the menu of; null for a group's, which has no timed
+  // playback (alarm clocks, Calendar) — timers belong to a single screen.
+  screenId: number | null;
   library: LibraryData;
   schedules: ScheduledPlayback[];
-  // Owned by the tile, whose preview mirrors it.
-  background: ScreenBackground;
-  onSelectBackground: (background: ScreenBackground) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
+  const playlist = setup.items;
+  const hasTimers = screenId !== null;
   const [items, setItems] = useState(playlist);
   const itemsRef = useRef(items);
   useEffect(() => {
@@ -189,15 +201,14 @@ export function PlaybackMenu({
     return realIdsRef.current.get(id) ?? id;
   }
 
-  function optimisticItem(mediaItem: MediaItem, durationSeconds: number): PlaylistItemWithMedia {
+  function optimisticItem(mediaItem: MediaItem, durationSeconds: number): SetupItemWithMedia {
     optimisticCounterRef.current += 1;
     return {
       id: `optimistic-${optimisticCounterRef.current}`,
-      screen_id: screen.id,
+      setup_id: setup.id,
       media_item_id: mediaItem.id,
       position: -1,
       duration_seconds: durationSeconds,
-      fit_mode: "contain",
       created_at: new Date().toISOString(),
       media_item: mediaItem,
     };
@@ -207,14 +218,14 @@ export function PlaybackMenu({
   // (if it's still there — it may have been removed again in the meantime,
   // in which case the removal queued behind this finds the real id via
   // realIdsRef instead).
-  function insertItems(optimistic: PlaylistItemWithMedia[], at: "start" | "end") {
+  function insertItems(optimistic: SetupItemWithMedia[], at: "start" | "end") {
     enqueue(async () => {
-      const rows = await addItemsToScreen(
-        screen.id,
+      const rows = await addItemsToSetup(
+        setup.id,
         optimistic.map((item) => ({ mediaId: item.media_item_id, durationSeconds: item.duration_seconds })),
         at,
       );
-      const realById = new Map<string, PlaylistItemWithMedia>();
+      const realById = new Map<string, SetupItemWithMedia>();
       optimistic.forEach((item, i) => {
         const row = rows[i];
         if (!row) return;
@@ -318,13 +329,13 @@ export function PlaybackMenu({
       return next.size === current.size ? current : next;
     });
     enqueue(async () => {
-      await Promise.all(ids.map((id) => unassignMedia(resolveId(id))));
+      await Promise.all(ids.map((id) => removeSetupItem(resolveId(id))));
     });
   }
 
   function changeDuration(id: string, seconds: number) {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, duration_seconds: seconds } : item)));
-    enqueue(() => updateItemDuration(resolveId(id), seconds));
+    enqueue(() => updateSetupItemDuration(resolveId(id), seconds));
   }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -341,8 +352,8 @@ export function PlaybackMenu({
     // insert further back in the queue are left out; that insert appends
     // them itself.
     enqueue(() =>
-      reorderPlaylist(
-        screen.id,
+      reorderSetup(
+        setup.id,
         itemsRef.current.map((item) => resolveId(item.id)).filter((id) => !id.startsWith("optimistic-")),
       ),
     );
@@ -437,14 +448,15 @@ export function PlaybackMenu({
 
   // Everything below the tuck under the popup's title.
   const usable = Math.max(0, pageHeight - HEADER_TUCK);
-  const room = Math.max(0, usable - SECTION_TITLE_HEIGHT * 2);
+  // The "Playlists" heading, and "Calendar" too where there is one.
+  const room = Math.max(0, usable - SECTION_TITLE_HEIGHT * (hasTimers ? 2 : 1));
   const half = Math.floor(room / 2);
   // What the two lists share at rest: less the view's bottom padding (the
   // iOS toolbar clearance on a phone) and CALENDAR_LIFT, so "Calendar" lands
   // right below Playlists rather than docking over the end of it. Playlists gives that
   // up out of its half, so Now Playing's end — and the "Playlists"
   // heading — stay put.
-  const fit = Math.max(0, room - padBottom - CALENDAR_LIFT);
+  const fit = Math.max(0, room - padBottom - (hasTimers ? CALENDAR_LIFT : 0));
   // The file browser takes half, and while it's open all the rest goes to
   // Now Playing.
   const pickerHeight = Math.round(usable / 2);
@@ -847,7 +859,7 @@ export function PlaybackMenu({
     const playlistId = schedulingId;
     let result: { error: string } | { ok: true };
     try {
-      result = await schedulePlaylist(screen.id, playlistId, runAt.toISOString(), hours);
+      result = await schedulePlaylist(screenId!, playlistId, runAt.toISOString(), hours);
     } catch (err) {
       console.error("Failed to schedule playlist", err);
       return `Couldn't set the timer: ${err instanceof Error ? err.message : "unknown error"}`;
@@ -857,7 +869,7 @@ export function PlaybackMenu({
       ...current.filter((t) => t.playlist_id !== playlistId),
       {
         id: `optimistic-${playlistId}`,
-        screen_id: screen.id,
+        screen_id: screenId!,
         playlist_id: playlistId,
         run_at: runAt.toISOString(),
         ends_at: new Date(runAt.getTime() + hours * 3_600_000).toISOString(),
@@ -873,7 +885,7 @@ export function PlaybackMenu({
   async function cancelScheduleFor(playlistId: string) {
     setLocalSchedules((current) => current.filter((t) => t.playlist_id !== playlistId));
     try {
-      await cancelScheduledPlayback(screen.id, playlistId);
+      await cancelScheduledPlayback(screenId!, playlistId);
     } catch (err) {
       console.error("Failed to cancel timer", err);
     }
@@ -886,63 +898,32 @@ export function PlaybackMenu({
     await cancelScheduleFor(schedulingId);
   }
 
-  // --- Playback settings ("⋯" in the header) --------------------------------
+  // --- Playback settings (sliders button in the header) ----------------------
 
-  // Applied locally first so the pill moves on the press, then persisted.
-  const [transition, setTransition] = useState<ScreenTransition>(screen.transition ?? "cut");
-  const [prevTransition, setPrevTransition] = useState(screen.transition);
-  if (screen.transition !== prevTransition) {
-    setPrevTransition(screen.transition);
-    setTransition(screen.transition ?? "cut");
+  // The setup's own settings, applied locally first so the pill moves on
+  // the press, then saved to the setup — they go on air with it on commit.
+  const [settings, setSettings] = useState(() => settingsOf(setup));
+  // Resynced like Now Playing above: only once nothing's in flight.
+  useEffect(() => {
+    if (pendingRef.current === 0) setSettings(settingsOf(setup));
+  }, [setup]);
+
+  function changeSetting(patch: SetupSettings) {
+    setSettings((current) => ({ ...current, ...patch }));
+    enqueue(() => updateSetupSettings(setup.id, patch));
   }
 
-  const [speed, setSpeed] = useState<ScreenTransitionSpeed>(screen.transition_speed ?? "normal");
-  const [prevSpeed, setPrevSpeed] = useState(screen.transition_speed);
-  if (screen.transition_speed !== prevSpeed) {
-    setPrevSpeed(screen.transition_speed);
-    setSpeed(screen.transition_speed ?? "normal");
+  // --- Closing --------------------------------------------------------------
+
+  // The checkmark: commit once every edit ahead of it has been saved, so
+  // what goes on air is exactly what the menu showed.
+  function commitAndClose() {
+    enqueue(() => commitSetup(setup.id));
+    handleOpenChange(false);
   }
 
-  async function handleSelectSpeed(next: ScreenTransitionSpeed) {
-    if (next === speed) return;
-    setSpeed(next);
-    try {
-      await setScreenTransitionSpeed(screen.id, next);
-    } catch (err) {
-      console.error("Failed to set transition speed", err);
-    }
-    router.refresh();
-  }
-
-  const [slideDirection, setSlideDirection] = useState<ScreenSlideDirection>(screen.slide_direction ?? "right");
-  const [prevDirection, setPrevDirection] = useState(screen.slide_direction);
-  if (screen.slide_direction !== prevDirection) {
-    setPrevDirection(screen.slide_direction);
-    setSlideDirection(screen.slide_direction ?? "right");
-  }
-
-  async function handleSelectSlideDirection(next: ScreenSlideDirection) {
-    if (next === slideDirection) return;
-    setSlideDirection(next);
-    try {
-      await setScreenSlideDirection(screen.id, next);
-    } catch (err) {
-      console.error("Failed to set slide direction", err);
-    }
-    router.refresh();
-  }
-
-  async function handleSelectTransition(next: ScreenTransition) {
-    if (next === transition) return;
-    setTransition(next);
-    try {
-      await setScreenTransition(screen.id, next);
-    } catch (err) {
-      console.error("Failed to set transition", err);
-    }
-    router.refresh();
-  }
-
+  // The ✕, a swipe down, Escape or a click outside: the setup stays saved
+  // as it is, and nothing changes on screen.
   function handleOpenChange(next: boolean) {
     if (!next) stopPicking();
     onOpenChange(next);
@@ -954,7 +935,7 @@ export function PlaybackMenu({
     <Sheet
       open={open}
       onOpenChange={handleOpenChange}
-      title={screen.name}
+      title={title}
       // The screen's name as a page-sized heading, matching "Playlists"
       // below it, with the plain "Done" link replaced by a blue tick —
       // two thirds the size of the tile's own playback button, the one
@@ -978,27 +959,40 @@ export function PlaybackMenu({
           </span>
           <span className="text-[12px] text-muted">{formatDuration(totalSeconds)}</span>
           <TransitionMenu
-            transition={transition}
-            onSelect={handleSelectTransition}
-            speed={speed}
-            onSelectSpeed={handleSelectSpeed}
-            slideDirection={slideDirection}
-            onSelectSlideDirection={handleSelectSlideDirection}
-            background={background}
-            onSelectBackground={onSelectBackground}
+            transition={settings.transition}
+            onSelect={(transition) => changeSetting({ transition })}
+            speed={settings.transition_speed}
+            onSelectSpeed={(transition_speed) => changeSetting({ transition_speed })}
+            slideDirection={settings.slide_direction}
+            onSelectSlideDirection={(slide_direction) => changeSetting({ slide_direction })}
+            background={settings.background}
+            onSelectBackground={(background) => changeSetting({ background })}
           />
         </div>
       }
+      // White ✕: close and keep the setup for later. Blue tick: put it on
+      // air. Same size, side by side, the tick in the corner it always was.
       actions={
-        <button
-          type="button"
-          onClick={() => handleOpenChange(false)}
-          title="Done"
-          aria-label="Done"
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90"
-        >
-          <CheckIcon className="h-6 w-6" />
-        </button>
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => handleOpenChange(false)}
+            title="Close without putting it on screen"
+            aria-label="Close without putting it on screen"
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-white text-[#1d1d1f] shadow-[var(--shadow-control)] hover:bg-neutral-50"
+          >
+            <CloseIcon className="h-6 w-6" />
+          </button>
+          <button
+            type="button"
+            onClick={commitAndClose}
+            title={hasTimers ? "Put on screen" : "Put on every screen in the group"}
+            aria-label={hasTimers ? "Put on screen" : "Put on every screen in the group"}
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90"
+          >
+            <CheckIcon className="h-6 w-6" />
+          </button>
+        </div>
       }
       contentClassName="sm:max-w-3xl sm:h-[85vh]"
       // overflow-visible: the scroll view reaches up out of this box, behind
@@ -1254,7 +1248,7 @@ export function PlaybackMenu({
                         >
                           <PlayIcon className="h-4 w-4 translate-x-px" />
                         </button>
-                        {(() => {
+                        {hasTimers && (() => {
                           const runAt = timers.get(p.id);
                           return (
                             <button
@@ -1284,23 +1278,29 @@ export function PlaybackMenu({
                 </div>
               </div>
 
-              <div ref={calendarAnchorRef} />
-              <SectionTitle
-                title="Calendar"
-                inView={calendarInView}
-                onToggle={toggleCalendar}
-                bandAbove={false}
-                bandBelow={false}
-                className="relative -mx-5 px-5"
-              />
-              <div ref={calendarBodyRef}>
-                <CalendarSection
-                  schedules={localSchedules}
-                  playlists={localPlaylists}
-                  onEdit={openSchedule}
-                  onCancel={cancelScheduleFor}
-                />
-              </div>
+              {/* Timers belong to a single screen, so a group's menu has no
+                  Calendar. */}
+              {hasTimers && (
+                <>
+                  <div ref={calendarAnchorRef} />
+                  <SectionTitle
+                    title="Calendar"
+                    inView={calendarInView}
+                    onToggle={toggleCalendar}
+                    bandAbove={false}
+                    bandBelow={false}
+                    className="relative -mx-5 px-5"
+                  />
+                  <div ref={calendarBodyRef}>
+                    <CalendarSection
+                      schedules={localSchedules}
+                      playlists={localPlaylists}
+                      onEdit={openSchedule}
+                      onCancel={cancelScheduleFor}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
           {/* Always there, like the headings' bands: under the popup's
@@ -1326,4 +1326,18 @@ export function PlaybackMenu({
       </DndContext>
     </Sheet>
   );
+}
+
+function settingsOf(setup: SetupWithItems): {
+  background: ScreenBackground;
+  transition: ScreenTransition;
+  transition_speed: ScreenTransitionSpeed;
+  slide_direction: ScreenSlideDirection;
+} {
+  return {
+    background: setup.background ?? "black",
+    transition: setup.transition ?? "cut",
+    transition_speed: setup.transition_speed ?? "normal",
+    slide_direction: setup.slide_direction ?? "right",
+  };
 }

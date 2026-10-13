@@ -62,3 +62,22 @@ export type ScheduledPlayback = Database["public"]["Tables"]["scheduled_playback
 export function mediaPublicUrl(supabaseUrl: string, storagePath: string): string {
   return `${supabaseUrl}/storage/v1/object/public/media/${storagePath}`;
 }
+
+// A group of screens on the dashboard, arranged in its own grid (see
+// 0030_screen_groups_and_setups.sql).
+export type ScreenGroup = Database["public"]["Tables"]["screen_groups"]["Row"];
+export type ScreenGroupMember = Database["public"]["Tables"]["screen_group_members"]["Row"];
+
+// What a screen's or group's Playback Menu edits: a playlist plus playback
+// settings, kept apart from what's on air until the menu's checkmark
+// commits it (commit_setup in 0030).
+export type Setup = Database["public"]["Tables"]["setups"]["Row"];
+export type SetupItem = Database["public"]["Tables"]["setup_items"]["Row"];
+
+export type SetupItemWithMedia = SetupItem & {
+  media_item: MediaItem;
+};
+
+export type SetupWithItems = Setup & {
+  items: SetupItemWithMedia[];
+};
