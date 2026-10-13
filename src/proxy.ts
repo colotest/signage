@@ -10,6 +10,8 @@ import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth/session";
 // must load their player URL with no login step. /signup/* is open too:
 // that's how someone without an account gets one. So is /upload/*: a
 // folder's upload link, whose token is checked by the page and its actions.
+// And /tv.apk, the Fire TV app, fetched by a stick's Downloader with no
+// session (see android/).
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -32,6 +34,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!screen|signup|upload/|_next/static|_next/image|favicon.ico|sw.js).*)",
+    "/((?!screen|signup|upload/|_next/static|_next/image|favicon.ico|sw.js|tv.apk).*)",
   ],
 };
