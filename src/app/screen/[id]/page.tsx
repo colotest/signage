@@ -4,10 +4,14 @@ import { Player } from "./Player";
 
 export default async function ScreenPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ app?: string }>;
 }) {
   const { id } = await params;
+  // Opened by the Fire TV app, which plays videos itself (see nativeVideo.ts).
+  const { app } = await searchParams;
   const screenId = Number(id);
 
   if (!Number.isInteger(screenId)) {
@@ -31,6 +35,7 @@ export default async function ScreenPage({
     <Player
       screen={screen as Screen}
       initialPlaylist={(playlist ?? []) as unknown as PlaylistItemWithMedia[]}
+      nativeVideo={app === "1"}
     />
   );
 }

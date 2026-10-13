@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+
+# The release signing key. Never commit it — but back it up: an update to
+# the app installs over the old one only if it's signed with the same key.
+keystore.properties
+*.jks

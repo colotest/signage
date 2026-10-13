@@ -59,6 +59,32 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 2. Open `https://your-app.vercel.app/screen/{id}` in the TV's browser (or a kiosk-mode browser app on a Fire Stick / Raspberry Pi) and make it fullscreen. No login is needed for this URL.
 3. Back on the dashboard, tap the screen tile to open its **Media Menu**, then **+ Add Content** to assign files from the library. The player updates automatically.
 
+## Fire TV app
+
+A stick's own browser struggles with video, so there's a small Android app
+for Fire TV (`android/`). It's still the same `/screen/{id}` page, opened in
+a transparent WebView, so everything above works unchanged and every deploy
+reaches it with no app update. The difference is video: the page hands each
+video to the app (`src/app/screen/[id]/nativeVideo.ts`), which plays it with
+the stick's hardware player directly beneath the page and keeps a copy of
+each file on the stick, so it plays offline too.
+
+**Installing on a stick:** Settings → My Fire TV → Developer options →
+allow installing unknown apps for **Downloader** (install Downloader from the
+Appstore first). In Downloader, open `colo-cloud.app/tv.apk` and install. On
+first launch, enter the screen's number (the `{id}` in its `/screen/{id}`
+address). Press ☰ on the remote at any time to change it. On Fire OS 8,
+use **Allow starting on power-up** on that same screen so that the app
+reopens after a power cut.
+
+**Building a new version:** `scripts/build-tv-apk.sh` builds the app into
+`public/tv.apk`. Commit that file and deploy. Raise `versionCode` in
+`android/app/build.gradle.kts` first, so the stick installs the new APK
+over the old one. The first build creates the signing key,
+`android/release.jks` with `android/keystore.properties`. Both are
+git-ignored, so back them up: only an APK signed with that same key
+installs over an earlier one.
+
 ## Project structure
 
 - `src/app/(dashboard)/` — login-gated dashboard pages (screens grid, library, users).
@@ -70,6 +96,7 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 - `src/lib/activity.ts` — records each change against the user who made it (shown on the Users page).
 - `src/lib/realtime/` — Realtime channel-name helpers, live refresh, and the dashboard's live screen status (`useScreenStatuses`).
 - `supabase/migrations/` — the SQL schema.
+- `android/` — the Fire TV app (see above).
 
 ## PDFs
 

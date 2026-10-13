@@ -21,6 +21,7 @@ import { NoContentPlaceholder } from "@/components/NoContentPlaceholder";
 import { ScreenPage } from "@/components/screenPages";
 import { useScheduledSwitch, type PendingTimer } from "./useScheduledSwitch";
 import { useStatusReport } from "./useStatusReport";
+import { nativeVideoBridge } from "./nativeVideo";
 
 // pdf.js needs browser canvas APIs, so this must never run during SSR.
 const PdfSlide = dynamic(() => import("./PdfSlide"), { ssr: false });
@@ -158,9 +159,12 @@ function rotationWrapperStyle(rotation: number): CSSProperties {
 export function Player({
   screen: initialScreen,
   initialPlaylist,
+  nativeVideo,
 }: {
   screen: Screen;
   initialPlaylist: PlaylistItemWithMedia[];
+  // Opened by the Fire TV app, which plays the videos (see nativeVideo.ts).
+  nativeVideo: boolean;
 }) {
   const [screen, setScreen] = useState(initialScreen);
   const [playlist, setPlaylist] = useState(initialPlaylist);
@@ -400,14 +404,14 @@ export function Player({
     const items = playlistRef.current;
     if (items.length === 0) return;
     const item = items[indexRef.current % items.length];
-    if (!item || item.id !== firstVideoItemId) return;
+    if (nativeVideo || !item || item.id !== firstVideoItemId) return;
     const attempts = autoRefreshCountsRef.current.get(item.id) ?? 0;
     if (attempts >= MAX_AUTO_REFRESH_ATTEMPTS) return;
     const next = attempts + 1;
     autoRefreshCountsRef.current.set(item.id, next);
     setAutoRefreshCounts((prev) => new Map(prev).set(item.id, next));
     setReloadToken((t) => t + 1);
-  }, [firstVideoItemId]);
+  }, [firstVideoItemId, nativeVideo]);
 
   function skipNext() {
     advanceNow();
@@ -455,9 +459,23 @@ export function Player({
   // Then anything kept for a file this screen no longer plays (or is about
   // to, for timed playback) is deleted, so a TV stick's storage doesn't
   // fill up with every file it has ever shown.
+  //
+  // In the Fire TV app, videos are the app's to download and keep instead
+  // (see nativeVideo.ts); this only tells it which, and which to let go.
   const prefetchedUrlsRef = useRef<Set<string>>(new Set());
   const timerUrlsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
+    const bridge = nativeVideo ? nativeVideoBridge() : undefined;
+    if (bridge) {
+      const keep = new Set(timerUrlsRef.current);
+      for (const item of playlist) {
+        if (item.media_item.media_type !== "video") continue;
+        const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
+        keep.add(url);
+        bridge.preload(url); // a no-op for a file it already has
+      }
+      bridge.retain(JSON.stringify([...keep]));
+    }
     if (!("serviceWorker" in navigator)) return;
     let cancelled = false;
     navigator.serviceWorker.ready.then(async () => {
@@ -465,6 +483,7 @@ export function Player({
       const keep = new Set(timerUrlsRef.current);
       for (const item of playlist) {
         if (item.media_item.media_type === "page") continue; // rendered in code, nothing to fetch
+        if (bridge && item.media_item.media_type === "video") continue; // the app's, above
         const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
         keep.add(url);
         if (prefetchedUrlsRef.current.has(url)) continue;
@@ -481,7 +500,7 @@ export function Player({
     return () => {
       cancelled = true;
     };
-  }, [playlist]);
+  }, [playlist, nativeVideo]);
 
   // Timed playback (see useScheduledSwitch): from a minute ahead, pull the
   // timed playlist's media in — videos/PDFs as whole-file GETs the service
@@ -496,6 +515,11 @@ export function Player({
       if (media.media_type === "page") continue; // rendered in code, nothing to fetch
       const url = mediaPublicUrl(SUPABASE_URL, media.storage_path);
       timerUrlsRef.current.add(url); // kept by the prune above until it's switched to
+      const bridge = nativeVideo ? nativeVideoBridge() : undefined;
+      if (bridge && media.media_type === "video") {
+        bridge.preload(url);
+        continue;
+      }
       if (prefetchedUrlsRef.current.has(url)) continue;
       prefetchedUrlsRef.current.add(url);
       if (media.media_type === "image") {
@@ -656,15 +680,88 @@ export function Player({
   }, [screen.id]);
 
   // The dashboard's live preview and Online/Offline come from this. Only
-  // the incoming slide's <video> lands in currentVideoRef — an outgoing one
-  // is already on its way off screen.
-  const currentVideoRef = useRef<HTMLVideoElement | null>(null);
+  // the incoming slide's video reads into videoPositionRef — an outgoing
+  // one is already on its way off screen.
+  const videoPositionRef = useRef<(() => number) | null>(null);
   const reportStatus = useStatusReport({
     supabase,
     screenId: screen.id,
     mediaItemId: current?.media_item_id ?? null,
     paused,
-    videoRef: currentVideoRef,
+    positionRef: videoPositionRef,
+  });
+
+  // In the Fire TV app, the video on screen is the app's (see
+  // nativeVideo.ts), driven from here rather than from the slide: the slide
+  // itself is just a transparent hole it shows through. Driving it from the
+  // slide would restart it at the start of every transition, since the
+  // slide that's leaving is remounted under a new key to animate out. This
+  // way a video on its way out is simply held on its current frame instead,
+  // until nothing on screen needs it.
+  const nativeHandleRef = useRef(0);
+  const nativeVideoKey =
+    nativeVideo && current?.media_item.media_type === "video" ? `${current.id}:${reloadToken}` : null;
+  const nativeVideoOnScreen = nativeVideoKey !== null || outgoing?.media_item.media_type === "video";
+  const fitMode = screen.fit_mode;
+  const rotation = screen.rotation ?? 0;
+  const loop = playlist.length === 1;
+
+  useEffect(() => {
+    const bridge = nativeVideoBridge();
+    if (!bridge) return;
+    if (!nativeVideoKey || !current) {
+      // Still animating out: hold its frame. Stopped by the effect below.
+      if (nativeVideoOnScreen) bridge.setPaused(nativeHandleRef.current, true);
+      videoPositionRef.current = null;
+      return;
+    }
+    const handle = nativeHandleRef.current + 1;
+    nativeHandleRef.current = handle;
+    bridge.play(
+      handle,
+      mediaPublicUrl(SUPABASE_URL, current.media_item.storage_path),
+      pausedRef.current,
+      playlistRef.current.length === 1,
+      fitMode,
+      rotation,
+    );
+    videoPositionRef.current = () => bridge.positionMs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nativeVideoKey]);
+
+  useEffect(() => {
+    if (!nativeVideoOnScreen) nativeVideoBridge()?.stop();
+  }, [nativeVideoOnScreen]);
+
+  useEffect(() => {
+    if (nativeVideoKey) nativeVideoBridge()?.setPaused(nativeHandleRef.current, paused);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused]);
+
+  useEffect(() => {
+    if (nativeVideoKey) nativeVideoBridge()?.setLoop(nativeHandleRef.current, loop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loop]);
+
+  useEffect(() => {
+    nativeVideoBridge()?.setLayout(fitMode, rotation);
+  }, [fitMode, rotation]);
+
+  useEffect(() => {
+    nativeVideoBridge()?.setBackground(screen.background === "white" ? "#ffffff" : "#000000");
+  }, [screen.background]);
+
+  // The app's events, for the video it's playing. Anything from a handle
+  // that's since been replaced, or once the slide has moved on, is stale.
+  useEffect(() => {
+    if (!nativeVideo) return;
+    window.__signageNative = (handle, event) => {
+      if (handle !== nativeHandleRef.current) return;
+      const items = playlistRef.current;
+      if (items[indexRef.current % items.length]?.media_item.media_type !== "video") return;
+      if (event === "ended") handleVideoEnded();
+      else reportStatus();
+    };
   });
 
   // Kicks off the playback loop, and restarts it promptly if the currently
@@ -695,8 +792,10 @@ export function Player({
     // bars, the clock's face, the placeholder) and whatever has to read
     // against it. Set here once so every layer below — including code-
     // rendered pages — picks them up without threading a prop down.
+    // In the Fire TV app the page has to be see-through for the video
+    // underneath; the app paints the background behind it instead.
     <div
-      className="relative h-dvh w-dvw overflow-hidden bg-[var(--screen-bg)]"
+      className={`relative h-dvh w-dvw overflow-hidden ${nativeVideo ? "" : "bg-[var(--screen-bg)]"}`}
       style={
         {
           "--screen-bg": screen.background === "white" ? "#fff" : "#000",
@@ -714,6 +813,7 @@ export function Player({
           covers it, so a white image on a white background still runs
           seamlessly into it. Outside the rotation wrapper, so it always
           follows the physical edge. */}
+      {nativeVideo && <style>{"html, body { background: transparent !important; }"}</style>}
       <div aria-hidden className="pointer-events-none absolute inset-0 border-2 border-black" />
       {/* A screen mounted rotated N degrees counterclockwise needs its
           content rotated N degrees clockwise to cancel that out and land
@@ -744,6 +844,7 @@ export function Player({
               >
                 <Slide
                   item={outgoing}
+                  nativeVideo={nativeVideo}
                   fitMode={screen.fit_mode}
                   now={serverNow}
                   paused
@@ -757,16 +858,19 @@ export function Player({
             <div key={`in-${current.id}-${reloadToken}`} className="absolute inset-0" style={animation.incoming}>
               <Slide
                 item={current}
+                nativeVideo={nativeVideo}
                 fitMode={screen.fit_mode}
                 now={serverNow}
                 paused={paused}
-                loop={playlist.length === 1}
+                loop={loop}
                 onVideoEnded={handleVideoEnded}
                 onVideoAutoRefresh={handleAutoRefresh}
                 showAutoRefreshOverlay={
-                  current.id === firstVideoItemId && (autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS
+                  !nativeVideo &&
+                  current.id === firstVideoItemId &&
+                  (autoRefreshCounts.get(current.id) ?? 0) < MAX_AUTO_REFRESH_ATTEMPTS
                 }
-                videoRef={currentVideoRef}
+                positionRef={videoPositionRef}
                 onPlaybackChange={reportStatus}
               />
             </div>
@@ -779,6 +883,7 @@ export function Player({
 
 function Slide({
   item,
+  nativeVideo,
   fitMode,
   now,
   paused,
@@ -786,10 +891,11 @@ function Slide({
   onVideoEnded,
   onVideoAutoRefresh,
   showAutoRefreshOverlay,
-  videoRef,
+  positionRef,
   onPlaybackChange,
 }: {
   item: PlaylistItemWithMedia;
+  nativeVideo: boolean;
   fitMode: FitMode;
   now: () => number;
   paused: boolean;
@@ -797,8 +903,8 @@ function Slide({
   onVideoEnded: () => void;
   onVideoAutoRefresh: () => void;
   showAutoRefreshOverlay: boolean;
-  // Given only to the incoming slide — see currentVideoRef in Player.
-  videoRef?: RefObject<HTMLVideoElement | null>;
+  // Given only to the incoming slide — see videoPositionRef in Player.
+  positionRef?: RefObject<(() => number) | null>;
   onPlaybackChange?: () => void;
 }) {
   if (item.media_item.media_type === "page") {
@@ -809,6 +915,8 @@ function Slide({
   const fitClass = fitMode === "cover" ? "object-cover" : "object-contain";
 
   if (item.media_item.media_type === "video") {
+    // The Fire TV app's video shows through here — see Player.
+    if (nativeVideo) return null;
     return (
       <VideoSlide
         url={url}
@@ -818,7 +926,7 @@ function Slide({
         onVideoEnded={onVideoEnded}
         onAutoRefresh={onVideoAutoRefresh}
         showInitialOverlay={showAutoRefreshOverlay}
-        externalRef={videoRef}
+        positionRef={positionRef}
         onPlaybackChange={onPlaybackChange}
       />
     );
@@ -928,7 +1036,7 @@ function VideoSlide({
   onVideoEnded,
   onAutoRefresh,
   showInitialOverlay,
-  externalRef,
+  positionRef,
   onPlaybackChange,
 }: {
   url: string;
@@ -950,7 +1058,7 @@ function VideoSlide({
   // that follows the final allowed attempt, which is presumed (not
   // confirmed — we still have no way to check) to finally be a good one.
   showInitialOverlay: boolean;
-  externalRef?: RefObject<HTMLVideoElement | null>;
+  positionRef?: RefObject<(() => number) | null>;
   // Playback actually starting (after any buffering), pausing, or jumping
   // (a loop back to the start) — each one a moment where the dashboard's
   // preview would otherwise drift out of step.
@@ -987,7 +1095,7 @@ function VideoSlide({
       <video
         ref={(el) => {
           videoRef.current = el;
-          if (externalRef) externalRef.current = el;
+          if (positionRef) positionRef.current = el ? () => el.currentTime * 1000 : null;
           setVideoEl(el);
         }}
         src={url}

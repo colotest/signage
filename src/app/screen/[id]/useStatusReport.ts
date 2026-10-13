@@ -22,8 +22,9 @@ function newSessionId() {
 // only calls a screen offline once reports have stopped for a while. That
 // makes a power cut, which sends nothing at all, show up reliably too.
 //
-// For a video, each report also carries where in it playback is, read off
-// videoRef at the moment of sending, so the dashboard's preview can play in
+// For a video, each report also carries where in it playback is, read from
+// positionRef at the moment of sending (a <video>'s currentTime, or the Fire
+// TV app's own player — see nativeVideo.ts), so the dashboard's preview can play in
 // step and hold the same frame while paused. The returned function reports
 // on demand — the player calls it from the video's own playing/pause/
 // seeked events, which is what keeps a buffering start or a loop restart
@@ -33,13 +34,14 @@ export function useStatusReport({
   screenId,
   mediaItemId,
   paused,
-  videoRef,
+  positionRef,
 }: {
   supabase: Supabase;
   screenId: number;
   mediaItemId: string | null;
   paused: boolean;
-  videoRef: RefObject<HTMLVideoElement | null>;
+  // Milliseconds into the video on screen; null while it isn't one.
+  positionRef: RefObject<(() => number) | null>;
 }) {
   const [sessionId] = useState(newSessionId);
 
@@ -59,14 +61,14 @@ export function useStatusReport({
   useEffect(() => {
     reportRef.current = () => {
       const { mediaItemId, paused } = latestRef.current;
-      const video = videoRef.current;
+      const position = positionRef.current;
       supabase
         .rpc("report_screen_status", {
           p_screen_id: screenId,
           p_session_id: sessionId,
           p_media_item_id: mediaItemId,
           p_paused: paused,
-          p_position_ms: video ? Math.round(video.currentTime * 1000) : null,
+          p_position_ms: position ? Math.round(position()) : null,
         })
         .then(({ error }) => {
           if (error) {
@@ -87,7 +89,7 @@ export function useStatusReport({
             });
         });
     };
-  }, [supabase, screenId, sessionId, videoRef]);
+  }, [supabase, screenId, sessionId, positionRef]);
 
   // A change on screen is reported the moment it happens.
   useEffect(() => {
