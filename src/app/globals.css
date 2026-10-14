@@ -660,6 +660,24 @@ body {
   }
 }
 
+/* In a plain Safari tab the header stays flat and exactly theme-color (see
+   the root layout), which is what Safari paints its own chrome above it
+   with: any translucency here and the two stop reading as one surface,
+   since what tints the glass is whatever happens to be scrolling under it.
+   Installed there's no Safari chrome to match — the header takes the status
+   bar strip itself, and can be glass. */
+.header-surface {
+  background: var(--surface);
+}
+
+@media (display-mode: standalone) {
+  .header-surface {
+    background: var(--surface-elevated);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+}
+
 /* Installed to the Home Screen the status bar is transparent and the page
    runs up behind it, so the header takes that strip on itself: its own
    glass fills it, and this keeps the nav below the clock and the
