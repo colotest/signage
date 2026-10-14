@@ -3,10 +3,13 @@
 package app.colocloud.tv
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Choreographer
+import android.view.PixelCopy
 import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
@@ -95,6 +98,8 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
     // Whose video is loaded in the player: the slide, and its page handle.
     private var playerSlide: VideoSlide? = null
     private var playerHandle = 0
+    // Called once the video just started shows its first frame.
+    private var onFirstFrame: (() -> Unit)? = null
 
     // Read by the page on its own thread (Bridge.positionMs).
     @Volatile
@@ -140,6 +145,8 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
             override fun onRenderedFirstFrame() {
                 playerSlide?.firstFrame()
                 failures = 0
+                onFirstFrame?.invoke()
+                onFirstFrame = null
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -190,26 +197,28 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         current = incoming
 
         var kind = if (spec.durationMs <= 0) "cut" else spec.transition
-        if (outgoing is VideoSlide && incoming is VideoSlide && kind != "cut") kind = "dip"
+        // Between two videos, a slide or crossfade freezes the outgoing one
+        // on its last frame and hands the one player to the incoming one —
+        // see VideoSlide.freeze. A dip just switches over at its midpoint.
+        val freeze = outgoing is VideoSlide && incoming is VideoSlide && (kind == "slide" || kind == "crossfade")
+        if (freeze && !(outgoing as VideoSlide).canFreeze()) kind = "dip"
+        val videoAtMidpoint = outgoing is VideoSlide && incoming is VideoSlide && kind == "dip"
 
         if (incoming != null) {
             incoming.applyLayout(cover, degrees != 0)
             incoming.applyBackground(background)
             incoming.setFade(if (kind == "cut") 1f else 0f)
-            // Crossfading to a video, the video goes underneath and the
-            // image fades off it — a video can't itself fade over anything.
-            val under = kind == "crossfade" && incoming is VideoSlide && outgoing != null
+            // A video always comes in underneath the slide it replaces: a
+            // crossfade fades that slide off it (a video can't itself fade
+            // over anything), and until a transition starts — waiting on
+            // the video's first frame — the slide still showing covers it.
+            val under = incoming is VideoSlide && outgoing != null && kind != "cut"
             content.addView(
                 incoming,
                 if (under) 0 else content.childCount,
                 LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
             )
         }
-
-        // The video starts straight away — under the slide it replaces,
-        // where there's one — except after another video, at the midpoint.
-        val videoAtMidpoint = incoming is VideoSlide && outgoing is VideoSlide
-        if (incoming is VideoSlide && !videoAtMidpoint) startVideo(incoming, handle, spec.url!!)
 
         val begin = Runnable {
             pendingStart = null
@@ -220,10 +229,12 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
             }
         }
 
-        if (incoming is ImageSlide) {
-            // Wait for the image, so the transition shows it rather than an
-            // empty slide — but not for long: a slow first download shows
-            // the background instead, until the image arrives.
+        // Waiting on the incoming slide's first picture, so the transition
+        // shows it rather than an empty slide — but not for long: a slow
+        // first download shows the background instead, until it arrives.
+        // Only from a slide of this stage's own: against a slide of the
+        // page's, the page's half of the transition has already started.
+        val waitFor = { timeoutMs: Long ->
             pendingStart = begin
             var started = false
             val startOnce = {
@@ -232,10 +243,29 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
                     begin.run()
                 }
             }
-            main.postDelayed({ startOnce() }, 1500)
-            incoming.load(spec.url!!) { startOnce() }
-        } else {
-            begin.run()
+            main.postDelayed({ startOnce() }, timeoutMs)
+            startOnce
+        }
+
+        when {
+            incoming is ImageSlide -> {
+                val startOnce = waitFor(1500)
+                incoming.load(spec.url!!) { startOnce() }
+            }
+            incoming is VideoSlide && outgoing != null && kind != "cut" && !videoAtMidpoint -> {
+                val startOnce = waitFor(1000)
+                val go = {
+                    if (current === incoming) {
+                        startVideo(incoming, handle, spec.url!!)
+                        onFirstFrame = { startOnce() }
+                    }
+                }
+                if (freeze) (outgoing as VideoSlide).freeze(go) else go()
+            }
+            else -> {
+                if (incoming is VideoSlide && !videoAtMidpoint) startVideo(incoming, handle, spec.url!!)
+                begin.run()
+            }
         }
     }
 
@@ -286,6 +316,7 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
     private fun startVideo(slide: VideoSlide, handle: Int, url: String) {
         playerSlide = slide
         playerHandle = handle
+        onFirstFrame = null
         failures = 0
         positionMs = 0
         main.removeCallbacks(retry)
@@ -301,6 +332,7 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
     private fun stopVideo() {
         playerSlide = null
         playerHandle = 0
+        onFirstFrame = null
         positionMs = 0
         main.removeCallbacks(retry)
         main.removeCallbacks(tick)
@@ -501,7 +533,15 @@ class VideoSlide(context: Context, var paused: Boolean, var loop: Boolean) : Sli
     // SurfaceView ignores its own alpha.
     private val veil = View(context)
 
+    // The last frame, standing in for the video once it's frozen.
+    private val still = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.FIT_XY
+        visibility = View.GONE
+    }
+    private var frozen = false
+
     init {
+        frame.addView(still, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(frame, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(shutter, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(veil, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -521,12 +561,54 @@ class VideoSlide(context: Context, var paused: Boolean, var loop: Boolean) : Sli
     }
 
     override fun setFade(value: Float) {
+        if (frozen) {
+            alpha = value
+            return
+        }
         veil.alpha = 1f - value
         veil.visibility = if (value >= 1f) View.GONE else View.VISIBLE
     }
 
+    fun canFreeze() = surface is TextureView || Build.VERSION.SDK_INT >= 24
+
+    // Swaps the playing video for a still of its current frame, and lets
+    // go of the surface, so the player can move on to the next video while
+    // this one is still on screen — sliding off, or fading over it. One
+    // player, so one decoder at a time, which is all a stick does well.
+    // Without a surface underneath any more, this is an ordinary view that
+    // moves and fades like an image.
+    fun freeze(done: () -> Unit) {
+        val view = surface
+        val finish = { bitmap: Bitmap? ->
+            if (bitmap != null) {
+                still.setImageBitmap(bitmap)
+                still.visibility = View.VISIBLE
+            }
+            view?.let { frame.removeView(it) }
+            surface = null
+            frozen = true
+            veil.visibility = View.GONE
+            done()
+        }
+        when {
+            view is TextureView -> finish(view.bitmap)
+            view is SurfaceView && Build.VERSION.SDK_INT >= 24 && view.width > 0 && view.height > 0 -> {
+                val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                try {
+                    PixelCopy.request(view, bitmap, { result ->
+                        finish(if (result == PixelCopy.SUCCESS) bitmap else null)
+                    }, Handler(Looper.getMainLooper()))
+                } catch (_: IllegalArgumentException) {
+                    finish(null)
+                }
+            }
+            else -> finish(null)
+        }
+    }
+
     override fun applyLayout(cover: Boolean, rotated: Boolean) {
         frame.setCover(cover)
+        if (frozen) return
         if (surface == null || (surface is TextureView) != rotated) {
             surface?.let { frame.removeView(it) }
             val view = if (rotated) TextureView(context) else SurfaceView(context)

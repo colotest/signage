@@ -716,8 +716,9 @@ export function Player({
     nativeShownRef.current = current;
     const kind = current ? nativeKind(current.media_item) : "none";
     // A remount of the same slide (see reloadToken) just starts it over.
-    const slideTransition =
-      previous && current && previous.id !== current.id ? effectiveTransition(transition, previous, current) : "cut";
+    // The real transition otherwise, even between two videos: the app
+    // manages that one itself (see Stage.kt).
+    const slideTransition = previous && current && previous.id !== current.id ? transition : "cut";
     const handle = nativeHandleRef.current + 1;
     nativeHandleRef.current = handle;
     const slide: NativeSlide = {
