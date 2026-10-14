@@ -44,8 +44,8 @@ const ALPHA_BIAS = -8;
 // underneath the wax, so light appears to carry past the edge of a blob
 // instead of stopping at it. Wider than the goo blur, and the filter region
 // has to be opened up or it would be clipped at the layer's edge.
-const HALO_RATIO = 0.13;
-const HALO_STRENGTH = 1.15;
+const HALO_RATIO = 0.075;
+const HALO_STRENGTH = 0.5;
 
 // The lamp's own vessel. Deliberately not the screen's black/white
 // background setting: a lava lamp is a dark vessel, and a white one isn't
@@ -80,15 +80,15 @@ type Blob = {
   colour: readonly [string, string, string];
 };
 
-// Core, body, rim. A lit object is brightest where the light strikes it and
-// darkest at its edges; a glowing one is the other way about — light pools
-// in it and leaks out through the thin wax at the edge, so the rim comes
-// back up rather than falling into shadow, and the whole range is narrow.
-// A wide range with a dark rim is exactly what made these read as polished
-// balls catching a lamp rather than as wax with light inside them.
-const AMBER = ["#ffcb86", "#f8782a", "#ffa54c"] as const;
-const EMBER = ["#ffb46a", "#e9591f", "#f98b36"] as const;
-const DEEP = ["#ff9d55", "#cf3519", "#e4702c"] as const;
+// Core, body, rim — and the core is the *deepest* of the three. Light
+// coming from under the lamp has the most wax to cross through the middle
+// of a blob and the least at its edges, so it is absorbed into a dense
+// centre and escapes around the rim. That difference across the body is
+// what gives a blob its roundness; an even fill, however warm, reads as a
+// flat disc, and a bright centre reads as a lamp painted on a ball.
+const AMBER = ["#a82d16", "#e35d1e", "#ffc077"] as const;
+const EMBER = ["#8d1a17", "#d14a1d", "#ffa455"] as const;
+const DEEP = ["#640d20", "#b0301b", "#f3833c"] as const;
 
 const BLOBS: Blob[] = [
   { x: 0.26, y: 0.74, size: 0.3, motion: "rise", duration: 54, delay: -3, travel: 0.74, sway: 0.09, colour: AMBER },
@@ -220,12 +220,19 @@ export function LavaLamp() {
                   borderRadius: "50%",
                   // Opaque to its own rim: the blur is what softens an
                   // edge here, and the alpha push is what hardens it again
-                  // where two of them have pooled together. The pooled
-                  // light sits low, where the bulb is, and the rim lifts
-                  // back towards it. There is deliberately no highlight
-                  // anywhere: a tight bright spot is a reflection, and one
-                  // spot was enough to turn the whole thing glassy.
-                  background: `radial-gradient(circle closest-side at 50% 68%, ${blob.colour[0]} 0%, ${blob.colour[1]} 62%, ${blob.colour[2]} 100%)`,
+                  // where two of them have pooled together.
+                  //
+                  // Two passes, depth then direction. The radial one is the
+                  // wax's own thickness, dense in the middle and thinning
+                  // to a lit rim. The upward one on top of it is the bulb
+                  // underneath, lifting the underside of every blob — which
+                  // is what keeps a round blob from looking like a ring.
+                  // Still no highlight anywhere: a tight bright spot is a
+                  // reflection, and one was enough to turn these glassy.
+                  background: [
+                    `linear-gradient(to top, rgba(255, 196, 124, 0.38) 0%, rgba(255, 170, 96, 0.12) 32%, rgba(255, 150, 80, 0) 66%)`,
+                    `radial-gradient(circle closest-side at 50% 50%, ${blob.colour[0]} 0%, ${blob.colour[1]} 68%, ${blob.colour[2]} 100%)`,
+                  ].join(", "),
                   animation: `colo-lava-${blob.motion} ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
                   willChange: "transform",
                   ["--lava-travel" as string]: `${stageHeight * blob.travel * 0.5}px`,
