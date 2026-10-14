@@ -729,17 +729,18 @@ export function Player({
       durationMs: transitionMs,
       paused: pausedRef.current,
       loop: playlistRef.current.length === 1,
-      easeOutMs: transition === "cut" ? 0 : transitionMs,
+      handoverMs: transition === "cut" ? 0 : transitionMs,
     };
     bridge.show(handle, JSON.stringify(slide));
     videoPositionRef.current = kind === "video" ? () => bridge.positionMs() : null;
 
-    // Decode the image after this one now, so it's ready the moment it's due.
+    // Decode the slide after this one now — the image, or a video's first
+    // frame — so it's ready the moment it's due.
     const items = playlistRef.current;
     const next = items.length > 1 ? items[(indexRef.current + 1) % items.length] : null;
-    if (next && nativeKind(next.media_item) === "image") {
-      bridge.prepare(mediaPublicUrl(SUPABASE_URL, next.media_item.storage_path));
-    }
+    const nextKind = next ? nativeKind(next.media_item) : "none";
+    if (next && nextKind === "image") bridge.prepare(mediaPublicUrl(SUPABASE_URL, next.media_item.storage_path));
+    if (next && nextKind === "video") bridge.prepareFirstFrame?.(mediaPublicUrl(SUPABASE_URL, next.media_item.storage_path));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nativeKey]);
 

@@ -218,6 +218,11 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun prepareFirstFrame(url: String) {
+            main.post { Images.prepareFirstFrame(url) }
+        }
+
+        @JavascriptInterface
         fun retain(urlsJson: String) {
             val keep = try {
                 val array = JSONArray(urlsJson)

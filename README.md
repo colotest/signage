@@ -85,10 +85,11 @@ keeps working after a deploy that changes the bridge. Bump
 **Installing on a stick:** Settings → My Fire TV → Developer options →
 allow installing unknown apps for **Downloader** (install Downloader from the
 Appstore first). In Downloader, open `colo-cloud.app/tv.apk` and install. On
-first launch, enter the screen's number (the `{id}` in its `/screen/{id}`
-address). Press ☰ on the remote at any time to change it. On Fire OS 8,
-use **Allow starting on power-up** on that same screen so that the app
-reopens after a power cut.
+first launch, pick the screen's number (the `{id}` in its `/screen/{id}`
+address) with up and down, and press OK. Press ☰ on the remote at any time
+to change it. On Fire OS 8, the app reopens itself after a power cut only
+once it's allowed to, over adb:
+`adb shell appops set app.colocloud.tv SYSTEM_ALERT_WINDOW allow`.
 
 **Trying it against a dev server:** in the emulator, set the server to
 `http://10.0.2.2:3000`. On a stick plugged into the computer, run

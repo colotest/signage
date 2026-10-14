@@ -3,13 +3,10 @@
 package app.colocloud.tv
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Color
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Choreographer
-import android.view.PixelCopy
 import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
@@ -39,7 +36,7 @@ data class SlideSpec(
     val durationMs: Long,
     val paused: Boolean,
     val loop: Boolean,
-    val easeOutMs: Long,
+    val handoverMs: Long,
 ) {
     companion object {
         fun parse(json: String): SlideSpec? = try {
@@ -52,7 +49,7 @@ data class SlideSpec(
                 durationMs = o.optLong("durationMs", 400),
                 paused = o.optBoolean("paused", false),
                 loop = o.optBoolean("loop", false),
-                easeOutMs = o.optLong("easeOutMs", 0),
+                handoverMs = o.optLong("handoverMs", 0),
             )
         } catch (_: Exception) {
             null
@@ -71,9 +68,11 @@ data class SlideSpec(
 // which the display composites on its own: no browser and no GPU copy in
 // between. A SurfaceView can't be rotated, so a rotated screen uses a
 // TextureView instead, which costs one GPU pass. One player, so one
-// decoder: the page already turns video-to-video transitions into a dip
-// (Player.tsx, effectiveTransition), and this does the same as a backstop,
-// switching the player over at the dip's midpoint.
+// decoder, which is all a stick does well: during a transition it's the
+// outgoing video that plays — it hands over a transition's length before
+// its end and plays out its last stretch while it leaves — and an incoming
+// one shows a still of its first frame, then starts once it's arrived,
+// picking up speed from a standstill.
 //
 // Everything here runs on the main thread; MainActivity's Bridge posts
 // calls onto it.
@@ -101,8 +100,6 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
     // Whose video is loaded in the player: the slide, and its page handle.
     private var playerSlide: VideoSlide? = null
     private var playerHandle = 0
-    // Called once the video just started shows its first frame.
-    private var onFirstFrame: (() -> Unit)? = null
 
     // Read by the page on its own thread (Bridge.positionMs).
     @Volatile
@@ -113,50 +110,74 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         override fun run() {
             if (playerHandle == 0) return
             positionMs = player.currentPosition
-            if (!easingOut && easeOutRemainingMs() <= (playerSlide?.easeOutMs ?: 0) / 2 + 500) {
-                easingOut = true
-                Choreographer.getInstance().postFrameCallback(easeOut)
+            if (!watchingEnd && !handedOver && remainingMs() <= (playerSlide?.handoverMs ?: 0) + 500) {
+                watchingEnd = true
+                Choreographer.getInstance().postFrameCallback(endWatch)
             }
             main.postDelayed(this, 250)
         }
     }
 
-    // A video's end, slowed to a stop: over its last stretch, playback eases
-    // from full speed down to nothing, landing on the last frame, and only
-    // then ends — and the page moves on, with its transition. Stopping
-    // evenly over easeOutMs covers half that much video, so it starts with
-    // that much left, and each frame aims the speed at what's actually left,
-    // so it lands on the last frame however the decoder keeps time.
-    private var easingOut = false
-    private val easeOut = object : Choreographer.FrameCallback {
+    // A video tells the page it's ended a transition's length early, so the
+    // transition runs over its last stretch while it carries on playing,
+    // reaching its last frame as the transition finishes. Watched frame by
+    // frame near the end, for the handover to land on time.
+    private var handedOver = false
+    private var watchingEnd = false
+    private val endWatch = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
-            val total = playerSlide?.easeOutMs ?: 0
-            val remaining = easeOutRemainingMs()
-            if (playerHandle == 0 || total <= 0 || remaining == Long.MAX_VALUE) {
-                stopEaseOut()
+            val remaining = remainingMs()
+            if (playerHandle == 0 || handedOver || remaining == Long.MAX_VALUE) {
+                watchingEnd = false
                 return
             }
-            // speed = sqrt(2 × remaining / total): even deceleration to 0.
-            val target = if (remaining * 2 >= total) 1f else
-                Math.sqrt(2.0 * remaining / total).toFloat().coerceIn(0.1f, 1f)
-            if (Math.abs(player.playbackParameters.speed - target) > 0.02f) player.setPlaybackSpeed(target)
+            if (remaining <= (playerSlide?.handoverMs ?: 0)) {
+                handedOver = true
+                watchingEnd = false
+                emit(playerHandle, "ended")
+                return
+            }
             Choreographer.getInstance().postFrameCallback(this)
         }
     }
 
     // Milliseconds of video left before a natural end; MAX_VALUE when there
-    // isn't one coming (looping, paused, slowdown off, length unknown).
-    private fun easeOutRemainingMs(): Long {
+    // isn't one coming (looping, paused, no handover, length unknown).
+    private fun remainingMs(): Long {
         val slide = playerSlide ?: return Long.MAX_VALUE
         val duration = player.duration
-        if (slide.easeOutMs <= 0 || slide.loop || !player.playWhenReady || duration == C.TIME_UNSET) return Long.MAX_VALUE
+        if (slide.handoverMs <= 0 || slide.loop || !player.playWhenReady || duration == C.TIME_UNSET) return Long.MAX_VALUE
         if (player.playbackState == Player.STATE_ENDED) return Long.MAX_VALUE
         return maxOf(0L, duration - player.currentPosition)
     }
 
-    private fun stopEaseOut() {
-        if (easingOut) Choreographer.getInstance().removeFrameCallback(easeOut)
-        easingOut = false
+    // A video arriving by a transition starts from a standstill on its
+    // first frame and picks up speed evenly to normal, over as long as the
+    // transition took — the reverse of a slowdown. Counted from its first
+    // frame actually on screen.
+    private var rampStartNanos = -1L
+    private val ramp = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            val total = playerSlide?.rampMs ?: 0
+            if (playerHandle == 0 || total <= 0) {
+                stopRamp()
+                return
+            }
+            if (rampStartNanos < 0) rampStartNanos = frameTimeNanos
+            val t = (frameTimeNanos - rampStartNanos) / 1_000_000f / total
+            if (t >= 1f) {
+                stopRamp()
+                return
+            }
+            val speed = t.coerceIn(MIN_SPEED, 1f)
+            if (Math.abs(player.playbackParameters.speed - speed) > 0.02f) player.setPlaybackSpeed(speed)
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
+
+    private fun stopRamp() {
+        Choreographer.getInstance().removeFrameCallback(ramp)
+        rampStartNanos = -1L
         if (player.playbackParameters.speed != 1f) player.setPlaybackSpeed(1f)
     }
 
@@ -182,8 +203,8 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
             .build()
         player.volume = 0f
         // Screens play silent, and without a sound track playback follows
-        // the video's own clock — which the slowdown below needs: sound
-        // can't be played at a crawl.
+        // the video's own clock — which the speed-up from a standstill
+        // needs: sound can't be played at a crawl.
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
             .build()
@@ -197,8 +218,9 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
             override fun onRenderedFirstFrame() {
                 playerSlide?.firstFrame()
                 failures = 0
-                onFirstFrame?.invoke()
-                onFirstFrame = null
+                if ((playerSlide?.rampMs ?: 0) > 0 && rampStartNanos < 0) {
+                    Choreographer.getInstance().postFrameCallback(ramp)
+                }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -216,7 +238,8 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) emit(playerHandle, "ended")
+                // Already said, when it handed over.
+                if (state == Player.STATE_ENDED && !handedOver) emit(playerHandle, "ended")
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -243,49 +266,35 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         val incoming: Slide? = when {
             spec.url == null -> null
             spec.kind == "image" -> ImageSlide(context)
-            spec.kind == "video" -> VideoSlide(context, spec.paused, spec.loop, spec.easeOutMs)
+            spec.kind == "video" -> VideoSlide(context, spec.paused, spec.loop, spec.handoverMs)
             else -> null
         }
         current = incoming
 
-        var kind = if (spec.durationMs <= 0) "cut" else spec.transition
-        // Between two videos, a slide or crossfade freezes the outgoing one
-        // on its last frame and hands the one player to the incoming one —
-        // see VideoSlide.freeze. A dip just switches over at its midpoint.
-        val freeze = outgoing is VideoSlide && incoming is VideoSlide && (kind == "slide" || kind == "crossfade")
-        if (freeze && !(outgoing as VideoSlide).canFreeze()) kind = "dip"
-        val videoAtMidpoint = outgoing is VideoSlide && incoming is VideoSlide && kind == "dip"
+        val kind = if (spec.durationMs <= 0) "cut" else spec.transition
+        (incoming as? VideoSlide)?.rampMs = if (kind == "cut") 0 else spec.durationMs
 
         if (incoming != null) {
             incoming.applyLayout(cover, degrees != 0)
             incoming.applyBackground(background)
             incoming.setFade(if (kind == "cut") 1f else 0f)
-            // A video always comes in underneath the slide it replaces: a
-            // crossfade fades that slide off it (a video can't itself fade
-            // over anything), and until a transition starts — waiting on
-            // the video's first frame — the slide still showing covers it.
-            val under = incoming is VideoSlide && outgoing != null && kind != "cut"
-            content.addView(
-                incoming,
-                if (under) 0 else content.childCount,
-                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
-            )
+            content.addView(incoming, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         }
 
+        // The outgoing video (if any) plays on through the transition; the
+        // incoming one starts once it's done.
         val begin = Runnable {
             pendingStart = null
             run(kind, spec, outgoing, incoming) {
-                if (incoming is VideoSlide && videoAtMidpoint && current === incoming) {
-                    startVideo(incoming, handle, spec.url!!)
-                }
+                if (incoming is VideoSlide && current === incoming) startVideo(incoming, handle, spec.url!!)
             }
         }
 
-        // Waiting on the incoming slide's first picture, so the transition
-        // shows it rather than an empty slide — but not for long: a slow
-        // first download shows the background instead, until it arrives.
-        // Only from a slide of this stage's own: against a slide of the
-        // page's, the page's half of the transition has already started.
+        // Waiting on the incoming slide's picture — the image, or a video's
+        // first frame — so the transition shows it rather than an empty
+        // slide; but not for long: a slow first download shows the
+        // background instead, until it arrives. Not for a cut, which shows
+        // a video by playing it straight away.
         val waitFor = { timeoutMs: Long ->
             pendingStart = begin
             var started = false
@@ -304,20 +313,11 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
                 val startOnce = waitFor(1500)
                 incoming.load(spec.url!!) { startOnce() }
             }
-            incoming is VideoSlide && outgoing != null && kind != "cut" && !videoAtMidpoint -> {
+            incoming is VideoSlide && kind != "cut" -> {
                 val startOnce = waitFor(1000)
-                val go = {
-                    if (current === incoming) {
-                        startVideo(incoming, handle, spec.url!!)
-                        onFirstFrame = { startOnce() }
-                    }
-                }
-                if (freeze) (outgoing as VideoSlide).freeze(go) else go()
+                incoming.loadStill(spec.url!!) { startOnce() }
             }
-            else -> {
-                if (incoming is VideoSlide && !videoAtMidpoint) startVideo(incoming, handle, spec.url!!)
-                begin.run()
-            }
+            else -> begin.run()
         }
     }
 
@@ -330,10 +330,7 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
     fun setLoop(handle: Int, loop: Boolean) {
         if (handle != this.handle) return
         (current as? VideoSlide)?.loop = loop
-        if (handle == playerHandle) {
-            player.repeatMode = repeatMode(loop)
-            if (loop) stopEaseOut()
-        }
+        if (handle == playerHandle) player.repeatMode = repeatMode(loop)
     }
 
     fun setLayout(fit: String, rotation: Int) {
@@ -364,7 +361,8 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
 
     fun release() {
         main.removeCallbacksAndMessages(null)
-        Choreographer.getInstance().removeFrameCallback(easeOut)
+        Choreographer.getInstance().removeFrameCallback(endWatch)
+        Choreographer.getInstance().removeFrameCallback(ramp)
         transition?.cancel()
         player.release()
     }
@@ -372,13 +370,16 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
     private fun startVideo(slide: VideoSlide, handle: Int, url: String) {
         playerSlide = slide
         playerHandle = handle
-        onFirstFrame = null
+        handedOver = false
         failures = 0
         positionMs = 0
         main.removeCallbacks(retry)
-        stopEaseOut()
+        stopRamp()
         slide.attach(player)
         player.setMediaItem(MediaItem.fromUri(url))
+        // Held on its first frame until that's on screen; the ramp takes
+        // it from there.
+        if (slide.rampMs > 0) player.setPlaybackSpeed(MIN_SPEED)
         player.repeatMode = repeatMode(slide.loop)
         player.playWhenReady = !slide.paused
         player.prepare()
@@ -389,11 +390,10 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
     private fun stopVideo() {
         playerSlide = null
         playerHandle = 0
-        onFirstFrame = null
         positionMs = 0
         main.removeCallbacks(retry)
         main.removeCallbacks(tick)
-        stopEaseOut()
+        stopRamp()
         player.stop()
         player.clearMediaItems()
     }
@@ -411,13 +411,8 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         transition = null
     }
 
-    private fun run(kind: String, spec: SlideSpec, outgoing: Slide?, incoming: Slide?, midpoint: () -> Unit) {
-        var midpointDone = false
+    private fun run(kind: String, spec: SlideSpec, outgoing: Slide?, incoming: Slide?, done: () -> Unit) {
         fun finish() {
-            if (!midpointDone) {
-                midpointDone = true
-                midpoint()
-            }
             if (outgoing != null) {
                 content.removeView(outgoing)
                 if (outgoing === playerSlide) stopVideo()
@@ -427,6 +422,7 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
                 translationX = 0f
                 translationY = 0f
             }
+            done()
         }
 
         if (kind == "cut") {
@@ -451,10 +447,6 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
                 "crossfade" -> when {
                     // The page's slide is fading over or off this one.
                     outgoing == null || incoming == null -> incoming?.setFade(1f)
-                    incoming is VideoSlide -> {
-                        incoming.setFade(1f)
-                        outgoing.setFade(1f - EASE_IN.getInterpolation(t))
-                    }
                     else -> incoming.setFade(EASE_OUT.getInterpolation(t))
                 }
                 "slide" -> {
@@ -471,10 +463,6 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
                         translationY = -dy * h * e
                     }
                 }
-            }
-            if (t >= 0.5f && !midpointDone) {
-                midpointDone = true
-                midpoint()
             }
         }, done = {
             if (transition?.finished == true) transition = null
@@ -540,6 +528,9 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         private val EASE_IN = AccelerateInterpolator()
         private val EASE_OUT = DecelerateInterpolator()
         private val STANDARD = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+        // Slowest a video plays, starting from a standstill; ExoPlayer needs
+        // a speed above 0.
+        private const val MIN_SPEED = 0.05f
     }
 }
 
@@ -580,33 +571,61 @@ class ImageSlide(context: Context) : Slide(context) {
     }
 }
 
-class VideoSlide(context: Context, var paused: Boolean, var loop: Boolean, val easeOutMs: Long) : Slide(context) {
+class VideoSlide(context: Context, var paused: Boolean, var loop: Boolean, val handoverMs: Long) : Slide(context) {
+    // How long it takes to get up to speed once started (0: straight away).
+    var rampMs = 0L
+
     private val frame = FitFrame(context)
     private var surface: View? = null
+    private var rotated = false
+    private var rendered = false
 
-    // The background, over the video until its first frame is drawn.
-    private val shutter = View(context)
-
-    // The background again, faded over the video to fade it out: a
-    // SurfaceView ignores its own alpha.
-    private val veil = View(context)
-
-    // The last frame, standing in for the video once it's frozen.
+    // Its first frame, shown while it arrives and until the video itself
+    // draws one. A plain view, so it moves and fades like an image — which
+    // is what lets this slide transition in with no video surface, and so
+    // no second decoder, at all.
     private val still = ImageView(context).apply {
         scaleType = ImageView.ScaleType.FIT_XY
         visibility = View.GONE
     }
-    private var frozen = false
+
+    // The background, until there's a still or a frame to show.
+    private val shutter = View(context)
+
+    // The background again, faded over the playing video to fade it out: a
+    // SurfaceView ignores its own alpha.
+    private val veil = View(context)
 
     init {
         frame.addView(still, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(frame, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(shutter, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(veil, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        veil.visibility = View.GONE
     }
 
+    fun loadStill(url: String, onLoaded: () -> Unit) {
+        Images.getFirstFrame(url) { bitmap ->
+            if (bitmap != null && !rendered) {
+                still.setImageBitmap(bitmap)
+                still.visibility = View.VISIBLE
+                shutter.visibility = View.GONE
+                if (bitmap.height > 0) frame.setAspect(bitmap.width.toFloat() / bitmap.height)
+            }
+            onLoaded()
+        }
+    }
+
+    // The video surface is only made when playback starts: until then
+    // there's nothing for it to show, and a SurfaceView would punch a hole
+    // through the still. It goes underneath the still, which covers it
+    // until the first frame is drawn.
     fun attach(player: ExoPlayer) {
-        when (val view = surface) {
+        val view = surface ?: (if (rotated) TextureView(context) else SurfaceView(context)).also {
+            frame.addView(it, 0, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            surface = it
+        }
+        when (view) {
             is TextureView -> player.setVideoTextureView(view)
             is SurfaceView -> player.setVideoSurfaceView(view)
         }
@@ -615,63 +634,30 @@ class VideoSlide(context: Context, var paused: Boolean, var loop: Boolean, val e
     fun setAspect(aspect: Float) = frame.setAspect(aspect)
 
     fun firstFrame() {
+        rendered = true
+        still.visibility = View.GONE
         shutter.visibility = View.GONE
     }
 
     override fun setFade(value: Float) {
-        if (frozen) {
+        if (surface == null) {
             alpha = value
             return
         }
+        alpha = 1f
         veil.alpha = 1f - value
         veil.visibility = if (value >= 1f) View.GONE else View.VISIBLE
     }
 
-    fun canFreeze() = surface is TextureView || Build.VERSION.SDK_INT >= 24
-
-    // Swaps the playing video for a still of its current frame, and lets
-    // go of the surface, so the player can move on to the next video while
-    // this one is still on screen — sliding off, or fading over it. One
-    // player, so one decoder at a time, which is all a stick does well.
-    // Without a surface underneath any more, this is an ordinary view that
-    // moves and fades like an image.
-    fun freeze(done: () -> Unit) {
-        val view = surface
-        val finish = { bitmap: Bitmap? ->
-            if (bitmap != null) {
-                still.setImageBitmap(bitmap)
-                still.visibility = View.VISIBLE
-            }
-            view?.let { frame.removeView(it) }
-            surface = null
-            frozen = true
-            veil.visibility = View.GONE
-            done()
-        }
-        when {
-            view is TextureView -> finish(view.bitmap)
-            view is SurfaceView && Build.VERSION.SDK_INT >= 24 && view.width > 0 && view.height > 0 -> {
-                val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-                try {
-                    PixelCopy.request(view, bitmap, { result ->
-                        finish(if (result == PixelCopy.SUCCESS) bitmap else null)
-                    }, Handler(Looper.getMainLooper()))
-                } catch (_: IllegalArgumentException) {
-                    finish(null)
-                }
-            }
-            else -> finish(null)
-        }
-    }
-
     override fun applyLayout(cover: Boolean, rotated: Boolean) {
         frame.setCover(cover)
-        if (frozen) return
-        if (surface == null || (surface is TextureView) != rotated) {
-            surface?.let { frame.removeView(it) }
-            val view = if (rotated) TextureView(context) else SurfaceView(context)
-            frame.addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-            surface = view
+        this.rotated = rotated
+        // Turning a screen mid-video needs the other kind of surface; the
+        // stage attaches the player to it again.
+        val view = surface ?: return
+        if ((view is TextureView) != rotated) {
+            frame.removeView(view)
+            surface = null
         }
     }
 

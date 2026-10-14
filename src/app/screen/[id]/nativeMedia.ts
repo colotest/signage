@@ -28,6 +28,9 @@ export type NativeMediaBridge = {
   preload(url: string): void;
   // Decodes an image that's about to be shown, so it appears without delay.
   prepare(url: string): void;
+  // The same for a video's first frame, which it shows while transitioning
+  // in. Not in apps from before it.
+  prepareFirstFrame?: (url: string) => void;
   // Deletes every stored file whose URL isn't in this JSON array.
   retain(urlsJson: string): void;
 };
@@ -44,10 +47,12 @@ export type NativeSlide = {
   durationMs: number;
   paused: boolean;
   loop: boolean;
-  // A video slows to a stop over this long at its end, landing on its last
-  // frame, before the transition to whatever's next (0 for none — a cut).
-  // Not while it loops, which has no end.
-  easeOutMs: number;
+  // A video reports itself ended this long before it actually ends, and
+  // plays out its last stretch during the transition to whatever's next
+  // (0 for none — a cut). Not while it loops, which has no end. A video
+  // coming in shows its first frame during the transition, then picks up
+  // speed from a standstill over the same time.
+  handoverMs: number;
 };
 
 // Which ?app= value this page speaks. The app sends its own; any other
