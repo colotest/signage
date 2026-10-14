@@ -3,6 +3,7 @@
 import type { ComponentType } from "react";
 import type { MediaItem } from "@/types/domain";
 import { ClockFace } from "./ClockFace";
+import { LavaLamp } from "./LavaLamp";
 
 // Pages are built-in, code-rendered slides (see 0013/0014 migrations). Each
 // one is still a media_items row, so it goes through the library, playlists
@@ -12,6 +13,7 @@ type PageProps = { now?: () => number };
 
 const PAGES: Record<string, ComponentType<PageProps>> = {
   clock: ClockFace,
+  lavalamp: LavaLamp,
 };
 
 const PREFIX = "page:";
