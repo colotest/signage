@@ -40,12 +40,25 @@ const STAGE = 1 / 3;
 const BLUR_RATIO = 0.046;
 const ALPHA_GAIN = 19;
 const ALPHA_BIAS = -8;
+// The halo: the merged silhouette blurred again, tinted hot and laid back
+// underneath the wax, so light appears to carry past the edge of a blob
+// instead of stopping at it. Wider than the goo blur, and the filter region
+// has to be opened up or it would be clipped at the layer's edge.
+const HALO_RATIO = 0.13;
+const HALO_STRENGTH = 1.15;
 
 // The lamp's own vessel. Deliberately not the screen's black/white
 // background setting: a lava lamp is a dark vessel, and a white one isn't
 // one.
 const GROUND = "#120208";
+// The lamp itself, below the glass: a hot pool at the base and the cone it
+// throws up through the vessel.
 const GLOW = "radial-gradient(58% 30% at 50% 106%, rgba(255, 150, 70, 0.3) 0%, rgba(255, 120, 50, 0) 72%)";
+const LAMP = "radial-gradient(42% 16% at 50% 100%, rgba(255, 226, 170, 0.85) 0%, rgba(255, 170, 80, 0.5) 38%, rgba(255, 120, 40, 0) 100%)";
+// Screened over everything, so whatever sits low in the vessel — wax most
+// of all — is lit hotter than what has risen away from the light.
+const LIGHT_FALLOFF =
+  "linear-gradient(to top, rgba(255, 176, 92, 0.3) 0%, rgba(255, 140, 60, 0.12) 24%, rgba(255, 120, 50, 0.03) 50%, rgba(255, 110, 50, 0) 72%)";
 const VIGNETTE = "radial-gradient(118% 86% at 50% 48%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.72) 100%)";
 
 type Blob = {
@@ -64,15 +77,18 @@ type Blob = {
   // width, and its own colour.
   travel: number;
   sway: number;
-  colour: readonly [string, string];
+  colour: readonly [string, string, string];
 };
 
-// Lit from the top left, warmest at the core. These come through the
-// filter as they are, only blurred, which is what gives each blob its own
-// soft shading rather than a flat fill.
-const AMBER = ["#ffc46b", "#e8611c"] as const;
-const EMBER = ["#ff9d4d", "#cf3a1c"] as const;
-const DEEP = ["#ef7a43", "#a81b2a"] as const;
+// Core, body, rim. A lit object is brightest where the light strikes it and
+// darkest at its edges; a glowing one is the other way about — light pools
+// in it and leaks out through the thin wax at the edge, so the rim comes
+// back up rather than falling into shadow, and the whole range is narrow.
+// A wide range with a dark rim is exactly what made these read as polished
+// balls catching a lamp rather than as wax with light inside them.
+const AMBER = ["#ffcb86", "#f8782a", "#ffa54c"] as const;
+const EMBER = ["#ffb46a", "#e9591f", "#f98b36"] as const;
+const DEEP = ["#ff9d55", "#cf3519", "#e4702c"] as const;
 
 const BLOBS: Blob[] = [
   { x: 0.26, y: 0.74, size: 0.3, motion: "rise", duration: 54, delay: -3, travel: 0.74, sway: 0.09, colour: AMBER },
@@ -135,23 +151,41 @@ export function LavaLamp() {
   const stageHeight = size.height * STAGE;
   const short = Math.min(stageWidth, stageHeight);
   const blur = short * BLUR_RATIO;
+  const halo = short * HALO_RATIO;
 
   return (
     <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
       <style>{KEYFRAMES}</style>
 
       {/* The filter itself draws nothing; it only lends its id to the layer
-          below. Blur first, then a matrix that leaves R, G and B untouched
-          and multiplies alpha. */}
+          below. Blur, then a matrix that leaves R, G and B untouched and
+          multiplies alpha — that pair is the merging. The rest is the
+          halo: the merged shape blurred wide, pushed hot and amber by a
+          second matrix, and laid back under the wax it came from. */}
       <svg aria-hidden className="pointer-events-none absolute h-0 w-0">
         <defs>
-          <filter id={gooId}>
+          <filter id={gooId} x="-25%" y="-25%" width="150%" height="150%">
             <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="pooled" />
             <feColorMatrix
               in="pooled"
               type="matrix"
               values={`1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${ALPHA_GAIN} ${ALPHA_BIAS}`}
+              result="wax"
             />
+            <feGaussianBlur in="wax" stdDeviation={halo} result="spread" />
+            <feColorMatrix
+              in="spread"
+              type="matrix"
+              // Weighted towards red: an even warm lift took the halo
+              // yellow-green, which read as a fluorescent tube rather than
+              // as light through wax.
+              values={`1.45 0.3 0 0 0  0.34 0.52 0 0 0  0.08 0.12 0.25 0 0  0 0 0 ${HALO_STRENGTH} 0`}
+              result="glow"
+            />
+            <feMerge>
+              <feMergeNode in="glow" />
+              <feMergeNode in="wax" />
+            </feMerge>
           </filter>
         </defs>
       </svg>
@@ -186,8 +220,12 @@ export function LavaLamp() {
                   borderRadius: "50%",
                   // Opaque to its own rim: the blur is what softens an
                   // edge here, and the alpha push is what hardens it again
-                  // where two of them have pooled together.
-                  background: `radial-gradient(circle closest-side at 38% 32%, ${blob.colour[0]} 0%, ${blob.colour[1]} 100%)`,
+                  // where two of them have pooled together. The pooled
+                  // light sits low, where the bulb is, and the rim lifts
+                  // back towards it. There is deliberately no highlight
+                  // anywhere: a tight bright spot is a reflection, and one
+                  // spot was enough to turn the whole thing glassy.
+                  background: `radial-gradient(circle closest-side at 50% 68%, ${blob.colour[0]} 0%, ${blob.colour[1]} 62%, ${blob.colour[2]} 100%)`,
                   animation: `colo-lava-${blob.motion} ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
                   willChange: "transform",
                   ["--lava-travel" as string]: `${stageHeight * blob.travel * 0.5}px`,
@@ -199,11 +237,16 @@ export function LavaLamp() {
         </div>
       )}
 
-      {/* The heat at the base, and a vignette to keep the eye in the middle.
-          Both sit outside the filtered layer, so neither is dragged through
-          the contrast pass — and both are static, costing one paint and
+      {/* The light itself, and what it does to everything above it. All of
+          these sit outside the filtered layer, so none of them is dragged
+          through the alpha push, and all are static: one paint each and
           nothing after that. */}
       <div className="pointer-events-none absolute inset-0" style={{ background: GLOW }} />
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: LIGHT_FALLOFF, mixBlendMode: "screen" }}
+      />
+      <div className="pointer-events-none absolute inset-0" style={{ background: LAMP }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: VIGNETTE }} />
     </div>
   );
