@@ -12,11 +12,13 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Colo Cloud",
-    // Not "black-translucent": that runs the page up under the status bar,
-    // which this layout has no clearance for (the header sits flush at the
-    // top on touch). "default" keeps the status bar its own opaque strip
-    // above the app.
-    statusBarStyle: "default",
+    // The page runs up under the status bar, which is left transparent —
+    // the strip behind it is the header's own blurred glass, and
+    // header-top-safe-area (globals.css) holds the nav clear of the clock.
+    // Note iOS draws that bar's clock and indicators in white whatever the
+    // page does, so the header's glass needs to stay dark enough behind
+    // them.
+    statusBarStyle: "black-translucent",
   },
   // Next writes the modern mobile-web-app-capable, which iOS only started
   // reading in 16.4; older iPhones still want the apple- one to open the

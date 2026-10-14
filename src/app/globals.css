@@ -660,6 +660,31 @@ body {
   }
 }
 
+/* Installed to the Home Screen the status bar is transparent and the page
+   runs up behind it, so the header takes that strip on itself: its own
+   glass fills it, and this keeps the nav below the clock and the
+   indicators. env(safe-area-inset-top) does report here, unlike in a tab. */
+@media (display-mode: standalone) {
+  .header-top-safe-area {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
+  }
+}
+
+/* iOS draws that bar's clock and indicators in white whatever the page
+   does, and light mode's glass is near-white — so in light mode alone the
+   strip behind them carries a wash dark enough to read against. Dark mode
+   needs none: its glass already is. */
+@media (display-mode: standalone) and (prefers-color-scheme: light) {
+  .header-top-safe-area::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: env(safe-area-inset-top, 0px);
+    background: rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+  }
+}
+
 /* A visible scrollbar track/thumb crossing a blurred, faded edge looks like
    a stray hard-edged rectangle cutting through it — these lists are easily
    scrollable by touch/trackpad without one, so it's hidden entirely rather

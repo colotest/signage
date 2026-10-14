@@ -20,15 +20,15 @@ export function Header() {
   const pathname = usePathname();
 
   return (
-    // Solid, not translucent/blurred: iOS Safari's status bar can't be
-    // tinted or made translucent from a regular (non-standalone) browser
-    // tab — apple-mobile-web-app-status-bar-style is a standalone/
-    // home-screen-app-only feature and had no effect here. theme-color
-    // (root layout), which *does* work in a regular tab, only paints a
-    // flat color — so the header matches that flatly instead of relying
-    // on a blur effect the status bar area can't share. header-top-safe-area
-    // (globals.css) is 6px on desktop, but 0 on touch devices —
-    // no extra clearance looked best there on device.
+    // Translucent and blurred, with the page passing under it. This was
+    // flat until the app could be installed to the Home Screen: in a plain
+    // Safari tab the status bar is Safari's own, tintable only by
+    // theme-color (root layout) and only with a flat colour, so a blurred
+    // header below a flat strip read as two different surfaces. Installed,
+    // the status bar is transparent and sits over the page
+    // (black-translucent, see the root layout), so the strip behind it is
+    // this header's own glass — header-top-safe-area (globals.css) holds
+    // the nav clear of it there, and is 6px on desktop, 0 on touch.
     //
     // z-30 beats everything a page puts in its own stacking order — section
     // titles (z-10), row and sort menus (z-20) — which are siblings of this
@@ -39,7 +39,7 @@ export function Header() {
     //
     // --shadow-bar: a soft falloff under the hairline, so the page reads as
     // passing beneath the header rather than butting up against it.
-    <header className="header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border bg-[var(--surface)] px-5 pb-1.5 shadow-[var(--shadow-bar)]">
+    <header className="header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border bg-[var(--surface-elevated)] px-5 pb-1.5 backdrop-blur-xl shadow-[var(--shadow-bar)]">
       <nav className="flex items-center gap-5">
         <span className={`${brandFont.className} mt-[0.1em] text-[28.5px] uppercase tracking-tight`}>
           Colo Cloud
