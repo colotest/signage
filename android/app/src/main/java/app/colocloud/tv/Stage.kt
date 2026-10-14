@@ -19,6 +19,7 @@ import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -38,6 +39,7 @@ data class SlideSpec(
     val durationMs: Long,
     val paused: Boolean,
     val loop: Boolean,
+    val easeOutMs: Long,
 ) {
     companion object {
         fun parse(json: String): SlideSpec? = try {
@@ -50,6 +52,7 @@ data class SlideSpec(
                 durationMs = o.optLong("durationMs", 400),
                 paused = o.optBoolean("paused", false),
                 loop = o.optBoolean("loop", false),
+                easeOutMs = o.optLong("easeOutMs", 0),
             )
         } catch (_: Exception) {
             null
@@ -110,8 +113,51 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         override fun run() {
             if (playerHandle == 0) return
             positionMs = player.currentPosition
+            if (!easingOut && easeOutRemainingMs() <= (playerSlide?.easeOutMs ?: 0) / 2 + 500) {
+                easingOut = true
+                Choreographer.getInstance().postFrameCallback(easeOut)
+            }
             main.postDelayed(this, 250)
         }
+    }
+
+    // A video's end, slowed to a stop: over its last stretch, playback eases
+    // from full speed down to nothing, landing on the last frame, and only
+    // then ends — and the page moves on, with its transition. Stopping
+    // evenly over easeOutMs covers half that much video, so it starts with
+    // that much left, and each frame aims the speed at what's actually left,
+    // so it lands on the last frame however the decoder keeps time.
+    private var easingOut = false
+    private val easeOut = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            val total = playerSlide?.easeOutMs ?: 0
+            val remaining = easeOutRemainingMs()
+            if (playerHandle == 0 || total <= 0 || remaining == Long.MAX_VALUE) {
+                stopEaseOut()
+                return
+            }
+            // speed = sqrt(2 × remaining / total): even deceleration to 0.
+            val target = if (remaining * 2 >= total) 1f else
+                Math.sqrt(2.0 * remaining / total).toFloat().coerceIn(0.1f, 1f)
+            if (Math.abs(player.playbackParameters.speed - target) > 0.02f) player.setPlaybackSpeed(target)
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
+
+    // Milliseconds of video left before a natural end; MAX_VALUE when there
+    // isn't one coming (looping, paused, slowdown off, length unknown).
+    private fun easeOutRemainingMs(): Long {
+        val slide = playerSlide ?: return Long.MAX_VALUE
+        val duration = player.duration
+        if (slide.easeOutMs <= 0 || slide.loop || !player.playWhenReady || duration == C.TIME_UNSET) return Long.MAX_VALUE
+        if (player.playbackState == Player.STATE_ENDED) return Long.MAX_VALUE
+        return maxOf(0L, duration - player.currentPosition)
+    }
+
+    private fun stopEaseOut() {
+        if (easingOut) Choreographer.getInstance().removeFrameCallback(easeOut)
+        easingOut = false
+        if (player.playbackParameters.speed != 1f) player.setPlaybackSpeed(1f)
     }
 
     // A failed load or decode (the network dropping mid-download, say) is
@@ -135,6 +181,12 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
             .setMediaSourceFactory(DefaultMediaSourceFactory(MediaStore.dataSourceFactory))
             .build()
         player.volume = 0f
+        // Screens play silent, and without a sound track playback follows
+        // the video's own clock — which the slowdown below needs: sound
+        // can't be played at a crawl.
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+            .build()
         player.addListener(object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
@@ -191,7 +243,7 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         val incoming: Slide? = when {
             spec.url == null -> null
             spec.kind == "image" -> ImageSlide(context)
-            spec.kind == "video" -> VideoSlide(context, spec.paused, spec.loop)
+            spec.kind == "video" -> VideoSlide(context, spec.paused, spec.loop, spec.easeOutMs)
             else -> null
         }
         current = incoming
@@ -278,7 +330,10 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
     fun setLoop(handle: Int, loop: Boolean) {
         if (handle != this.handle) return
         (current as? VideoSlide)?.loop = loop
-        if (handle == playerHandle) player.repeatMode = repeatMode(loop)
+        if (handle == playerHandle) {
+            player.repeatMode = repeatMode(loop)
+            if (loop) stopEaseOut()
+        }
     }
 
     fun setLayout(fit: String, rotation: Int) {
@@ -309,6 +364,7 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
 
     fun release() {
         main.removeCallbacksAndMessages(null)
+        Choreographer.getInstance().removeFrameCallback(easeOut)
         transition?.cancel()
         player.release()
     }
@@ -320,6 +376,7 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         failures = 0
         positionMs = 0
         main.removeCallbacks(retry)
+        stopEaseOut()
         slide.attach(player)
         player.setMediaItem(MediaItem.fromUri(url))
         player.repeatMode = repeatMode(slide.loop)
@@ -336,6 +393,7 @@ class Stage(context: Context, private val emit: (handle: Int, event: String) -> 
         positionMs = 0
         main.removeCallbacks(retry)
         main.removeCallbacks(tick)
+        stopEaseOut()
         player.stop()
         player.clearMediaItems()
     }
@@ -522,7 +580,7 @@ class ImageSlide(context: Context) : Slide(context) {
     }
 }
 
-class VideoSlide(context: Context, var paused: Boolean, var loop: Boolean) : Slide(context) {
+class VideoSlide(context: Context, var paused: Boolean, var loop: Boolean, val easeOutMs: Long) : Slide(context) {
     private val frame = FitFrame(context)
     private var surface: View? = null
 

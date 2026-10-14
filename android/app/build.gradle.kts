@@ -23,8 +23,8 @@ android {
         // Fire OS 5 (Android 5.1) and up — every Fire TV Stick still in use.
         minSdk = 22
         targetSdk = 35
-        versionCode = 3
-        versionName = "3.0"
+        versionCode = 4
+        versionName = "4.0"
     }
 
     signingConfigs {

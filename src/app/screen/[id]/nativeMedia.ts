@@ -44,6 +44,10 @@ export type NativeSlide = {
   durationMs: number;
   paused: boolean;
   loop: boolean;
+  // A video slows to a stop over this long at its end, landing on its last
+  // frame, before the transition to whatever's next (0 for none — a cut).
+  // Not while it loops, which has no end.
+  easeOutMs: number;
 };
 
 // Which ?app= value this page speaks. The app sends its own; any other

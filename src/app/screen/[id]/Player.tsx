@@ -729,6 +729,7 @@ export function Player({
       durationMs: transitionMs,
       paused: pausedRef.current,
       loop: playlistRef.current.length === 1,
+      easeOutMs: transition === "cut" ? 0 : transitionMs,
     };
     bridge.show(handle, JSON.stringify(slide));
     videoPositionRef.current = kind === "video" ? () => bridge.positionMs() : null;
