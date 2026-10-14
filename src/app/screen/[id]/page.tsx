@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PlaylistItemWithMedia, Screen } from "@/types/domain";
 import { Player } from "./Player";
+import { NATIVE_PROTOCOL } from "./nativeMedia";
 
 export default async function ScreenPage({
   params,
@@ -10,7 +11,7 @@ export default async function ScreenPage({
   searchParams: Promise<{ app?: string }>;
 }) {
   const { id } = await params;
-  // Opened by the Fire TV app, which plays videos itself (see nativeVideo.ts).
+  // Opened by the Fire TV app, which draws the media itself (see nativeMedia.ts).
   const { app } = await searchParams;
   const screenId = Number(id);
 
@@ -35,7 +36,7 @@ export default async function ScreenPage({
     <Player
       screen={screen as Screen}
       initialPlaylist={(playlist ?? []) as unknown as PlaylistItemWithMedia[]}
-      nativeVideo={app === "1"}
+      nativeMedia={app === NATIVE_PROTOCOL}
     />
   );
 }

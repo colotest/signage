@@ -17,9 +17,13 @@ object Prefs {
         prefs(context).edit().putString("server", server.trim().trimEnd('/')).putString("screen", screenId.trim()).apply()
     }
 
-    // ?app=1 tells the page it's in here, so it hands videos to VideoLayer.
+    // Tells the page it's in here, and which version of the bridge it can
+    // use (nativeMedia.ts, NATIVE_PROTOCOL): it then hands its images and
+    // videos to Stage. Bump both together on a breaking change.
+    private const val PROTOCOL = 2
+
     fun playerUrl(context: Context): String? =
-        screenId(context)?.let { "${server(context)}/screen/$it?app=1" }
+        screenId(context)?.let { "${server(context)}/screen/$it?app=$PROTOCOL" }
 
     // Also settable over adb, for setting up a stick without the remote:
     //   adb shell am start -n app.colocloud.tv/.MainActivity --es screen 3

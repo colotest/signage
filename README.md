@@ -63,13 +63,24 @@ Open `http://localhost:3000` — it redirects to `/login`. After logging in you 
 
 ## Fire TV app
 
-A stick's own browser struggles with video, so there's a small Android app
+A stick's own browser struggles with media, so there's a small Android app
 for Fire TV (`android/`). It's still the same `/screen/{id}` page, opened in
-a transparent WebView, so everything above works unchanged and every deploy
-reaches it with no app update. The difference is video: the page hands each
-video to the app (`src/app/screen/[id]/nativeVideo.ts`), which plays it with
-the stick's hardware player directly beneath the page and keeps a copy of
-each file on the stick, so it plays offline too.
+a transparent WebView: the page keeps deciding what's on screen and when
+(playlists, timed playback, the dashboard's controls and preview), and
+every deploy reaches it with no app update. What changes is the drawing.
+The page hands each image and video to the app
+(`src/app/screen/[id]/nativeMedia.ts`), which draws it natively beneath the
+page: videos go through the stick's hardware player, transitions are
+native, and every file is kept on the stick, so it all plays offline too.
+The page still draws its own pages (the clock), the placeholder and GIFs
+on top, and in a transition between the two kinds each side animates its
+own half.
+
+The app opens the page with `?app=2`, the version of that bridge it
+speaks. Any other value gets the plain browser player, so an older app
+keeps working after a deploy that changes the bridge. Bump
+`NATIVE_PROTOCOL` in `nativeMedia.ts` and `PROTOCOL` in
+`android/.../Prefs.kt` together when making such a change.
 
 **Installing on a stick:** Settings → My Fire TV → Developer options →
 allow installing unknown apps for **Downloader** (install Downloader from the
@@ -78,6 +89,11 @@ first launch, enter the screen's number (the `{id}` in its `/screen/{id}`
 address). Press ☰ on the remote at any time to change it. On Fire OS 8,
 use **Allow starting on power-up** on that same screen so that the app
 reopens after a power cut.
+
+**Trying it against a dev server:** in the emulator, set the server to
+`http://10.0.2.2:3000`. On a stick plugged into the computer, run
+`adb reverse tcp:3000 tcp:3000` and use `http://localhost:3000`. Plain
+`http` is allowed for those two addresses only.
 
 **Building a new version:** `scripts/build-tv-apk.sh` builds the app into
 `public/tv.apk`. Commit that file and deploy. Raise `versionCode` in

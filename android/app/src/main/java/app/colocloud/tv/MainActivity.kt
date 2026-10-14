@@ -22,14 +22,15 @@ import androidx.annotation.RequiresApi
 import org.json.JSONArray
 
 // The player: the screen's own page (/screen/{id}) in a transparent
-// WebView, with VideoLayer underneath it playing whatever video the page
-// hands over. So everything the page does — live playlist changes, timed
-// playback, the dashboard's remote controls and preview — works here
-// exactly as in a browser, and changes with every deploy without a new APK.
+// WebView, with Stage underneath it drawing the images and videos the page
+// hands over. The page still decides what's on screen and when — live
+// playlist changes, timed playback, the dashboard's remote controls and
+// preview — exactly as in a browser, so all of that changes with every
+// deploy without a new APK.
 class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var root: FrameLayout
-    private lateinit var video: VideoLayer
+    private lateinit var stage: Stage
     private var web: WebView? = null
     private var url = ""
 
@@ -47,10 +48,10 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         root = FrameLayout(this)
         root.setBackgroundColor(Color.BLACK)
-        video = VideoLayer(this) { handle, event ->
+        stage = Stage(this) { handle, event ->
             web?.evaluateJavascript("window.__signageNative && window.__signageNative($handle, '$event')", null)
         }
-        root.addView(video, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        root.addView(stage, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         setContentView(root)
         WebView.setWebContentsDebuggingEnabled(true) // chrome://inspect over adb
         createWebView()
@@ -79,7 +80,7 @@ class MainActivity : Activity() {
     override fun onStop() {
         super.onStop()
         web?.onPause()
-        if (::video.isInitialized) video.stop()
+        if (::stage.isInitialized) stage.clear()
     }
 
     override fun onRestart() {
@@ -91,7 +92,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
         web?.destroy()
-        if (::video.isInitialized) video.release()
+        if (::stage.isInitialized) stage.release()
         super.onDestroy()
     }
 
@@ -140,7 +141,7 @@ class MainActivity : Activity() {
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             // A reload (the dashboard's, or ours) starts the page over, so
             // nothing it was playing should outlive it.
-            video.stop()
+            stage.clear()
         }
 
         // The page itself didn't load — no network, and the page's service
@@ -160,42 +161,38 @@ class MainActivity : Activity() {
             root.removeView(view)
             view.destroy()
             if (web === view) web = null
-            video.stop()
+            stage.clear()
             main.post { createWebView() }
             return true
         }
     }
 
-    // window.SignageNative. Called on the WebView's own thread, so every
-    // call is posted to the main one, in order.
+    // window.SignageNative (nativeMedia.ts). Called on the WebView's own
+    // thread, so every call is posted to the main one, in order.
     private inner class Bridge {
         @JavascriptInterface
-        fun play(handle: Int, url: String, paused: Boolean, loop: Boolean, fit: String, rotation: Int) {
-            main.post { video.play(handle, url, paused, loop, fit, rotation) }
+        fun show(handle: Int, slide: String) {
+            val spec = SlideSpec.parse(slide) ?: return
+            main.post { stage.show(handle, spec) }
         }
 
         @JavascriptInterface
         fun setPaused(handle: Int, paused: Boolean) {
-            main.post { video.setPaused(handle, paused) }
+            main.post { stage.setPaused(handle, paused) }
         }
 
         @JavascriptInterface
         fun setLoop(handle: Int, loop: Boolean) {
-            main.post { video.setLoop(handle, loop) }
+            main.post { stage.setLoop(handle, loop) }
         }
 
         @JavascriptInterface
         fun setLayout(fit: String, rotation: Int) {
-            main.post { video.setLayout(fit, rotation) }
+            main.post { stage.setLayout(fit, rotation) }
         }
 
         @JavascriptInterface
-        fun stop() {
-            main.post { video.stop() }
-        }
-
-        @JavascriptInterface
-        fun positionMs(): Long = video.positionMs
+        fun positionMs(): Long = stage.positionMs
 
         @JavascriptInterface
         fun setBackground(color: String) {
@@ -205,7 +202,7 @@ class MainActivity : Activity() {
                 return
             }
             main.post {
-                video.setBackground(parsed)
+                stage.setBackground(parsed)
                 root.setBackgroundColor(parsed)
             }
         }
@@ -213,6 +210,11 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun preload(url: String) {
             MediaStore.preload(url)
+        }
+
+        @JavascriptInterface
+        fun prepare(url: String) {
+            main.post { Images.prepare(url) }
         }
 
         @JavascriptInterface

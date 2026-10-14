@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTPS everywhere, except a dev server on the computer it's plugged
+     into — for trying the app against `npm run dev`: server
+     http://10.0.2.2:3000 from the emulator, or http://localhost:3000 on a
+     stick after `adb reverse tcp:3000 tcp:3000`. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
