@@ -5,6 +5,23 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Colo Cloud",
   description: "Digital signage control for event venue screens",
+  // On the Home Screen iOS wants an apple-touch-icon of its own — it won't
+  // read favicon.ico for that, which is why the shortcut used to come out
+  // as a screenshot of the page. src/app/apple-icon.png is the 180px one
+  // it takes (iOS rounds the corners itself).
+  appleWebApp: {
+    capable: true,
+    title: "Colo Cloud",
+    // Not "black-translucent": that runs the page up under the status bar,
+    // which this layout has no clearance for (the header sits flush at the
+    // top on touch). "default" keeps the status bar its own opaque strip
+    // above the app.
+    statusBarStyle: "default",
+  },
+  // Next writes the modern mobile-web-app-capable, which iOS only started
+  // reading in 16.4; older iPhones still want the apple- one to open the
+  // shortcut as an app rather than a Safari tab.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {

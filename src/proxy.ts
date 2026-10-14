@@ -34,6 +34,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!screen|signup|upload/|_next/static|_next/image|favicon.ico|sw.js|tv.apk).*)",
+    // The Home Screen files are fetched by iOS itself, which doesn't carry
+    // the session cookie — gated, they came back as a redirect to /login,
+    // so the web app got no icon at all and no manifest to install from.
+    "/((?!screen|signup|upload/|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|tv.apk).*)",
   ],
 };

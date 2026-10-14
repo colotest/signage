@@ -622,6 +622,27 @@ body {
   height: 109lvh;
 }
 
+/* Installed to the Home Screen there's no Safari at all: no floating
+   toolbar to reach behind, so the extra 9% above would simply push the
+   bottom of the app off the screen — and nothing to clear at the bottom
+   but the home indicator, which (unlike in a tab) env(safe-area-inset-*)
+   does report here. */
+@media (display-mode: standalone) {
+  .app-shell-height {
+    height: 100lvh;
+  }
+
+  .safari-toolbar-inset {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  }
+}
+
+@media (display-mode: standalone) and (pointer: coarse) {
+  .playlists-touch-inset {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
+  }
+}
+
 /* env(safe-area-inset-top) has the exact same problem as
    env(safe-area-inset-bottom) above — it doesn't populate in this app's
    regular (non-standalone) Safari tab context, confirmed the same way:
