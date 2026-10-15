@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils/cn";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Screens" },
   { href: "/library", label: "Media" },
+  { href: "/forms", label: "Forms" },
 ];
 
 export function Header() {
