@@ -6,6 +6,11 @@
   --surface-elevated: rgba(255, 255, 255, 0.72);
   --foreground: #1c1c1e;
   --muted: #8e8e93;
+  /* A solid grey for quiet filled buttons (Button variant="grey") — iOS's
+     own systemGray5/4. Solid rather than see-through so a popup launched
+     from one can fade back into its colour (see lib/animation/popupLaunch). */
+  --control-fill: #e5e5ea;
+  --control-fill-hover: #d1d1d6;
   --border: rgba(60, 60, 67, 0.13);
   --accent: #007aff;
   --accent-contrast: #ffffff;
@@ -87,6 +92,8 @@
     --surface-elevated: rgba(28, 28, 30, 0.72);
     --foreground: #f2f2f7;
     --muted: #98989d;
+    --control-fill: #2c2c2e;
+    --control-fill-hover: #3a3a3c;
     --border: rgba(84, 84, 88, 0.32);
     --accent: #0a84ff;
     --accent-contrast: #ffffff;

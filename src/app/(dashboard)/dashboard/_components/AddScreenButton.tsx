@@ -14,6 +14,7 @@ export function AddScreenButton() {
 
   return (
     <Button
+      variant="grey"
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
@@ -34,7 +35,10 @@ export function AddGroupButton({ screens }: { screens: { id: number; name: strin
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      {/* Grey, like "+ New Screen" beside it: the group picker launches out
+          of this and, closing, fades back into its colour — a quiet grey is
+          far less of a flash than the accent blue was. */}
+      <Button variant="grey" onClick={() => setOpen(true)}>
         + <span className="hidden sm:inline">New </span>Group
       </Button>
       <GroupDialog
