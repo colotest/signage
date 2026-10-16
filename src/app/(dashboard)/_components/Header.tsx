@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { UserIcon } from "@/components/icons/UserIcon";
 import { Menu } from "@/components/ui/Menu";
 import { logoutAction } from "@/lib/actions/auth";
@@ -19,6 +19,23 @@ const NAV_ITEMS = [
 
 export function Header() {
   const pathname = usePathname();
+  const headerRef = useRef<HTMLElement | null>(null);
+
+  // Installed to the Home Screen this header lies over the page rather than
+  // above it (header-overlay in globals.css), so the scrolling area below
+  // has to make up its height in padding. That height isn't a constant —
+  // it moves with the brand type, with the device's own top inset and with
+  // the window's width — so it's measured and handed to the stylesheet
+  // instead of guessed. Harmless in a Safari tab, where nothing reads it.
+  useLayoutEffect(() => {
+    const node = headerRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() => {
+      document.documentElement.style.setProperty("--header-h", `${node.offsetHeight}px`);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     // header-surface (globals.css): flat in a Safari tab, where it has to
@@ -30,6 +47,10 @@ export function Header() {
     // header's own glass, and header-top-safe-area holds the nav clear of
     // the clock — 6px on desktop, 0 on touch, the inset plus 6 installed.
     //
+    // header-overlay (globals.css, installed only): the page runs
+    // underneath this header instead of starting below it, so the glass
+    // has something to blur — see --header-h above.
+    //
     // z-30 beats everything a page puts in its own stacking order — section
     // titles (z-10), row and sort menus (z-20) — which are siblings of this
     // header rather than children of it, and later in the DOM. At a tie they
@@ -39,7 +60,10 @@ export function Header() {
     //
     // --shadow-bar: a soft falloff under the hairline, so the page reads as
     // passing beneath the header rather than butting up against it.
-    <header className="header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border header-surface px-5 pb-1.5 shadow-[var(--shadow-bar)]">
+    <header
+      ref={headerRef}
+      className="header-overlay header-top-safe-area sticky top-0 z-30 flex items-center justify-between border-b border-border header-surface px-5 pb-1.5 shadow-[var(--shadow-bar)]"
+    >
       <nav className="flex items-center gap-5">
         <span className={`${brandFont.className} mt-[0.1em] text-[28.5px] uppercase tracking-tight`}>
           Colo Cloud

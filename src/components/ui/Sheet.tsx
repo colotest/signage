@@ -62,11 +62,11 @@ export function Sheet({
   const [contentNode, setContentNode] = useState<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dragHandlers = useSheetDrag(contentRef, overlayRef, () => onOpenChange(false));
-  // The status bar's tint strip lies over the sheet's top edge on a phone
-  // (globals.css), so it takes the presses meant for the sheet there: a
-  // pull on it drags the sheet, as one on the header does (wired up in
-  // presentSheet) — and a tap on it doesn't count as one outside the sheet
-  // (onInteractOutside below).
+  // The status bar's tint strip lies over the top edge of the screen on a
+  // phone (globals.css), above the card and the sliver of page beside it,
+  // so it takes any press that lands there: a pull on it drags the sheet,
+  // as one on the header does (wired up in presentSheet) — and a tap on it
+  // doesn't count as one outside the sheet (onInteractOutside below).
   const dragRef = useRef(dragHandlers);
   useLayoutEffect(() => {
     dragRef.current = dragHandlers;
@@ -152,9 +152,9 @@ export function Sheet({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        {/* h-[109lvh]: on a phone, down behind iOS Safari's floating toolbar
-            like the app shell itself (see app-shell-height in globals.css) —
-            inset-0 alone stops short above it.
+        {/* h-[var(--shell-h)]: on a phone, down behind iOS Safari's floating
+            toolbar like the app shell itself (see globals.css) — inset-0
+            alone stops short above it.
             absolute, not fixed, on a phone: iOS Safari fills the strip behind
             its toolbar with the colour of a fixed element touching the
             screen's bottom edge, blotting out whatever's behind. The page
@@ -164,12 +164,14 @@ export function Sheet({
             covers the whole screen, and a full-screen backdrop blur under it
             would still be recomputed for every frame of whatever's playing
             in the screen previews behind.
-            Black outright on a phone, faded in: the page dims all the way
-            to black as the sheet comes up, Safari's status bar along with it
-            (see presentSheet). */}
+            Solid black on a phone, faded in: it's not the dimming over the
+            page there but the void behind it — the page itself shrinks back
+            above this and keeps its own z-index and its own dimming (see
+            app-shell in globals.css), so what shows through around it, and
+            behind the status bar, is this. */}
         <Dialog.Overlay
           ref={overlayRef}
-          className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[109lvh] bg-black sm:fixed sm:bg-black/40 sm:backdrop-blur-sm"
+          className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[var(--shell-h)] bg-black sm:fixed sm:bg-black/40 sm:backdrop-blur-sm"
         />
         <Dialog.Content
           ref={attachContent}
@@ -200,12 +202,16 @@ export function Sheet({
             // strips, which otherwise paint straight over the popup's own
             // rounded corners and square them off. Clipping to this box's
             // shape keeps the corners round whatever sits at the edges.
-            // absolute, and down to 109lvh: as the overlay — on a phone it
-            // runs right down behind Safari's toolbar, showing what's there,
-            // with the content keeping its own clearance from it. Up top it
-            // meets the status bar, black by then (see presentSheet).
+            // absolute, and down to the shell's own height: as the overlay —
+            // on a phone it runs right down behind Safari's toolbar, showing
+            // what's there, with the content keeping its own clearance from
+            // it. Up top it stops at --sheet-top (globals.css): clear of the
+            // status bar, with a sliver of the page behind showing above it,
+            // as a native card sheet does. It used to start at the viewport's
+            // own top edge, which installed to the Home Screen is the screen's
+            // — under the clock and the Dynamic Island.
             "sheet-content absolute z-50 sm:fixed flex flex-col overflow-hidden bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
-            "inset-x-0 top-0 h-[109lvh] rounded-t-[var(--sheet-radius)]",
+            "inset-x-0 top-[var(--sheet-top)] h-[calc(var(--shell-h)_-_var(--sheet-top))] rounded-t-[var(--sheet-radius)]",
             "sm:inset-auto sm:h-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
             "sm:w-full sm:max-w-md sm:max-h-[85vh] sm:rounded-[var(--radius-lg)]",
             contentClassName,
@@ -308,15 +314,21 @@ function useSheetDrag(
   return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
 }
 
-// How far (0–1) the sheet has been pulled down: the dimming lifts by that
-// much, and the status bar's tint (the header's colour, dimmed the same
-// way) with it. 0 hands both back to the stylesheet.
+// How far (0–1) the sheet has been pulled down: the void behind it lifts by
+// that much, the status bar's tint (the header's colour, dimmed the same
+// way) with it, and the page behind comes forward again by the same
+// fraction (--sheet-back-p, see app-shell in globals.css) — so pulling the
+// card down pushes the page back to full size under the finger, as it does
+// natively. 0 hands all three back to the stylesheet.
 // The tint is mixed here as plain rgb(), not color-mix(): easing back from a
 // color-mix() would be interpolated in a different colour space (oklab)
 // from the dimming's, and drift off its hue on the way.
 function setDragProgress(overlay: HTMLElement | null, p: number) {
   p = Math.min(1, p);
   if (overlay) overlay.style.opacity = p ? `${1 - p}` : "";
+  const rootStyle = document.documentElement.style;
+  if (p) rootStyle.setProperty("--sheet-back-p", `${p}`);
+  else rootStyle.removeProperty("--sheet-back-p");
   if (statusTint) {
     const surface = getComputedStyle(document.documentElement).getPropertyValue("--surface");
     const rgb = surfaceChannels(surface).map((c) => Math.round(c * p));
@@ -383,7 +395,9 @@ function dismissSheet() {
   root.removeAttribute("data-sheet-dragging");
   onStripPointer = null;
   // From wherever a drag left it, the tint eases back from there (the
-  // dimming fades out from its own inline opacity).
+  // dimming fades out from its own inline opacity, and the page behind
+  // from wherever the drag had brought it forward to).
+  root.style.removeProperty("--sheet-back-p");
   statusTint?.style.removeProperty("background-color");
   dismissTimer = window.setTimeout(() => {
     root.removeAttribute("data-sheet-shown");

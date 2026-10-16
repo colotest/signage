@@ -512,17 +512,70 @@ body {
   }
 }
 
-/* On a phone, popups present as iOS page sheets: the sheet stops just short
-   of the top of the screen, with large rounded top corners, and the page
-   behind it dims — all the way to black by the time the sheet is up — then
-   comes back as the sheet goes. Driven by attributes Sheet sets on <html>
-   (presentSheet there), and by inline styles while the sheet's pulled down.
-   Only opacity, transforms and one 11px strip's colour ever animate here. */
-.sheet-content {
+/* On a phone, popups present as iOS card page sheets: the card slides up to
+   just below the status bar, with large rounded top corners, while the page
+   behind it shrinks back, dims, and stays visible as a sliver above it
+   against the black of the void — then comes forward again as the card
+   goes. Driven by attributes Sheet sets on <html> (presentSheet there), and
+   by inline styles while the card's pulled down. Nothing animates here but
+   opacity, transforms, the page's corners and one 11px strip's colour.
+
+   env(safe-area-inset-top) is what "below the status bar" means in both
+   contexts this app runs in: 0 in a Safari tab, where the viewport already
+   starts below the bar, and the real inset installed to the Home Screen,
+   where the page runs up behind it — which is where the card used to end
+   up, under the clock and the Dynamic Island. */
+:root {
+  /* The card's corners, and the page behind clipped to the same shape. */
   --sheet-radius: 32px;
+  --sheet-back-top: env(safe-area-inset-top, 0px);
+  --sheet-top: calc(var(--sheet-back-top) + 10px);
+  --sheet-back-scale: 0.92;
 }
 
 @media (max-width: 639.98px) {
+  /* The page behind, while a card is up: shrunk back from its top edge,
+     clipped to the card's own corner radius, and dimmed. The void it
+     leaves around itself is the overlay, plain black on a phone (see
+     Sheet) — so the page has to be lifted above that overlay for its
+     sliver to show at all, while staying below the card itself (z-50).
+     The dimming is its own layer over the page's contents rather than
+     anything over the card, and sits above everything inside the shell
+     (z-index within it), the header included.
+
+     --sheet-back-p is how far a drag has pulled the card back down (see
+     setDragProgress in Sheet): at 1 the page is forward again, so page and
+     card move together under the finger, as they do natively. */
+  .app-shell {
+    position: relative;
+    transform-origin: top center;
+  }
+
+  html[data-sheet-shown] .app-shell {
+    z-index: 45;
+    overflow: hidden;
+  }
+
+  html[data-sheet-open] .app-shell {
+    transform: translateY(calc(var(--sheet-back-top) * (1 - var(--sheet-back-p, 0))))
+      scale(calc(1 - (1 - var(--sheet-back-scale)) * (1 - var(--sheet-back-p, 0))));
+    border-radius: var(--sheet-radius);
+  }
+
+  .app-shell::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  html[data-sheet-open] .app-shell::after {
+    opacity: calc(0.42 * (1 - var(--sheet-back-p, 0)));
+  }
+
   /* Safari fills the strip behind its toolbar with <body>'s background
      while the sheet slides (see presentSheet in Sheet). In the sheet's own
      colour, the fill and the sheet are one. */
@@ -532,8 +585,8 @@ body {
 
   /* What Safari tints its status bar after while a sheet's open (see
      presentSheet): fixed, full width and over 10px deep at the top edge,
-     where it has to be the first thing Safari finds — so over the sheet,
-     which reaches right up to the status bar. Safari finds it by
+     where it has to be the first thing Safari finds — so over the card and
+     the page behind it, both of which stop below it. Safari finds it by
      hit-testing, which goes by its box, and takes its colour from its
      background-color as set, not from what's on screen — so it paints
      nothing at all: an 11px box of padding, with the background clipped to
@@ -583,7 +636,8 @@ body {
 
 @media (max-width: 639.98px) and (prefers-reduced-motion: no-preference) {
   /* The dimming eases back after a drag that didn't close it; the tint
-     follows it, in step, everywhere. */
+     follows it, in step, everywhere. So does the page behind, going back
+     and coming forward again on the same curve as the card itself. */
   .sheet-overlay,
   .sheet-status-tint {
     transition:
@@ -591,8 +645,18 @@ body {
       background-color 500ms var(--ease-spring);
   }
 
+  .app-shell,
+  .app-shell::after {
+    transition:
+      transform 500ms var(--ease-spring),
+      border-radius 500ms var(--ease-spring),
+      opacity 500ms var(--ease-spring);
+  }
+
   html[data-sheet-dragging] .sheet-overlay,
-  html[data-sheet-dragging] .sheet-status-tint {
+  html[data-sheet-dragging] .sheet-status-tint,
+  html[data-sheet-dragging] .app-shell,
+  html[data-sheet-dragging] .app-shell::after {
     transition: none;
   }
 
@@ -618,8 +682,12 @@ body {
    sizes, even though the exact extra 9% was fitted to one device — if a
    future device leaves a visible sliver either way, adjust this number,
    not the mechanism. */
+:root {
+  --shell-h: 109lvh;
+}
+
 .app-shell-height {
-  height: 109lvh;
+  height: var(--shell-h);
 }
 
 /* Installed to the Home Screen there's no Safari at all: no floating
@@ -628,8 +696,8 @@ body {
    but the home indicator, which (unlike in a tab) env(safe-area-inset-*)
    does report here. */
 @media (display-mode: standalone) {
-  .app-shell-height {
-    height: 100lvh;
+  :root {
+    --shell-h: 100lvh;
   }
 
   .safari-toolbar-inset {
@@ -688,18 +756,35 @@ body {
   }
 }
 
-/* iOS draws that bar's clock and indicators in white whatever the page
-   does, and light mode's glass is near-white — so in light mode alone the
-   strip behind them carries a wash dark enough to read against. Dark mode
-   needs none: its glass already is. */
-@media (display-mode: standalone) and (prefers-color-scheme: light) {
-  .header-top-safe-area::before {
-    content: "";
+/* Installed, the header is laid over the page rather than stacked above it,
+   with the scrolling area below making up its height in padding — nothing
+   moves, but the page now passes underneath it, and up behind the status
+   bar, as it does in an iOS app. That's the whole point: glass only reads
+   as glass with something behind it to blur. Over nothing but the page's
+   own flat background, a 72% fill and a 24px blur come out
+   indistinguishable from an opaque bar — which is exactly how it looked.
+   The status bar strip is the top of that same glass (header-top-safe-area
+   above), so the two are one surface, in one colour, blurring the same
+   content. Note the strip carries no wash of its own any more: a dark one
+   made the bar read as a separate, darker surface, which is what it was
+   meant to be the same as.
+   --header-h is measured by Header — the height depends on the brand type
+   and on the device's own top inset, neither a number to hardcode — and
+   1.5rem of it is the py-6 the main area had under the header before. The
+   fallback is only for the first paint, before hydration has measured
+   anything: the bar's own 50-odd px plus whatever the device puts above
+   it, which is most of the number and all of the part that varies by
+   device. */
+@media (display-mode: standalone) {
+  .app-shell > .header-overlay {
     position: absolute;
-    inset: 0 0 auto 0;
-    height: env(safe-area-inset-top, 0px);
-    background: rgba(0, 0, 0, 0.55);
-    pointer-events: none;
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+
+  .app-shell > .app-main {
+    padding-top: calc(var(--header-h, calc(env(safe-area-inset-top, 0px) + 50px)) + 1.5rem);
   }
 }
 

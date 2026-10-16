@@ -20,10 +20,13 @@ export default async function DashboardLayout({
   return (
     <ViewerProvider viewer={{ ...user, isAdmin: isAdmin(user) }}>
       {/* app-shell-height, not plain lvh/svh/dvh — see the root layout for why.
-          app-shell: its blurs go off under a popup on a phone (see globals.css). */}
+          app-shell: on a phone its blurs go off under a popup, and it
+          shrinks back behind one as a native card sheet's page does; app-main:
+          installed, it runs up behind the header, which lies over it there
+          rather than above it (all three in globals.css). */}
       <div className="app-shell app-shell-height flex flex-col bg-background">
         <Header />
-        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6">{children}</main>
+        <main className="app-main min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6">{children}</main>
       </div>
     </ViewerProvider>
   );
