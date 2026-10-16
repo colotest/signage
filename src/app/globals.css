@@ -330,10 +330,11 @@ body {
   }
 }
 
-/* Opened from a button (data-origin, see Sheet): instead of sliding up from
-   the screen's edge, the popup grows out of that button — starting at its
-   size and position — and on close shrinks back into it. --origin-* are
-   measured by Sheet.
+/* A centred popup (.launch-popup — the Playback Menu's Sheet on desktop,
+   the group picker) opened from a button (data-origin, see
+   lib/animation/popupLaunch): instead of its own entrance, it grows out of
+   that button — starting at its size and position — and on close shrinks
+   back into it. --origin-* are measured there.
 
    Only transform and opacity are animated, which the GPU composites without
    redrawing the popup: animating its corner radius too (as this once did)
@@ -366,7 +367,7 @@ body {
    ProgressiveBlurEdge), each re-rendered every frame while the popup is
    scaling. Off for the length of the animation; mid-motion, nobody can
    tell. */
-.sheet-content[data-animating] * {
+.launch-popup[data-animating] * {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -453,7 +454,7 @@ body {
 .sheet-ghost[data-mode="open"] {
   animation:
     ghost-to-popup 560ms var(--ease-spring) var(--popup-hold) forwards,
-    ghost-square-off 120ms ease-in-out var(--popup-hold) forwards,
+    ghost-square-off 90ms ease-out var(--popup-hold) forwards,
     ghost-fade-out 140ms ease-in var(--popup-hold) forwards,
     sheet-hold var(--popup-hold) linear;
 }
@@ -483,13 +484,13 @@ body {
      button's end, so it fades in and out itself. Both opening animations
      wait out --popup-hold (0ms unless launched from a button — see Sheet),
      held at their starting state (backwards). */
-  .sheet-content[data-origin][data-state="open"] {
+  .launch-popup[data-origin][data-state="open"] {
     animation:
       sheet-grow 560ms var(--ease-spring) var(--popup-hold) backwards,
       sheet-fade-in 140ms ease-out var(--popup-hold) backwards;
   }
 
-  .sheet-content[data-origin][data-state="closed"] {
+  .launch-popup[data-origin][data-state="closed"] {
     animation:
       sheet-shrink 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards,
       sheet-fade-out 140ms ease-in 240ms forwards;
@@ -499,13 +500,16 @@ body {
      only fades in or out right there, underneath it — just enough that its
      own corners, square-ish once scaled down, never peek out around a round
      button. */
-  .sheet-content[data-origin-solid][data-state="open"] {
+  /* Opening, it fades in from 40ms into the growth, by when the ghost
+     above has taken on its corners (ghost-square-off) — any sooner and its
+     own corners showed around the still-round ghost. */
+  .launch-popup[data-origin-solid][data-state="open"] {
     animation:
       sheet-grow 560ms var(--ease-spring) var(--popup-hold) backwards,
-      sheet-fade-in 120ms ease-out var(--popup-hold) backwards;
+      sheet-fade-in 110ms ease-out calc(var(--popup-hold) + 40ms) backwards;
   }
 
-  .sheet-content[data-origin-solid][data-state="closed"] {
+  .launch-popup[data-origin-solid][data-state="closed"] {
     animation:
       sheet-shrink 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards,
       sheet-fade-out 100ms ease-in 150ms forwards;

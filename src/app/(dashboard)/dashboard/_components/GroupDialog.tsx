@@ -2,6 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
+import { usePopupLaunch } from "@/lib/animation/popupLaunch";
 import { cn } from "@/lib/utils/cn";
 import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, CloseIcon } from "@/components/icons/PlaybackIcons";
 
@@ -27,16 +28,23 @@ export function GroupDialog({
   // Resolves once saved; the popup closes then.
   onSubmit: (name: string, screenIds: number[]) => Promise<void>;
 }) {
+  // Grows out of the button that opened it ("+ New Group", or a group's
+  // "Edit Group") and shrinks back into it — see lib/animation/popupLaunch.
+  // Opened any other way, menu-pop's own growth from the centre plays.
+  const { attach, onAnimationEnd } = usePopupLaunch(open);
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="sheet-overlay fixed inset-0 z-[60] bg-black/30" />
         <Dialog.Content
+          ref={attach}
+          onAnimationEnd={onAnimationEnd}
           aria-describedby={undefined}
           // data-no-tile-drag: rendered from inside a group tile's React
           // tree, whose drag-to-reorder would otherwise see these presses.
           data-no-tile-drag
-          className="menu-pop fixed left-1/2 top-1/2 z-[70] flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[360px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[var(--radius-lg)] bg-surface shadow-[var(--shadow-sheet)] outline-none"
+          className="menu-pop launch-popup fixed left-1/2 top-1/2 z-[70] flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[360px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[var(--radius-lg)] bg-surface shadow-[var(--shadow-sheet)] outline-none"
         >
           {/* Radix unmounts this while closed, so every open starts afresh
               from the first step. */}
