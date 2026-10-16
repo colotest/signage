@@ -242,6 +242,47 @@ body {
   }
 }
 
+/* A search field opening in its row on a phone (see SearchField): there's
+   no spare width there, so Upload makes way the way iOS 26 dissolves a
+   control — blurring, fading and shrinking a little where it stands, while
+   the search bar grows on over its place, and reforming there as the bar
+   draws back. It leaves the row's flow at once (absolute, at the very spot
+   it held: 3rem in from the right, past the 2.25rem "⋯" and the row's
+   0.75rem gap) — so the bar's measured end width is its final one, and
+   nothing else in the row is shoved about — and stays out of it until the
+   bar has finished closing (data-search-closing), or the bar on its way
+   back would push it along instead. Desktop has the room: Upload stays. */
+.search-yields {
+  transition:
+    opacity 240ms ease-out,
+    filter 240ms ease-out,
+    scale 240ms var(--ease-spring);
+}
+
+@media (max-width: 639.98px) {
+  /* max-content: out of flow, its width would otherwise be worked out
+     against the row's remaining controls — just the 36px "⋯" — and
+     "+ Upload" would wrap onto two lines on its way out. */
+  .search-row:has([data-search-open], [data-search-closing]) .search-yields {
+    position: absolute;
+    right: 3rem;
+    width: max-content;
+  }
+
+  .search-row:has([data-search-open]) .search-yields {
+    opacity: 0;
+    filter: blur(8px);
+    scale: 0.85;
+    pointer-events: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-yields {
+    transition: none;
+  }
+}
+
 /* A held, dragged link in a menu (Download is one) would otherwise be
    picked up by the browser's own drag-and-drop, which takes the pointer
    away from drag-select; and a long press on iOS opens a link preview. Menu
