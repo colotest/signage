@@ -84,7 +84,6 @@ export function LibraryView({
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set());
-  const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -375,15 +374,15 @@ export function LibraryView({
           {/* relative z-10 keeps this above FileTree's own list, which now
               overlaps up underneath it (see FileTree) so scrolled-past rows
               fade away rather than popping in and out below this row. */}
-          <div className="relative z-10 flex items-center justify-between gap-3">
-            {/* Open, the search field needs the row's spare width — the
-                title gives up its share of it rather than the field being
-                squeezed into what's left. */}
-            <h1 className={cn("text-[28px] font-semibold tracking-tight", searchOpen && "shrink-0 sm:shrink")}>
-              Media
-            </h1>
-            <div className={cn("flex items-center gap-3", searchOpen && "min-w-0 flex-1")}>
-              <SearchField open={searchOpen} onOpenChange={setSearchOpen} value={search} onChange={setSearch} />
+          {/* search-row: the search field opens from just after the title
+              into the row's spare width, while everything after it stays
+              against the right edge (ml-auto) — and on a phone, Upload
+              dissolves where it stands to make room (search-yields). See
+              SearchField and globals.css. */}
+          <div className="search-row relative z-10 flex items-center gap-3">
+            <h1 className="shrink-0 text-[28px] font-semibold tracking-tight">Media</h1>
+            <SearchField onQueryChange={setSearch} />
+            <div className="relative ml-auto flex shrink-0 items-center gap-3">
               {/* Upload and New Folder are hidden while picking files for a
                   playlist — there's nothing to upload to while the list is
                   busy being a file picker, and the space is better spent on
@@ -391,9 +390,7 @@ export function LibraryView({
                   library is exactly when you want it. */}
               {activePlaylistId === null && (
                 <>
-                  {/* On a phone the open search bar takes the whole row, so
-                      Upload steps out until it's closed. */}
-                  <span className={cn("shrink-0", searchOpen && "hidden sm:block")}>
+                  <span className="search-yields shrink-0">
                     <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />
                   </span>
                   {/* Desktop only, at the row's far end — where the "⋯"

@@ -255,7 +255,6 @@ export function PlaybackMenu({
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [creatingIn, setCreatingIn] = useState<string | null | undefined>(undefined);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const { uploading, status: uploadStatus, uploadFiles } = useMediaUpload(uploadTargetId);
 
@@ -1070,15 +1069,14 @@ export function PlaybackMenu({
                 {/* Same header as the Library's Media section, except the upload
                     controls stay put while picking — uploading straight into
                     the picker is the point of having them here. */}
-                <div className="relative z-10 flex items-center justify-between gap-3">
-                  {/* Open, the search field takes the row's spare width (see
-                      the Library's own header). */}
-                  <h2 className={cn("text-[22px] font-semibold tracking-tight", searchOpen && "shrink-0 sm:shrink")}>
-                    Media
-                  </h2>
-                  <div className={cn("flex items-center gap-3", searchOpen && "min-w-0 flex-1")}>
-                    <SearchField open={searchOpen} onOpenChange={setSearchOpen} value={search} onChange={setSearch} />
-                    <span className={cn("shrink-0", searchOpen && "hidden sm:block")}>
+                {/* The search opens from just after the title, the rest of
+                    the row staying put on the right (see the Library's own
+                    header). */}
+                <div className="search-row relative z-10 flex items-center gap-3">
+                  <h2 className="shrink-0 text-[22px] font-semibold tracking-tight">Media</h2>
+                  <SearchField onQueryChange={setSearch} />
+                  <div className="relative ml-auto flex shrink-0 items-center gap-3">
+                    <span className="search-yields shrink-0">
                       <UploadDropzone uploading={uploading} status={uploadStatus} onUploadFiles={uploadFiles} />
                     </span>
                     <MobileFileMenuButton

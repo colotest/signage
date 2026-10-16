@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
+import { startTransition, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
 function MagnifierIcon({ className }: { className?: string }) {
@@ -12,29 +12,37 @@ function MagnifierIcon({ className }: { className?: string }) {
   );
 }
 
+const OPEN_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+const CLOSE_EASE = "cubic-bezier(0.4, 0, 1, 1)";
+
 // A magnifying glass that turns into the search bar itself when pressed,
-// rather than a bar sitting there taking up the row. Open, it takes all the
-// width its row will give it (the row's other controls make way — on a
-// phone Upload steps out entirely), so what you're typing is readable even
-// on the narrowest screen.
+// rather than a bar sitting there taking up the row. It sits at the left of
+// its row, right after the title, and opens rightwards into the row's spare
+// width; the row's other controls stay where they are, against the right
+// edge. On a phone there's no spare width to speak of, so Upload dissolves
+// where it stands (blurred and faded, as iOS does it) and the bar grows on
+// over its place — see .search-row in globals.css.
 //
-// Controlled: the row above needs to know whether it's open to lay itself
-// out, and the list beside it needs the query.
+// Open/closed and what's typed are this field's own state, not its row's:
+// the row it sits in is the whole Library (or the whole Playback Menu), and
+// re-rendering that, file tree and all, before anything could move was what
+// kept the button from opening the moment it was pressed. Its row learns it's
+// open from data-search-open on this field instead, through CSS, and the
+// query goes up as a transition — the list filters as soon as it can, but
+// never ahead of the keystroke showing up in the field.
 export function SearchField({
-  open,
-  onOpenChange,
-  value,
-  onChange,
+  onQueryChange,
   className,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  value: string;
-  onChange: (value: string) => void;
+  onQueryChange: (query: string) => void;
   className?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  // Still shrinking back into a button: on a phone, Upload stays out of the
+  // row's flow until it has (globals.css), or the bar would shove it along.
+  const [closing, setClosing] = useState(false);
+  const [query, setQuery] = useState("");
   const fieldRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
   // The width this field had before the last open/close — what it stretches
   // from. Measured after every flip, so it's always the state just left.
   const widthRef = useRef<number | null>(null);
@@ -43,49 +51,53 @@ export function SearchField({
   // out to the width the row gives it, and squeezes back into a button. It
   // can't be a CSS transition — open, the width is whatever flex decides,
   // which has no number to transition from — so both ends are measured and
-  // the stretch animated between them.
+  // the stretch animated between them. The input is there, focused, from the
+  // first frame; the pill's own clipping is what reveals it.
   useLayoutEffect(() => {
     const field = fieldRef.current;
     if (!field) return;
     const from = widthRef.current;
     const to = field.getBoundingClientRect().width;
     widthRef.current = to;
-    if (from === null || Math.abs(to - from) < 1) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (from === null || Math.abs(to - from) < 1 || !prefersMotion()) return;
 
     // Open, the pill is a flex item that takes what's left of the row, and
     // a flex basis beats any width set on it — so the stretch out is held
-    // back by max-width instead, which flex does respect. Closed it's a
-    // plain 36px button again, and width works.
-    field.animate(
+    // back by max-width instead, which flex does respect (the row's other
+    // controls keep their place meanwhile: the slack goes to their auto
+    // margin). Closed it's a plain 36px button again, and width works.
+    const stretch = field.animate(
       open
         ? [{ maxWidth: `${from}px` }, { maxWidth: `${to}px` }]
         : [{ width: `${from}px` }, { width: `${to}px` }],
-      open
-        ? { duration: 420, easing: "cubic-bezier(0.32, 0.72, 0, 1)" }
-        : { duration: 280, easing: "cubic-bezier(0.4, 0, 1, 1)" },
+      open ? { duration: 420, easing: OPEN_EASE } : { duration: 280, easing: CLOSE_EASE },
     );
-    if (open) {
-      // The text follows the pill out rather than being there from the
-      // first frame, when there's no room for it yet.
-      inputRef.current?.animate(
-        [
-          { opacity: 0, transform: "translateX(-6px)" },
-          { opacity: 1, transform: "none" },
-        ],
-        { duration: 220, delay: 110, easing: "ease-out", fill: "backwards" },
-      );
-    }
+    // Pressed again mid-way, the new stretch takes over from a clean slate.
+    if (open) return () => stretch.cancel();
+    stretch.finished.then(
+      () => setClosing(false),
+      () => {},
+    );
+    return () => stretch.cancel();
   }, [open]);
 
+  function show() {
+    setClosing(false);
+    setOpen(true);
+  }
+
   function close() {
-    onChange("");
-    onOpenChange(false);
+    setQuery("");
+    startTransition(() => onQueryChange(""));
+    setClosing(prefersMotion());
+    setOpen(false);
   }
 
   return (
     <div
       ref={fieldRef}
+      data-search-open={open ? "" : undefined}
+      data-search-closing={closing ? "" : undefined}
       className={cn(
         "flex h-9 shrink-0 items-center overflow-hidden rounded-full bg-black/[.05] text-muted dark:bg-white/[.08]",
         open
@@ -98,12 +110,13 @@ export function SearchField({
         <>
           <MagnifierIcon className="h-4 w-4 shrink-0" />
           <input
-            ref={(node) => {
-              inputRef.current = node;
-              node?.focus();
+            ref={(node) => node?.focus({ preventScroll: true })}
+            value={query}
+            onChange={(e) => {
+              const next = e.target.value;
+              setQuery(next);
+              startTransition(() => onQueryChange(next));
             }}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") close();
             }}
@@ -124,7 +137,7 @@ export function SearchField({
       ) : (
         <button
           type="button"
-          onClick={() => onOpenChange(true)}
+          onClick={show}
           title="Search files"
           aria-label="Search files"
           className="press-ghost-fit flex h-full w-full items-center justify-center rounded-full"
@@ -134,4 +147,8 @@ export function SearchField({
       )}
     </div>
   );
+}
+
+function prefersMotion() {
+  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
