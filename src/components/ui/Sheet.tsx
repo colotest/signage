@@ -326,9 +326,18 @@ function useSheetDrag(
 function setDragProgress(overlay: HTMLElement | null, p: number) {
   p = Math.min(1, p);
   if (overlay) overlay.style.opacity = p ? `${1 - p}` : "";
-  const rootStyle = document.documentElement.style;
-  if (p) rootStyle.setProperty("--sheet-back-p", `${p}`);
-  else rootStyle.removeProperty("--sheet-back-p");
+  // The page behind is driven by a custom property, and changing one of
+  // those on <html> costs a style recalc across the whole page — so it's
+  // moved in 1% steps rather than on every pointer event. 1% is 0.0008 of
+  // the page's scale, far too little to see, and it turns a recalc per
+  // move into a handful over a drag.
+  const step = Math.round(p * 100);
+  if (step !== backStep) {
+    backStep = step;
+    const rootStyle = document.documentElement.style;
+    if (step) rootStyle.setProperty("--sheet-back-p", `${step / 100}`);
+    else rootStyle.removeProperty("--sheet-back-p");
+  }
   if (statusTint) {
     const surface = getComputedStyle(document.documentElement).getPropertyValue("--surface");
     const rgb = surfaceChannels(surface).map((c) => Math.round(c * p));
@@ -364,6 +373,9 @@ function surfaceChannels(color: string) {
 //   fill (globals.css).
 const SHEET_CLOSE_MS = 500;
 let dismissTimer: number | undefined;
+// The last whole percent of drag the page behind was set to (see
+// setDragProgress); -1 until a drag sets one.
+let backStep = -1;
 let statusTint: HTMLElement | null = null;
 // Where presses on the strip go: the presented sheet's drag.
 let onStripPointer: ((e: PointerEvent) => void) | null = null;
@@ -398,6 +410,7 @@ function dismissSheet() {
   // dimming fades out from its own inline opacity, and the page behind
   // from wherever the drag had brought it forward to).
   root.style.removeProperty("--sheet-back-p");
+  backStep = -1;
   statusTint?.style.removeProperty("background-color");
   dismissTimer = window.setTimeout(() => {
     root.removeAttribute("data-sheet-shown");

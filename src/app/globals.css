@@ -518,7 +518,7 @@ body {
    against the black of the void — then comes forward again as the card
    goes. Driven by attributes Sheet sets on <html> (presentSheet there), and
    by inline styles while the card's pulled down. Nothing animates here but
-   opacity, transforms, the page's corners and one 11px strip's colour.
+   opacity, transforms and one 11px strip's colour.
 
    env(safe-area-inset-top) is what "below the status bar" means in both
    contexts this app runs in: 0 in a Safari tab, where the viewport already
@@ -526,7 +526,7 @@ body {
    where the page runs up behind it — which is where the card used to end
    up, under the clock and the Dynamic Island. */
 :root {
-  /* The card's corners, and the page behind clipped to the same shape. */
+  /* The card's corners, and the page behind rounded to the same shape. */
   --sheet-radius: 32px;
   --sheet-back-top: env(safe-area-inset-top, 0px);
   --sheet-top: calc(var(--sheet-back-top) + 10px);
@@ -535,13 +535,28 @@ body {
 
 @media (max-width: 639.98px) {
   /* The page behind, while a card is up: shrunk back from its top edge,
-     clipped to the card's own corner radius, and dimmed. The void it
-     leaves around itself is the overlay, plain black on a phone (see
-     Sheet) — so the page has to be lifted above that overlay for its
-     sliver to show at all, while staying below the card itself (z-50).
-     The dimming is its own layer over the page's contents rather than
-     anything over the card, and sits above everything inside the shell
-     (z-index within it), the header included.
+     rounded off at the corners and dimmed. It's lifted above the overlay
+     (z-index) for any of it to show at all, and stays below the card
+     itself (z-50).
+
+     Its corners and the black around it are painted over it — ::before is
+     a transparent box with an enormous black shadow, so everything outside
+     the page's rounded box is black: the void it leaves at the edges of
+     the screen, and the four notches the rounding cuts out of it — rather
+     than clipped by an overflow: hidden + border-radius on the shell,
+     which is what this started as. That clip was wrong on both counts.
+     WebKit doesn't apply it to a descendant with a layer of its own, and
+     the header has one — so its square corners went on being painted over
+     the rounded ones. And a rounded clip is re-applied to everything
+     inside it for every frame of a scale, which is most of what made the
+     motion stutter: a painted corner costs nothing to move, since the
+     whole page is one layer by then (will-change) that's rasterised once
+     and only transformed after that.
+
+     ::after is the dimming, inside the same rounded box, over the page's
+     contents (z-index within the shell) and so over the header too, but
+     under the card. Rounded as well, so it leaves the notches to ::before
+     rather than painting its own square corners into them.
 
      --sheet-back-p is how far a drag has pulled the card back down (see
      setDragProgress in Sheet): at 1 the page is forward again, so page and
@@ -553,13 +568,26 @@ body {
 
   html[data-sheet-shown] .app-shell {
     z-index: 45;
-    overflow: hidden;
+    will-change: transform;
   }
 
   html[data-sheet-open] .app-shell {
     transform: translateY(calc(var(--sheet-back-top) * (1 - var(--sheet-back-p, 0))))
       scale(calc(1 - (1 - var(--sheet-back-scale)) * (1 - var(--sheet-back-p, 0))));
+  }
+
+  /* Only while a card is up: at rest this is a black ring just outside the
+     screen, and there's nothing for it to do. 250px covers the widest the
+     void ever gets — the gap under the page once it has gone back and down
+     by the top inset. */
+  html[data-sheet-shown] .app-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 59;
     border-radius: var(--sheet-radius);
+    box-shadow: 0 0 0 250px #000;
+    pointer-events: none;
   }
 
   .app-shell::after {
@@ -567,9 +595,14 @@ body {
     position: absolute;
     inset: 0;
     z-index: 60;
+    border-radius: var(--sheet-radius);
     background: #000;
     opacity: 0;
     pointer-events: none;
+  }
+
+  html[data-sheet-shown] .app-shell::after {
+    will-change: opacity;
   }
 
   html[data-sheet-open] .app-shell::after {
@@ -649,7 +682,6 @@ body {
   .app-shell::after {
     transition:
       transform 500ms var(--ease-spring),
-      border-radius 500ms var(--ease-spring),
       opacity 500ms var(--ease-spring);
   }
 
