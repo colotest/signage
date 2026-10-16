@@ -711,9 +711,13 @@ body {
     background-color: #000;
   }
 
-  /* The page's blurs are lost under the dimming anyway, and would otherwise
-     be re-rendered every frame it changes. */
-  html[data-sheet-shown] .app-shell * {
+  /* The page's blurs are off while a card is up: everything but the top
+     sliver of the page is hidden behind the card, and each blur would
+     otherwise be re-rendered every frame the page moves. All but the
+     header's glass — that's the sliver, and the one blur still in sight,
+     so it stays glass the whole way back and forward again rather than
+     dropping to a flat fill the moment the card is opened. */
+  html[data-sheet-shown] .app-shell *:not(.header-surface) {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
   }
