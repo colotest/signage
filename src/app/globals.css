@@ -252,11 +252,25 @@ body {
    nothing else in the row is shoved about — and stays out of it until the
    bar has finished closing (data-search-closing), or the bar on its way
    back would push it along instead. Desktop has the room: Upload stays. */
-.search-yields {
-  transition:
-    opacity 240ms ease-out,
-    filter 240ms ease-out,
-    scale 240ms var(--ease-spring);
+@media (prefers-reduced-motion: no-preference) {
+  /* Coming back: held for 80ms, then reforming over 200ms, so it's whole
+     at the very moment the bar is (SearchField's 280ms close) — not ahead
+     of it, sitting there fully formed while the pill is still drawing back
+     out from under it. */
+  .search-yields {
+    transition:
+      opacity 200ms ease 80ms,
+      filter 200ms ease 80ms,
+      scale 200ms ease 80ms;
+  }
+
+  /* Going: at once, as the bar sets off. */
+  .search-row:has([data-search-open]) .search-yields {
+    transition:
+      opacity 240ms ease-out,
+      filter 240ms ease-out,
+      scale 240ms var(--ease-spring);
+  }
 }
 
 @media (max-width: 639.98px) {
@@ -274,12 +288,6 @@ body {
     filter: blur(8px);
     scale: 0.85;
     pointer-events: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .search-yields {
-    transition: none;
   }
 }
 

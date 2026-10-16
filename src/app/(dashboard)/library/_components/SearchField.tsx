@@ -70,6 +70,8 @@ export function SearchField({
       open
         ? [{ maxWidth: `${from}px` }, { maxWidth: `${to}px` }]
         : [{ width: `${from}px` }, { width: `${to}px` }],
+      // 280ms closing: Upload's return on a phone is timed to end with it
+      // (.search-yields in globals.css).
       open ? { duration: 420, easing: OPEN_EASE } : { duration: 280, easing: CLOSE_EASE },
     );
     // Pressed again mid-way, the new stretch takes over from a clean slate.
