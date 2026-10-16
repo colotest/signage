@@ -27,6 +27,19 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 // the compositor and the main thread does nothing at all once the page is
 // up — no requestAnimationFrame to stutter when the player is busy
 // decoding a video.
+//
+// Except in Safari. WebKit can't run an SVG filter on the compositor, so it
+// paints the filtered layer in software — and any child it has lifted onto
+// the GPU (every blob, animating `transform` with will-change) is drawn on
+// top of that afterwards, unfiltered: the blobs slid past one another
+// without ever merging. (A backgrounded tab composites differently, which
+// is why it looked right there.) So outside Chromium the same drifts are
+// played through registered custom properties instead: the keyframes move
+// --lava-x/y and --lava-sx/sy, a plain transform reads them, and with no
+// transform animation and no will-change nothing gets its own layer — the
+// blobs are painted with the rest, through the filter. It costs a repaint
+// per frame, which only matters on the Fire TV sticks, and those are
+// Chromium.
 
 // How much smaller the filtered layer is than the screen. A third keeps the
 // goo smooth while cutting the filter's cost to a ninth.
@@ -103,25 +116,69 @@ const BLOBS: Blob[] = [
   { x: 0.58, y: 0.22, size: 0.13, motion: "fall", duration: 50, delay: -21, travel: 0.44, sway: -0.14, colour: AMBER },
 ];
 
-// One keyframe set per kind of drift. They all start and end on the same
-// pose so a loop never jumps, and only ever set `transform`.
-const KEYFRAMES = `
-@keyframes colo-lava-rise {
-  0%, 100% { transform: translate3d(0, var(--lava-travel), 0) scale(0.84, 0.94); }
-  26% { transform: translate3d(calc(var(--lava-sway) * 0.6), 0, 0) scale(0.9, 1.14); }
-  48% { transform: translate3d(var(--lava-sway), calc(var(--lava-travel) * -1), 0) scale(1.16, 0.9); }
-  74% { transform: translate3d(calc(var(--lava-sway) * 0.4), 0, 0) scale(0.96, 1.1); }
+// The three drifts, each as poses at points through one go round: where
+// the blob is, as multiples of its own sway (x) and travel (y), and how it's
+// stretched. They all start and end on the same pose so a loop never jumps.
+type Pose = { at: string; x: number; y: number; sx: number; sy: number };
+const DRIFTS: Record<Blob["motion"], Pose[]> = {
+  rise: [
+    { at: "0%, 100%", x: 0, y: 1, sx: 0.84, sy: 0.94 },
+    { at: "26%", x: 0.6, y: 0, sx: 0.9, sy: 1.14 },
+    { at: "48%", x: 1, y: -1, sx: 1.16, sy: 0.9 },
+    { at: "74%", x: 0.4, y: 0, sx: 0.96, sy: 1.1 },
+  ],
+  fall: [
+    { at: "0%, 100%", x: 0, y: -1, sx: 1.12, sy: 0.92 },
+    { at: "30%", x: 0.5, y: 0, sx: 0.94, sy: 1.12 },
+    { at: "52%", x: 1, y: 1, sx: 0.88, sy: 1 },
+    { at: "78%", x: 0.3, y: 0, sx: 1, sy: 1.08 },
+  ],
+  swell: [
+    { at: "0%, 100%", x: -1, y: 1, sx: 1, sy: 1.04 },
+    { at: "50%", x: 1, y: -1, sx: 1.22, sy: 1.1 },
+  ],
+};
+
+const offset = (multiple: number, unit: string) => (multiple === 0 ? "0px" : `calc(var(${unit}) * ${multiple})`);
+
+// The compositor's version: the poses as transform keyframes.
+const COMPOSITED_KEYFRAMES = Object.entries(DRIFTS)
+  .map(
+    ([name, poses]) =>
+      `@keyframes colo-lava-${name} {\n${poses
+        .map(
+          (p) =>
+            `  ${p.at} { transform: translate3d(${offset(p.x, "--lava-sway")}, ${offset(p.y, "--lava-travel")}, 0) scale(${p.sx}, ${p.sy}); }`,
+        )
+        .join("\n")}\n}`,
+  )
+  .join("\n");
+
+// The painted version (see the top of this file): the same poses as
+// registered custom properties, which a static transform on each blob reads.
+const PAINTED_KEYFRAMES = [
+  `@property --lava-x { syntax: "<length>"; inherits: false; initial-value: 0px; }`,
+  `@property --lava-y { syntax: "<length>"; inherits: false; initial-value: 0px; }`,
+  `@property --lava-sx { syntax: "<number>"; inherits: false; initial-value: 1; }`,
+  `@property --lava-sy { syntax: "<number>"; inherits: false; initial-value: 1; }`,
+  ...Object.entries(DRIFTS).map(
+    ([name, poses]) =>
+      `@keyframes colo-lava-${name}-painted {\n${poses
+        .map(
+          (p) =>
+            `  ${p.at} { --lava-x: ${offset(p.x, "--lava-sway")}; --lava-y: ${offset(p.y, "--lava-travel")}; --lava-sx: ${p.sx}; --lava-sy: ${p.sy}; }`,
+        )
+        .join("\n")}\n}`,
+  ),
+].join("\n");
+
+// Chromium — the Fire TV sticks' WebView among it — applies an SVG filter
+// to composited children; WebKit doesn't (see the top of this file).
+// Firefox isn't known either way, so it takes the painted path too, which
+// is correct everywhere.
+function compositesFilteredChildren() {
+  return /Chrome\/|Chromium\//.test(navigator.userAgent);
 }
-@keyframes colo-lava-fall {
-  0%, 100% { transform: translate3d(0, calc(var(--lava-travel) * -1), 0) scale(1.12, 0.92); }
-  30% { transform: translate3d(calc(var(--lava-sway) * 0.5), 0, 0) scale(0.94, 1.12); }
-  52% { transform: translate3d(var(--lava-sway), var(--lava-travel), 0) scale(0.88, 1); }
-  78% { transform: translate3d(calc(var(--lava-sway) * 0.3), 0, 0) scale(1, 1.08); }
-}
-@keyframes colo-lava-swell {
-  0%, 100% { transform: translate3d(calc(var(--lava-sway) * -1), var(--lava-travel), 0) scale(1, 1.04); }
-  50% { transform: translate3d(var(--lava-sway), calc(var(--lava-travel) * -1), 0) scale(1.22, 1.1); }
-}`;
 
 export function LavaLamp() {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -129,6 +186,9 @@ export function LavaLamp() {
   // filter is referenced by id.
   const gooId = `${useId()}-lava-goo`;
   const [size, setSize] = useState({ width: 0, height: 0 });
+  // Decided alongside the first measurement: nothing animates until then,
+  // so the server render (which can't know the browser) never has to match.
+  const [composited, setComposited] = useState(true);
 
   // Measured rather than sized in container query units, for the same
   // reason the clock measures itself: a kiosk browser on a years-old stick
@@ -140,6 +200,7 @@ export function LavaLamp() {
     function measure() {
       if (root) setSize({ width: root.clientWidth, height: root.clientHeight });
     }
+    setComposited(compositesFilteredChildren());
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(root);
@@ -155,7 +216,7 @@ export function LavaLamp() {
 
   return (
     <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
-      <style>{KEYFRAMES}</style>
+      <style>{composited ? COMPOSITED_KEYFRAMES : PAINTED_KEYFRAMES}</style>
 
       {/* The filter itself draws nothing; it only lends its id to the layer
           below. Blur, then a matrix that leaves R, G and B untouched and
@@ -202,8 +263,9 @@ export function LavaLamp() {
             transform: `scale(${1 / STAGE})`,
             transformOrigin: "0 0",
             // Keeps the scaled-up result a compositor job rather than a
-            // re-render of the filter at full size.
-            willChange: "transform",
+            // re-render of the filter at full size — where the browser can
+            // still filter what's inside it (see the top of this file).
+            willChange: composited ? "transform" : undefined,
           }}
         >
           {BLOBS.map((blob, i) => {
@@ -233,8 +295,15 @@ export function LavaLamp() {
                     `linear-gradient(to top, rgba(255, 196, 124, 0.38) 0%, rgba(255, 170, 96, 0.12) 32%, rgba(255, 150, 80, 0) 66%)`,
                     `radial-gradient(circle closest-side at 50% 50%, ${blob.colour[0]} 0%, ${blob.colour[1]} 68%, ${blob.colour[2]} 100%)`,
                   ].join(", "),
-                  animation: `colo-lava-${blob.motion} ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
-                  willChange: "transform",
+                  ...(composited
+                    ? {
+                        animation: `colo-lava-${blob.motion} ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
+                        willChange: "transform",
+                      }
+                    : {
+                        animation: `colo-lava-${blob.motion}-painted ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
+                        transform: "translate(var(--lava-x), var(--lava-y)) scale(var(--lava-sx), var(--lava-sy))",
+                      }),
                   ["--lava-travel" as string]: `${stageHeight * blob.travel * 0.5}px`,
                   ["--lava-sway" as string]: `${stageWidth * blob.sway}px`,
                 }}
