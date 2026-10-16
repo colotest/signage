@@ -100,8 +100,11 @@ export function SearchField({
       ref={fieldRef}
       data-search-open={open ? "" : undefined}
       data-search-closing={closing ? "" : undefined}
+      // shadow-control: lit and shaded like the "⋯" beside it, button and
+      // bar alike — it's the same pill either way, so the edges stretch out
+      // and draw back with it.
       className={cn(
-        "flex h-9 shrink-0 items-center overflow-hidden rounded-full bg-black/[.05] text-muted dark:bg-white/[.08]",
+        "flex h-9 shrink-0 items-center overflow-hidden rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] dark:bg-white/[.08]",
         open
           ? "min-w-0 flex-1 gap-2 px-3 backdrop-blur-xl"
           : "w-9 justify-center transition-colors hover:bg-black/[.08] hover:text-foreground dark:hover:bg-white/[.12]",
