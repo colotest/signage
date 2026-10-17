@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useLayoutEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
 function MagnifierIcon({ className }: { className?: string }) {
@@ -83,6 +83,15 @@ export function SearchField({
     return () => stretch.cancel();
   }, [open]);
 
+  // Focused as it mounts — in the same commit as the press that opened it,
+  // which is what lets iOS bring up the keyboard for it. Stable, so it runs
+  // once rather than on every render: an inline callback would be called
+  // again each time the Library re-renders (as it does whenever anyone
+  // changes anything), and drag focus back into a field that had been left.
+  const focusOnMount = useCallback((node: HTMLInputElement | null) => {
+    node?.focus({ preventScroll: true });
+  }, []);
+
   function show() {
     setClosing(false);
     setOpen(true);
@@ -115,7 +124,7 @@ export function SearchField({
         <>
           <MagnifierIcon className="h-4 w-4 shrink-0" />
           <input
-            ref={(node) => node?.focus({ preventScroll: true })}
+            ref={focusOnMount}
             value={query}
             onChange={(e) => {
               const next = e.target.value;
@@ -125,16 +134,26 @@ export function SearchField({
             onKeyDown={(e) => {
               if (e.key === "Escape") close();
             }}
+            // On a phone, the keyboard going away — Done, swiping it down,
+            // tapping elsewhere — is this field losing focus, and an empty
+            // search left open then is just a bar in the way, so it goes.
+            // Not with something typed: putting the keyboard away is also
+            // how you get to look through the results, and closing would
+            // throw them away (it clears the query).
+            onBlur={() => {
+              if (query === "" && window.matchMedia("(pointer: coarse)").matches) close();
+            }}
             placeholder="Search files"
             aria-label="Search files"
-            className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-muted"
+            // The same size as the file names it's matching against.
+            className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted"
           />
           <button
             type="button"
             onClick={close}
             title="Close search"
             aria-label="Close search"
-            className="press-ghost-fit pop-in origin-right -mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] text-muted hover:text-foreground"
+            className="press-ghost-fit pop-in origin-right -mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[26px] leading-none text-muted hover:text-foreground"
           >
             ✕
           </button>
