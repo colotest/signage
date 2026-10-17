@@ -153,7 +153,7 @@ export function SearchField({
             onClick={close}
             title="Close search"
             aria-label="Close search"
-            className="press-ghost-fit pop-in origin-right -mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[26px] leading-none text-muted hover:text-foreground"
+            className="press-ghost-fit pop-in origin-right -mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[19.5px] leading-none text-muted hover:text-foreground"
           >
             ✕
           </button>
