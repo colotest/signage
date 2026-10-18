@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, isAdmin } from "@/lib/auth/session";
 import { ViewerProvider } from "@/lib/auth/ViewerContext";
+import { EdgeTuner } from "@/components/EdgeTuner";
 import { Header } from "./_components/Header";
 
 // This is a live control panel, not public content — always render fresh
@@ -28,6 +29,7 @@ export default async function DashboardLayout({
         <Header />
         <main className="app-main min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6">{children}</main>
       </div>
+      <EdgeTuner />
     </ViewerProvider>
   );
 }

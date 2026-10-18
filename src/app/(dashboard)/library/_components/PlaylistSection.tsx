@@ -6,7 +6,7 @@ import { PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/cor
 import { arrayMove } from "@dnd-kit/sortable";
 import { Menu } from "@/components/ui/Menu";
 import { InlineRename } from "@/components/InlineRename";
-import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
+import { ScrollWindow } from "@/components/ScrollWindow";
 import { useFlipChildren } from "@/lib/animation/useFlipChildren";
 import { cn } from "@/lib/utils/cn";
 import { formatDuration } from "@/lib/utils/format";
@@ -193,79 +193,36 @@ export function PlaylistSection({
 
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
-      {/* relative z-10 keeps this above the list below, which overlaps up
-          underneath it (see the scrolling div's own -mt-10) so scrolled-past
-          cards fade away rather than popping in and out below this row. */}
+      {/* relative z-10 keeps this above the list below, which reaches up
+          underneath it (see ScrollWindow) so scrolled-past cards fade away
+          rather than popping in and out below this row. */}
       <div className="relative z-10 flex items-center justify-between">
         <h2 className="text-[28px] font-semibold tracking-tight">Playlists</h2>
         <PlaylistSortMenuButton sortKey={sortKey} sortDir={sortDir} onToggleSort={toggleSort} />
       </div>
 
-      {/* Not edge-to-edge — sits inside the page's normal left/right inset
-          rather than bleeding to the screen edges, just a little wider via
-          the -10px side margin. Each row is its own rounded, bordered card
-          (see PlaylistRow) rather than this whole list being one bordered
-          box. -mt-10/-mb-5 pull the list up 40px and down 20px past its
-          own normal top/bottom edges, overlapping the title row above
-          (which needs its own relative z-10 to stay on top) and the space
-          below — asymmetric on purpose, matching what reads well against
-          the smaller bottom fade. Neither edge reaches as deep as the
-          media list's top does: the media list ends right above this one,
-          where this list's own background wash would paint over its fading
-          rows and cut them off dead (see FileTree's -mb-5), and below is
-          the page's own bottom edge, where anything overflowing turns the
-          whole page into a scrolling one instead of fitting the viewport
-          exactly. This is what lets scrolled-past cards fade
-          away underneath the title, top and bottom, instead of popping in
-          and out at a hard edge. pt-[52px]/safari-toolbar-inset (padding on
-          this scrolling element itself, not on the <ul> it wraps —
-          percentage heights on a child of an auto-overflow box are exactly
-          the kind of thing Safari gets flexbox-inconsistent about) keep
-          scroll-fade-y's (now 40px) fade off the first/last card and, at
-          the bottom only since this is the last section on the page,
-          reserve enough room to clear Safari's floating toolbar — all
-          while the container's own height (flex-1, reaching the screen
-          edge) stays untouched. no-scrollbar: the native scrollbar looked
-          odd crossing the blurred/faded edges.
-
-          ProgressiveBlurEdge is a SIBLING of the scrolling div, not a child
-          of it — a position:absolute descendant still scrolls along with
-          the rest of a scroll container's content (only mask-image is
-          exempt from that). scroll-fade-y sits on the scrolling div
-          ITSELF; the blur — and the background wash it carries, see
-          ProgressiveBlurEdge — stays outside that mask on purpose, since
-          the wash is what makes a card's own colour fade out along with
-          its text, and a mask over it would erase it exactly where it
-          matters. The scrolling div is sized via inset-0 against this div,
-          which is also what keeps the blur pinned in place while content
-          scrolls underneath it. */}
-      <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
-        {/* pt-[47px]: 40px of it pays back the reach this list takes past
-            its own top edge (the -mt-10 above), which is what tucks
-            scrolled cards under the title — without it the FIRST card
-            starts up there too, half behind the title before you've
-            scrolled at all. The remaining 7px sits it just clear of the
-            title's own baseline. */}
-        <div
-          className={cn(
-            "scroll-fade-y [--fade-top:24px] no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[47px]",
-            listClassName,
-          )}
-        >
-          <ul className="flex flex-col gap-3">
-            {/* The "+ Create" trigger lives as the list's own first entry —
-                not a header button — so it scrolls out of view with the
-                rest of the list, and its spacing (same card padding as
-                PlaylistRow) matches the playlist it's about to create. */}
-            {showCreate && <CreatePlaylistRow onCreate={handleCreate} pending={pending} />}
-            {rows}
-          </ul>
-        </div>
-        {/* Shallower: the media list ends right above, and this edge's
-            depth is most of the empty band between the two. */}
-        <ProgressiveBlurEdge side="top" extent={48} />
-        <ProgressiveBlurEdge side="bottom" />
-      </div>
+      {/* Not edge-to-edge — sits inside the page's normal left/right inset,
+          just a little wider via the -10px side margin; each row is its own
+          rounded card (see PlaylistRow). Its edges come from ScrollWindow:
+          it reaches up under the "Playlists" title and down to the page's
+          bottom edge, padded clear of Safari's floating toolbar
+          (safari-toolbar-inset, plus listClassName's own on the Library
+          page). */}
+      <ScrollWindow
+        top="title"
+        bottom="toolbar"
+        className="mx-[-10px] flex-1"
+        scrollerClassName={cn("safari-toolbar-inset", listClassName)}
+      >
+        <ul className="flex flex-col gap-3">
+          {/* The "+ Create" trigger lives as the list's own first entry —
+              not a header button — so it scrolls out of view with the
+              rest of the list, and its spacing (same card padding as
+              PlaylistRow) matches the playlist it's about to create. */}
+          {showCreate && <CreatePlaylistRow onCreate={handleCreate} pending={pending} />}
+          {rows}
+        </ul>
+      </ScrollWindow>
     </div>
   );
 }

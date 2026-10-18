@@ -948,6 +948,118 @@ body {
   );
 }
 
+/* Scroll windows' edges (see ScrollWindow): what a scrolling list does at
+   its top and bottom, by what sits there — a page or section title
+   ("title"), the page's bottom edge behind Safari's toolbar ("toolbar"), or
+   another list ("plain"). One preset per kind, so every list's edges match,
+   and changing a number here changes them all (the tuning panel — account
+   menu, admins — overrides these live). For each:
+   - tuck: how far the window reaches in under what's beside it (the title
+     above, the space below), so content passes beneath it rather than
+     stopping at a hard line short of it.
+   - size: how deep the soft edge is, from the window's hard edge in — its
+     blur, and the wash of background that takes everything the rest of the
+     way out (see ProgressiveBlurEdge).
+   - fade: how far content itself fades out, from the hard edge.
+   - clear: room before the first (or after the last) row at rest, so
+     nothing sits in the edge until it's scrolled there.
+   - hold: how deep the edge stays at full strength before it starts easing
+     off — for hiding content right behind a title's text.
+   - blur: the strongest blur, right at the hard edge.
+   The numbers start out as the lists' own before they shared these. */
+:root {
+  --edge-title-tuck: 40px;
+  --edge-title-size: 48px;
+  --edge-title-fade: 24px;
+  --edge-title-clear: 48px;
+  --edge-title-hold: 0px;
+  --edge-title-blur: 9.6px;
+  --edge-toolbar-tuck: 20px;
+  --edge-toolbar-size: 80px;
+  --edge-toolbar-fade: 40px;
+  --edge-toolbar-clear: 90px;
+  --edge-toolbar-hold: 0px;
+  --edge-toolbar-blur: 16px;
+  --edge-plain-tuck: 20px;
+  --edge-plain-size: 48px;
+  --edge-plain-fade: 24px;
+  --edge-plain-clear: 44px;
+  --edge-plain-hold: 0px;
+  --edge-plain-blur: 9.6px;
+}
+
+@layer components {
+  /* Layered, so a Tailwind utility on one window can still override a value
+     (e.g. sm:[--edge-top-clear:…] for the file browser's sort bar). */
+  .scroll-window {
+    position: relative;
+    margin-top: calc(-1 * var(--edge-top-tuck, 0px));
+    margin-bottom: calc(-1 * var(--edge-bottom-tuck, 0px));
+  }
+
+  .scroll-window-scroller {
+    padding-top: var(--edge-top-clear, 0px);
+    padding-bottom: var(--edge-bottom-clear, 0px);
+    --fade-top: var(--edge-top-fade, 0px);
+    --fade-bottom: var(--edge-bottom-fade, 0px);
+  }
+
+  .scroll-window[data-edge-top="title"] {
+    --edge-top-tuck: var(--edge-title-tuck);
+    --edge-top-size: var(--edge-title-size);
+    --edge-top-fade: var(--edge-title-fade);
+    --edge-top-clear: var(--edge-title-clear);
+    --edge-top-hold: var(--edge-title-hold);
+    --edge-top-blur: var(--edge-title-blur);
+  }
+
+  .scroll-window[data-edge-top="toolbar"] {
+    --edge-top-tuck: var(--edge-toolbar-tuck);
+    --edge-top-size: var(--edge-toolbar-size);
+    --edge-top-fade: var(--edge-toolbar-fade);
+    --edge-top-clear: var(--edge-toolbar-clear);
+    --edge-top-hold: var(--edge-toolbar-hold);
+    --edge-top-blur: var(--edge-toolbar-blur);
+  }
+
+  .scroll-window[data-edge-top="plain"] {
+    --edge-top-tuck: var(--edge-plain-tuck);
+    --edge-top-size: var(--edge-plain-size);
+    --edge-top-fade: var(--edge-plain-fade);
+    --edge-top-clear: var(--edge-plain-clear);
+    --edge-top-hold: var(--edge-plain-hold);
+    --edge-top-blur: var(--edge-plain-blur);
+  }
+
+  .scroll-window[data-edge-bottom="title"] {
+    --edge-bottom-tuck: var(--edge-title-tuck);
+    --edge-bottom-size: var(--edge-title-size);
+    --edge-bottom-fade: var(--edge-title-fade);
+    --edge-bottom-clear: var(--edge-title-clear);
+    --edge-bottom-hold: var(--edge-title-hold);
+    --edge-bottom-blur: var(--edge-title-blur);
+  }
+
+  .scroll-window[data-edge-bottom="toolbar"] {
+    --edge-bottom-tuck: var(--edge-toolbar-tuck);
+    --edge-bottom-size: var(--edge-toolbar-size);
+    --edge-bottom-fade: var(--edge-toolbar-fade);
+    --edge-bottom-clear: var(--edge-toolbar-clear);
+    --edge-bottom-hold: var(--edge-toolbar-hold);
+    --edge-bottom-blur: var(--edge-toolbar-blur);
+  }
+
+  .scroll-window[data-edge-bottom="plain"] {
+    --edge-bottom-tuck: var(--edge-plain-tuck);
+    --edge-bottom-size: var(--edge-plain-size);
+    --edge-bottom-fade: var(--edge-plain-fade);
+    --edge-bottom-clear: var(--edge-plain-clear);
+    --edge-bottom-hold: var(--edge-plain-hold);
+    --edge-bottom-blur: var(--edge-plain-blur);
+  }
+
+}
+
 /* Power-saving mode (the account menu's toggle; see usePowerSaving): scroll
    windows end in a plain cut at the edge of their clear content instead of
    blurring and fading out past it. Every blur edge (ProgressiveBlurEdge,

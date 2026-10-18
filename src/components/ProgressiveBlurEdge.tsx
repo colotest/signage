@@ -19,8 +19,8 @@ import { cn } from "@/lib/utils/cn";
 // Fractions of the edge's own depth, so a shallower edge keeps the same
 // shape. Blur radii scale with it too — a deep blur crammed into a short
 // edge would have to drop off far too fast to read as the same effect.
-const BLUR_EXTENT = 80;
-const LAYERS = [
+export const BLUR_EXTENT = 80;
+export const LAYERS = [
   { blur: 16, solid: 6, stop: 20 },
   { blur: 8, solid: 20, stop: 36 },
   { blur: 4, solid: 36, stop: 52 },
@@ -55,8 +55,8 @@ const MIN_RADIUS = 1;
 // always the page: inside the Playback Menu it's the popup's own surface.
 // Anything rendering them on something other than the page says so by
 // setting --edge-scrim on an ancestor (see Sheet).
-const SCRIM_FRACTION = 64 / BLUR_EXTENT;
-const SCRIM_STOPS: [number, number][] = [
+export const SCRIM_FRACTION = 64 / BLUR_EXTENT;
+export const SCRIM_STOPS: [number, number][] = [
   [0, 100],
   [14 / 64, 94],
   [24 / 64, 74],
