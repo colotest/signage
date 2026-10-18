@@ -10,6 +10,12 @@
      own systemGray5/4. Solid rather than see-through so a popup launched
      from one can fade back into its colour (see lib/animation/popupLaunch). */
   --control-fill: #e5e5ea;
+  /* The action buttons beside page and section titles ("+ New Group",
+     Upload, search, "⋯"), sized like iOS 26's: their height (a round one's
+     diameter), the glyph inside a round one, and a pill's label. */
+  --title-action: 63px;
+  --title-action-glyph: calc(var(--title-action) * 4 / 9);
+  --title-action-text: 17px;
   --control-fill-hover: #d1d1d6;
   --border: rgba(60, 60, 67, 0.13);
   --accent: #007aff;
@@ -254,8 +260,7 @@ body {
    control — blurring, fading and shrinking a little where it stands, while
    the search bar grows on over its place, and reforming there as the bar
    draws back. It leaves the row's flow at once (absolute, at the very spot
-   it held: 3rem in from the right, past the 2.25rem "⋯" and the row's
-   0.75rem gap) — so the bar's measured end width is its final one, and
+   it held, in from the right past the "⋯" and the row's 0.75rem gap) — so the bar's measured end width is its final one, and
    nothing else in the row is shoved about — and stays out of it until the
    bar has finished closing (data-search-closing), or the bar on its way
    back would push it along instead. Desktop has the room: Upload stays. */
@@ -282,11 +287,11 @@ body {
 
 @media (max-width: 639.98px) {
   /* max-content: out of flow, its width would otherwise be worked out
-     against the row's remaining controls — just the 36px "⋯" — and
+     against the row's remaining controls — just the "⋯" — and
      "+ Upload" would wrap onto two lines on its way out. */
   .search-row:has([data-search-open], [data-search-closing]) .search-yields {
     position: absolute;
-    right: 3rem;
+    right: calc(var(--title-action) + 0.75rem);
     width: max-content;
   }
 
@@ -978,6 +983,22 @@ body {
   --edge-plain-clear: 24px;
   --edge-plain-hold: 0px;
   --edge-plain-blur: 1.5px;
+}
+
+/* Round title-row buttons ("⋯", search) and their glyphs, at
+   --title-action (see :root). */
+@utility title-action-round {
+  display: flex;
+  height: var(--title-action);
+  width: var(--title-action);
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+@utility title-action-glyph {
+  height: var(--title-action-glyph);
+  width: var(--title-action-glyph);
 }
 
 @layer components {

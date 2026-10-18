@@ -30,7 +30,7 @@ export function UploadDropzone({
           e.target.value = "";
         }}
       />
-      <Button onClick={() => inputRef.current?.click()} disabled={uploading > 0}>
+      <Button className="h-[var(--title-action)] px-5 py-0 text-[length:var(--title-action-text)]" onClick={() => inputRef.current?.click()} disabled={uploading > 0}>
         {uploading > 0 ? <Spinner /> : null}
         {uploading > 0 ? (status ?? `Uploading ${uploading}…`) : "+ Upload"}
       </Button>

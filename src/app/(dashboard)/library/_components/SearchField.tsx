@@ -65,7 +65,7 @@ export function SearchField({
     // a flex basis beats any width set on it — so the stretch out is held
     // back by max-width instead, which flex does respect (the row's other
     // controls keep their place meanwhile: the slack goes to their auto
-    // margin). Closed it's a plain 36px button again, and width works.
+    // margin). Closed it's a plain round button again, and width works.
     const stretch = field.animate(
       open
         ? [{ maxWidth: `${from}px` }, { maxWidth: `${to}px` }]
@@ -113,16 +113,16 @@ export function SearchField({
       // bar alike — it's the same pill either way, so the edges stretch out
       // and draw back with it.
       className={cn(
-        "flex h-9 shrink-0 items-center overflow-hidden rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] dark:bg-white/[.08]",
+        "flex h-[var(--title-action)] shrink-0 items-center overflow-hidden rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] dark:bg-white/[.08]",
         open
-          ? "min-w-0 flex-1 gap-2 px-3 backdrop-blur-xl"
-          : "w-9 justify-center transition-colors hover:bg-black/[.08] hover:text-foreground dark:hover:bg-white/[.12]",
+          ? "min-w-0 flex-1 gap-3 px-5 backdrop-blur-xl"
+          : "w-[var(--title-action)] justify-center transition-colors hover:bg-black/[.08] hover:text-foreground dark:hover:bg-white/[.12]",
         className,
       )}
     >
       {open ? (
         <>
-          <MagnifierIcon className="h-4 w-4 shrink-0" />
+          <MagnifierIcon className="h-[calc(var(--title-action-glyph)*0.8)] w-[calc(var(--title-action-glyph)*0.8)] shrink-0" />
           <input
             ref={focusOnMount}
             value={query}
@@ -146,14 +146,14 @@ export function SearchField({
             placeholder="Search files"
             aria-label="Search files"
             // The same size as the file names it's matching against.
-            className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted"
+            className="min-w-0 flex-1 bg-transparent text-[length:var(--title-action-text)] text-foreground outline-none placeholder:text-muted"
           />
           <button
             type="button"
             onClick={close}
             title="Close search"
             aria-label="Close search"
-            className="press-ghost-fit pop-in origin-right -mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[19.5px] leading-none text-muted hover:text-foreground"
+            className="press-ghost-fit pop-in origin-right -mr-2 flex h-[calc(var(--title-action)*7/9)] w-[calc(var(--title-action)*7/9)] shrink-0 items-center justify-center rounded-full text-[calc(var(--title-action-glyph)*0.9)] leading-none text-muted hover:text-foreground"
           >
             ✕
           </button>
@@ -166,7 +166,7 @@ export function SearchField({
           aria-label="Search files"
           className="press-ghost-fit flex h-full w-full items-center justify-center rounded-full"
         >
-          <MagnifierIcon className="h-4 w-4" />
+          <MagnifierIcon className="title-action-glyph" />
         </button>
       )}
     </div>

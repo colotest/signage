@@ -415,9 +415,9 @@ function UsersMenuButton({
         onClick={() => setOpen((o) => !o)}
         aria-label="User options"
         aria-expanded={open}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+        className="title-action-round shrink-0 bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
-        <ThreeDotIcon className="h-4 w-4" />
+        <ThreeDotIcon className="title-action-glyph" />
       </button>
 
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-56 p-1">

@@ -15,6 +15,7 @@ export function AddScreenButton() {
   return (
     <Button
       variant="grey"
+      className="h-[var(--title-action)] px-5 py-0 text-[length:var(--title-action-text)]"
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
@@ -38,7 +39,7 @@ export function AddGroupButton({ screens }: { screens: { id: number; name: strin
       {/* Grey, like "+ New Screen" beside it: the group picker launches out
           of this and, closing, fades back into its colour — a quiet grey is
           far less of a flash than the accent blue was. */}
-      <Button variant="grey" onClick={() => setOpen(true)}>
+      <Button variant="grey" className="h-[var(--title-action)] px-5 py-0 text-[length:var(--title-action-text)]" onClick={() => setOpen(true)}>
         + <span className="hidden sm:inline">New </span>Group
       </Button>
       <GroupDialog

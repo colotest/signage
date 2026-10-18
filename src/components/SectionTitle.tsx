@@ -88,8 +88,15 @@ export function SectionTitle({
   className?: string;
   style?: CSSProperties;
 }) {
+  // A title-row button here (the sort "⋯") is held to the row's own
+  // height rather than the pages' bigger --title-action: the row is a fixed
+  // SECTION_TITLE_HEIGHT, and docked at the top of the Playback Menu's
+  // scroll view, anything taller would be cut off along its top.
   return (
-    <div className={cn("z-10 shrink-0", className)} style={{ height: SECTION_TITLE_HEIGHT, ...style }}>
+    <div
+      className={cn("z-10 shrink-0", className)}
+      style={{ height: SECTION_TITLE_HEIGHT, "--title-action": `${SECTION_TITLE_HEIGHT}px`, ...style } as CSSProperties}
+    >
       {bandAbove && (
         <div
           aria-hidden

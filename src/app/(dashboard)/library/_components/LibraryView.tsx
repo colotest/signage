@@ -402,7 +402,7 @@ export function LibraryView({
                   </span>
                   {/* Desktop only, at the row's far end — where the "⋯"
                       stands on a phone, which is where it lives there. */}
-                  <Button variant="secondary" className="hidden sm:inline-flex" onClick={() => setCreatingIn(null)}>
+                  <Button variant="secondary" className="h-[var(--title-action)] px-5 py-0 text-[length:var(--title-action-text)] hidden sm:inline-flex" onClick={() => setCreatingIn(null)}>
                     + New Folder
                   </Button>
                 </>
@@ -500,9 +500,9 @@ export function MobileFileMenuButton({
         onClick={() => setOpen((o) => !o)}
         aria-label="File options"
         aria-expanded={open}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+        className="title-action-round shrink-0 bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
-        <ThreeDotIcon className="h-4 w-4" />
+        <ThreeDotIcon className="title-action-glyph" />
       </button>
 
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-40 p-1">
