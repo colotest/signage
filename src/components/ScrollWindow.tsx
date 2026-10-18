@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { cn } from "@/lib/utils/cn";
-import { LAYERS, SCRIM_FRACTION, SCRIM_STOPS } from "./ProgressiveBlurEdge";
+import { LAYERS } from "./ProgressiveBlurEdge";
 
 // What sits at one edge of a scroll window, which decides everything about
 // that edge — see "Scroll windows' edges" in globals.css for the presets.
@@ -67,9 +67,9 @@ export function ScrollWindow({
   );
 }
 
-// The same stacked blur and background wash as ProgressiveBlurEdge (see
-// there for how and why), sized from the window's preset variables rather
-// than from numbers, so tuning a preset reshapes every edge built on it
+// The same stacked blur as ProgressiveBlurEdge (see there for how and why),
+// with a wash of its own (WASH_STOPS), sized from the window's preset
+// variables rather than from numbers, so tuning a preset reshapes every edge built on it
 // live. Four layers rather than five: at these depths the weakest one's
 // blur is under a pixel — next to invisible, and still a backdrop filter to
 // recompute on every scrolled frame.
@@ -80,14 +80,25 @@ const WINDOW_LAYERS = LAYERS.slice(0, 4).map((layer, i, all) => ({
   strength: layer.blur / LAYERS[0].blur,
 }));
 
+// The background wash over the edge: full tint exactly at the window's hard
+// edge, easing off at once from there (a squared falloff, (1 - t)²) across
+// the edge's whole depth. No plateau at full tint: one (ProgressiveBlurEdge's
+// own wash holds near 100% over its outer fifth) read as a flat strip of
+// background between the window's edge and its gradient — and kept lists
+// from sitting right up against each other, a strip of nothing between.
+const WASH_STOPS: [number, number][] = [0, 0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 1].map((t) => [
+  t,
+  Math.round(100 * (1 - t) ** 2),
+]);
+
 function WindowEdge({ side }: { side: "top" | "bottom" }) {
   const v = (name: string) => `var(--edge-${side}-${name})`;
   const at = (fraction: number) => `calc(${v("hold")} + ${v("size")} * ${fraction.toFixed(4)})`;
   const direction = side === "top" ? "to bottom" : "to top";
   const anchor = side === "top" ? "top-0" : "bottom-0";
-  const scrim = `linear-gradient(${direction}, ${SCRIM_STOPS.map(
+  const wash = `linear-gradient(${direction}, ${WASH_STOPS.map(
     ([fraction, percent]) =>
-      `color-mix(in srgb, var(--edge-scrim, var(--background)) ${percent}%, transparent) ${at(fraction * SCRIM_FRACTION)}`,
+      `color-mix(in srgb, var(--edge-scrim, var(--background)) ${percent}%, transparent) ${at(fraction)}`,
   ).join(", ")})`;
 
   return (
@@ -117,7 +128,7 @@ function WindowEdge({ side }: { side: "top" | "bottom" }) {
       })}
       <div
         className={cn("blur-edge-layer absolute inset-x-0", anchor)}
-        style={{ height: at(SCRIM_FRACTION), background: scrim }}
+        style={{ height: at(1), background: wash }}
       />
     </div>
   );

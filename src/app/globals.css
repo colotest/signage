@@ -896,54 +896,44 @@ body {
   display: none;
 }
 
-/* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide
-   scrolled-past content popping in and out at the top/bottom — this fades
-   it instead. Static (not scroll-position-aware): simpler, and the fade
-   reads fine even at the very start/end of a list. 40px matches the lists'
-   own pt-10/pb-10 padding, so the fade lands entirely on that blank padding
-   rather than eating into the first/last row. The extra intermediate stops
-   ease the curve so content stays much fainter through the first half of
-   the zone, where the blur is strongest — that's where a flat highlight
-   colour would otherwise still read clearly while the text beside it had
-   already blurred into nothing. Long enough
-   now that, combined with the lists' own negative top margin (see FileTree/
-   PlaylistSection), scrolled-past rows fade away underneath the "Media"/
-   "Playlists" title rows rather than popping in and out beneath them. */
+/* A scroll window's content fade (see ScrollWindow): content passing into
+   an edge fades out towards the window's hard edge, over --fade-top /
+   --fade-bottom. Shaped like a square root — rising steeply from the edge,
+   then levelling off — so content starts showing right at the edge, where
+   the background wash above it is at full tint and easing off just as fast
+   (see ScrollWindow's WASH_STOPS). An eased curve here once held content at
+   next to nothing over the outer fifth of the fade, which together with a
+   wash that also held near full there read as a flat strip of background
+   between the window's edge and its fade. */
 .scroll-fade-y {
-  /* Per-edge, so an edge with another list right beyond it can fade over a
-     shorter distance than one at the page's own edge — the fade is what
-     most of the empty band between two stacked lists is made of. Override
-     with [--fade-bottom:12px] / [--fade-top:12px] on the element; the 40px
-     default lives in the var() fallbacks below rather than in a declaration
-     here, which — being unlayered — would outrank those utilities. */
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0, 0, 0, 0.06) calc(var(--fade-top, 40px) * 0.2),
-    rgba(0, 0, 0, 0.2) calc(var(--fade-top, 40px) * 0.4),
-    rgba(0, 0, 0, 0.45) calc(var(--fade-top, 40px) * 0.6),
-    rgba(0, 0, 0, 0.75) calc(var(--fade-top, 40px) * 0.8),
+    rgba(0, 0, 0, 0.32) calc(var(--fade-top, 40px) * 0.1),
+    rgba(0, 0, 0, 0.5) calc(var(--fade-top, 40px) * 0.25),
+    rgba(0, 0, 0, 0.71) calc(var(--fade-top, 40px) * 0.5),
+    rgba(0, 0, 0, 0.87) calc(var(--fade-top, 40px) * 0.75),
     black var(--fade-top, 40px),
     black calc(100% - var(--fade-bottom, 40px)),
-    rgba(0, 0, 0, 0.75) calc(100% - var(--fade-bottom, 40px) * 0.8),
-    rgba(0, 0, 0, 0.45) calc(100% - var(--fade-bottom, 40px) * 0.6),
-    rgba(0, 0, 0, 0.2) calc(100% - var(--fade-bottom, 40px) * 0.4),
-    rgba(0, 0, 0, 0.06) calc(100% - var(--fade-bottom, 40px) * 0.2),
+    rgba(0, 0, 0, 0.87) calc(100% - var(--fade-bottom, 40px) * 0.75),
+    rgba(0, 0, 0, 0.71) calc(100% - var(--fade-bottom, 40px) * 0.5),
+    rgba(0, 0, 0, 0.5) calc(100% - var(--fade-bottom, 40px) * 0.25),
+    rgba(0, 0, 0, 0.32) calc(100% - var(--fade-bottom, 40px) * 0.1),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0, 0, 0, 0.06) calc(var(--fade-top, 40px) * 0.2),
-    rgba(0, 0, 0, 0.2) calc(var(--fade-top, 40px) * 0.4),
-    rgba(0, 0, 0, 0.45) calc(var(--fade-top, 40px) * 0.6),
-    rgba(0, 0, 0, 0.75) calc(var(--fade-top, 40px) * 0.8),
+    rgba(0, 0, 0, 0.32) calc(var(--fade-top, 40px) * 0.1),
+    rgba(0, 0, 0, 0.5) calc(var(--fade-top, 40px) * 0.25),
+    rgba(0, 0, 0, 0.71) calc(var(--fade-top, 40px) * 0.5),
+    rgba(0, 0, 0, 0.87) calc(var(--fade-top, 40px) * 0.75),
     black var(--fade-top, 40px),
     black calc(100% - var(--fade-bottom, 40px)),
-    rgba(0, 0, 0, 0.75) calc(100% - var(--fade-bottom, 40px) * 0.8),
-    rgba(0, 0, 0, 0.45) calc(100% - var(--fade-bottom, 40px) * 0.6),
-    rgba(0, 0, 0, 0.2) calc(100% - var(--fade-bottom, 40px) * 0.4),
-    rgba(0, 0, 0, 0.06) calc(100% - var(--fade-bottom, 40px) * 0.2),
+    rgba(0, 0, 0, 0.87) calc(100% - var(--fade-bottom, 40px) * 0.75),
+    rgba(0, 0, 0, 0.71) calc(100% - var(--fade-bottom, 40px) * 0.5),
+    rgba(0, 0, 0, 0.5) calc(100% - var(--fade-bottom, 40px) * 0.25),
+    rgba(0, 0, 0, 0.32) calc(100% - var(--fade-bottom, 40px) * 0.1),
     transparent 100%
   );
 }
