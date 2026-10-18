@@ -162,7 +162,7 @@ export function Sheet({
           className={cn(
             // --edge-scrim: lists inside a popup (the Playback Menu's media
             // and playlists lists) fade out against the popup's own surface
-            // rather than the page colour behind it — see ProgressiveBlurEdge.
+            // rather than the page colour behind it — see EdgeBand.
             // overflow-hidden: the lists inside end in full-width blur/scrim
             // strips, which otherwise paint straight over the popup's own
             // rounded corners and square them off. Clipping to this box's

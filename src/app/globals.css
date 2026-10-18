@@ -420,7 +420,7 @@ body {
 }
 
 /* Lists inside the popup end in stacked backdrop-filter blurs (see
-   ProgressiveBlurEdge), each re-rendered every frame while the popup is
+   EdgeBand), each re-rendered every frame while the popup is
    scaling. Off for the length of the animation; mid-motion, nobody can
    tell. */
 .launch-popup[data-animating] * {
@@ -949,7 +949,7 @@ body {
      stopping at a hard line short of it.
    - size: how deep the soft edge is, from the window's hard edge in — its
      blur, and the wash of background that takes everything the rest of the
-     way out (see ProgressiveBlurEdge).
+     way out (see EdgeBand).
    - fade: how far content itself fades out, from the hard edge.
    - clear: room before the first (or after the last) row at rest, so
      nothing sits in the edge until it's scrolled there.
@@ -1062,7 +1062,7 @@ body {
 
 /* Power-saving mode (the account menu's toggle; see usePowerSaving): scroll
    windows end in a plain cut at the edge of their clear content instead of
-   blurring and fading out past it. Every blur edge (ProgressiveBlurEdge,
+   blurring and fading out past it. Every blur edge (EdgeBand,
    including section titles' bands) becomes one solid block of whatever the
    list sits on, over exactly the area it used to blur, and the lists' own
    fade masks go — so the windows look shorter, as the faded zones no longer

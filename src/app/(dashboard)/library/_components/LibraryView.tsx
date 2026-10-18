@@ -371,7 +371,7 @@ export function LibraryView({
 
             gap-4 rather than something roomier: what separates the two on
             screen is mostly their facing fade zones (shallow there for
-            exactly this reason — see ProgressiveBlurEdge's extent), and
+            exactly this reason — see EdgeBand), and
             this gap only sits on top of that. It can't go much below this
             either — the playlists list reaches 40px up past its own top
             edge and the media list 20px down past its bottom, so a smaller
