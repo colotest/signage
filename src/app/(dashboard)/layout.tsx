@@ -27,7 +27,12 @@ export default async function DashboardLayout({
           rather than above it (all three in globals.css). */}
       <div className="app-shell app-shell-height flex flex-col bg-background">
         <Header />
-        <main className="app-main min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-6">{children}</main>
+        {/* --page-inset-bottom: its own bottom padding, which a list ending at
+            the screen's bottom edge reaches back through (see ScrollWindow's
+            "toolbar" edge). */}
+        <main className="app-main min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-6 pb-[var(--page-inset-bottom)] [--page-inset-bottom:1.5rem]">
+          {children}
+        </main>
       </div>
       <EdgeTuner />
     </ViewerProvider>

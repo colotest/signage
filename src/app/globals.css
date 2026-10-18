@@ -956,26 +956,28 @@ body {
    - hold: how deep the edge stays at full strength before it starts easing
      off — for hiding content right behind a title's text.
    - blur: the strongest blur, right at the hard edge.
-   The numbers start out as the lists' own before they shared these. */
+   Tuned by eye on device with the tuning panel. A toolbar edge has no
+   depth of its own (size 0): iOS Safari's own fade under its toolbar does
+   that job. */
 :root {
-  --edge-title-tuck: 40px;
-  --edge-title-size: 48px;
-  --edge-title-fade: 24px;
-  --edge-title-clear: 48px;
+  --edge-title-tuck: 59px;
+  --edge-title-size: 88px;
+  --edge-title-fade: 96px;
+  --edge-title-clear: 74px;
   --edge-title-hold: 0px;
   --edge-title-blur: 9.6px;
-  --edge-toolbar-tuck: 20px;
-  --edge-toolbar-size: 80px;
-  --edge-toolbar-fade: 40px;
-  --edge-toolbar-clear: 90px;
+  --edge-toolbar-tuck: 0px;
+  --edge-toolbar-size: 0px;
+  --edge-toolbar-fade: 0px;
+  --edge-toolbar-clear: 0px;
   --edge-toolbar-hold: 0px;
-  --edge-toolbar-blur: 16px;
-  --edge-plain-tuck: 20px;
-  --edge-plain-size: 48px;
-  --edge-plain-fade: 24px;
-  --edge-plain-clear: 44px;
+  --edge-toolbar-blur: 11px;
+  --edge-plain-tuck: 0px;
+  --edge-plain-size: 64px;
+  --edge-plain-fade: 0px;
+  --edge-plain-clear: 24px;
   --edge-plain-hold: 0px;
-  --edge-plain-blur: 9.6px;
+  --edge-plain-blur: 1.5px;
 }
 
 @layer components {
@@ -985,6 +987,14 @@ body {
     position: relative;
     margin-top: calc(-1 * var(--edge-top-tuck, 0px));
     margin-bottom: calc(-1 * var(--edge-bottom-tuck, 0px));
+  }
+
+  /* A toolbar edge is the screen's own bottom edge, so the window reaches
+     through the page's bottom padding (--page-inset-bottom, set on the
+     dashboard's <main>) right down to it, tuck or no tuck — stopping at the
+     padding left it just short. */
+  .scroll-window[data-edge-bottom="toolbar"] {
+    margin-bottom: calc(-1 * (var(--page-inset-bottom, 0px) + var(--edge-bottom-tuck, 0px)));
   }
 
   .scroll-window-scroller {
