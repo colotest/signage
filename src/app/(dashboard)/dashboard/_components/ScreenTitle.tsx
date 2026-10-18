@@ -24,11 +24,15 @@ export function ScreenTitle({
   // Shown immediately on save rather than waiting for router.refresh() to
   // bring the new name back down as a prop — otherwise the title would
   // flash the stale `name` prop first and only jump to the real one later.
+  // A new name from the server replaces it — during render, as React
+  // recommends, rather than in an effect that would first render the stale
+  // one once more.
   const [displayName, setDisplayName] = useState(name);
-
-  useEffect(() => {
+  const [syncedName, setSyncedName] = useState(name);
+  if (name !== syncedName) {
+    setSyncedName(name);
     setDisplayName(name);
-  }, [name]);
+  }
 
   useEffect(() => {
     if (editing) inputRef.current?.select();

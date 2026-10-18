@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useRef, useState, useTransition, type ReactNode } from "react";
 import { PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { Menu } from "@/components/ui/Menu";
@@ -153,10 +153,14 @@ export function PlaylistSection({
 
   // Armed for selection means the user is actively picking files for it —
   // expand it automatically so the playlist's existing content is visible
-  // right alongside whatever's being added.
-  useEffect(() => {
+  // right alongside whatever's being added. Noticed during render, as React
+  // recommends, rather than in an effect (seen starts out null, so one armed
+  // from the start is expanded too).
+  const [seenActiveId, setSeenActiveId] = useState<string | null>(null);
+  if (activePlaylistId !== seenActiveId) {
+    setSeenActiveId(activePlaylistId);
     if (activePlaylistId) setExpanded((current) => new Set(current).add(activePlaylistId));
-  }, [activePlaylistId]);
+  }
 
   function handleCreate() {
     startTransition(async () => {

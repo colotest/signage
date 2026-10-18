@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -101,10 +101,15 @@ export function LibraryView({
   // Optimistic mirror of `media` — dragging a file onto a folder (or a
   // playlist) reflects immediately rather than waiting for router.refresh()
   // to bring the change back down as a prop.
+  // Taken afresh whenever the server sends a new list — during render, as
+  // React recommends, rather than in an effect that would first render the
+  // stale copy once more.
   const [localMedia, setLocalMedia] = useState(media);
-  useEffect(() => {
+  const [syncedMedia, setSyncedMedia] = useState(media);
+  if (media !== syncedMedia) {
+    setSyncedMedia(media);
     setLocalMedia(media);
-  }, [media]);
+  }
   const mediaById = useMemo(() => new Map(localMedia.map((m) => [m.id, m])), [localMedia]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const draggingItem = draggingId ? (mediaById.get(draggingId) ?? null) : null;
@@ -181,7 +186,7 @@ export function LibraryView({
     const mediaItem = mediaById.get(mediaId);
     if (!mediaItem) return;
 
-    const optimisticId = `optimistic-${mediaId}-${Date.now()}`;
+    const optimisticId = `optimistic-${mediaId}-${crypto.randomUUID()}`;
     setLocalPlaylists((current) =>
       current.map((playlist) => {
         if (playlist.id !== playlistId) return playlist;
@@ -225,9 +230,11 @@ export function LibraryView({
   // without waiting for router.refresh() to bring it back down as props —
   // and resynced whenever fresh server data actually arrives.
   const [localPlaylists, setLocalPlaylists] = useState(playlists);
-  useEffect(() => {
+  const [syncedPlaylists, setSyncedPlaylists] = useState(playlists);
+  if (playlists !== syncedPlaylists) {
+    setSyncedPlaylists(playlists);
     setLocalPlaylists(playlists);
-  }, [playlists]);
+  }
 
   function toggleMedia(id: string) {
     setSelectedMediaIds((current) => {

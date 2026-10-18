@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
 // Same double-click-to-edit mechanic as media's RenameableTitle, minus the
@@ -43,11 +43,15 @@ export function InlineRename({
   // server round trip to bring the new name back down as a prop — without
   // this, switching back to display mode would flash the stale `value`
   // prop first and only jump to the real name once that resolves.
+  // A new value from the server replaces it — during render, as React
+  // recommends, rather than in an effect that would first render the stale
+  // one once more.
   const [displayValue, setDisplayValue] = useState(value);
-
-  useEffect(() => {
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
     setDisplayValue(value);
-  }, [value]);
+  }
 
   function attachInput(node: HTMLInputElement | null) {
     node?.focus();

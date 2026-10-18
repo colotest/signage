@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { KeyboardEvent } from "react";
 import { renameMediaItem } from "@/lib/actions/media";
 import { cn } from "@/lib/utils/cn";
@@ -50,11 +50,15 @@ export function RenameableTitle({
   // Shown immediately on commit rather than waiting for router.refresh() to
   // bring the new name back down as a prop — otherwise display mode would
   // flash the stale `name` prop first and only jump to the real one later.
+  // A new name from the server replaces it — during render, as React
+  // recommends, rather than in an effect that would first render the stale
+  // one once more.
   const [displayName, setDisplayName] = useState(name);
-
-  useEffect(() => {
+  const [syncedName, setSyncedName] = useState(name);
+  if (name !== syncedName) {
+    setSyncedName(name);
     setDisplayName(name);
-  }, [name]);
+  }
 
   const { base, ext } = splitExtension(displayName);
 

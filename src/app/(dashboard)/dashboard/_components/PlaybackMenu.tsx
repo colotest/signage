@@ -823,10 +823,15 @@ export function PlaybackMenu({
 
   // Playlists are read-only here (editable={false} below) — editing them is
   // the Library page's job.
+  // Taken afresh whenever the server sends a new list — during render, as
+  // React recommends, rather than in an effect that would first render the
+  // stale copy once more.
   const [localPlaylists, setLocalPlaylists] = useState(library.playlists);
-  useEffect(() => {
+  const [syncedPlaylists, setSyncedPlaylists] = useState(library.playlists);
+  if (library.playlists !== syncedPlaylists) {
+    setSyncedPlaylists(library.playlists);
     setLocalPlaylists(library.playlists);
-  }, [library.playlists]);
+  }
 
   // --- Timed playback (alarm clock, Calendar) -------------------------------
 
