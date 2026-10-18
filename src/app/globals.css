@@ -13,7 +13,7 @@
   /* The action buttons beside page and section titles ("+ New Group",
      Upload, search, "⋯"), sized like iOS 26's: their height (a round one's
      diameter), the glyph inside a round one, and a pill's label. */
-  --title-action: 63px;
+  --title-action: 48px;
   --title-action-glyph: calc(var(--title-action) * 4 / 9);
   --title-action-text: 17px;
   --control-fill-hover: #d1d1d6;

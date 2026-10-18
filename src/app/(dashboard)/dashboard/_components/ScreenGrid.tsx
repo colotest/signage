@@ -28,7 +28,7 @@ import type {
 } from "@/types/domain";
 import { ScreenTile } from "./ScreenTile";
 import { GroupTile, type GroupMemberView } from "./GroupTile";
-import { AddGroupButton, AddScreenButton } from "./AddScreenButton";
+import { AddButton } from "./AddButton";
 import { useViewer } from "@/lib/auth/ViewerContext";
 import type { LibraryData } from "./PlaybackMenu";
 
@@ -155,15 +155,12 @@ export function ScreenGrid({
     // Playlists — without this, the bottom row's info card ends up behind
     // iOS Safari's floating toolbar with no way to scroll it clear.
     <div className="safari-toolbar-inset flex flex-col gap-5">
-      {/* min-h: the Add Screen button's height, kept when it's hidden. */}
+      {/* min-h: the "+" button's height, kept when it's hidden. */}
       <div className="flex min-h-[var(--title-action)] items-center justify-between gap-3">
         <h1 className="text-[28px] font-semibold tracking-tight">Screens</h1>
         {/* Adding screens and groups is for admins (the actions check too). */}
         {viewer.isAdmin && (
-          <div className="flex shrink-0 items-center gap-2">
-            <AddGroupButton screens={screenOptions} />
-            <AddScreenButton />
-          </div>
+          <AddButton screens={screenOptions} />
         )}
       </div>
 

@@ -8,8 +8,8 @@ import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, CloseIcon } from "@/compone
 
 type ScreenOption = { id: number; name: string };
 
-// The little two-step popup behind "+ New Group" and a group's "Edit
-// Group": first tick the screens it should hold (✕ to cancel, → to go on),
+// The little two-step popup behind the Screens page's "+" → New Group and
+// a group's "Edit Group": first tick the screens it should hold (✕ to cancel, → to go on),
 // then name it (‹ back to the list, ✓ to finish). Editing starts from the
 // group's current members and name.
 export function GroupDialog({
@@ -28,7 +28,7 @@ export function GroupDialog({
   // Resolves once saved; the popup closes then.
   onSubmit: (name: string, screenIds: number[]) => Promise<void>;
 }) {
-  // Grows out of the button that opened it ("+ New Group", or a group's
+  // Grows out of the button that opened it (the "+", or a group's
   // "Edit Group") and shrinks back into it — see lib/animation/popupLaunch.
   // Opened any other way, menu-pop's own growth from the centre plays.
   const { attach, onAnimationEnd } = usePopupLaunch(open);

@@ -79,10 +79,10 @@ const ROW_ENTER_MS = 500;
 // "Done" pill sits right at its upper edge.
 const PICKER_FADE = "var(--edge-plain-size)";
 
-// How far the scroll view reaches up under the popup's title — the same
-// depth the lists tuck under the section headings, so the band under the
-// title works exactly like theirs.
-const HEADER_TUCK = SECTION_TITLE_HEIGHT;
+// How far the scroll view reaches up under the popup's title — about half
+// its 80px header, the same depth the lists used to tuck under the section
+// headings when those were 40px, which the title's band was tuned with.
+const HEADER_TUCK = 40;
 // The fade along the bottom of the Playlists list is the same as the one
 // above a heading (LIST_FOOT_BAND).
 

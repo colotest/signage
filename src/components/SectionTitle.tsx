@@ -7,8 +7,9 @@ import { EdgeBand } from "./EdgeBand";
 // The fixed height of a section's title row. The Playback Menu docks these
 // rows at the top and bottom edges of its scroll view and sizes the lists
 // around them, so it has to be an exact number rather than whatever the
-// text happens to measure.
-export const SECTION_TITLE_HEIGHT = 40;
+// text happens to measure. Matches the title-row buttons' height
+// (--title-action in globals.css), so the sort "⋯" fits the row.
+export const SECTION_TITLE_HEIGHT = 48;
 
 // How far the list below a heading tucks in underneath it: its whole
 // height, so the list's hard edge is never seen. Structural (the Playback
@@ -88,15 +89,8 @@ export function SectionTitle({
   className?: string;
   style?: CSSProperties;
 }) {
-  // A title-row button here (the sort "⋯") is held to the row's own
-  // height rather than the pages' bigger --title-action: the row is a fixed
-  // SECTION_TITLE_HEIGHT, and docked at the top of the Playback Menu's
-  // scroll view, anything taller would be cut off along its top.
   return (
-    <div
-      className={cn("z-10 shrink-0", className)}
-      style={{ height: SECTION_TITLE_HEIGHT, "--title-action": `${SECTION_TITLE_HEIGHT}px`, ...style } as CSSProperties}
-    >
+    <div className={cn("z-10 shrink-0", className)} style={{ height: SECTION_TITLE_HEIGHT, ...style }}>
       {bandAbove && (
         <div
           aria-hidden
