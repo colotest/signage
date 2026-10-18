@@ -92,7 +92,10 @@ export function ProgressiveBlurEdge({
   return (
     <div
       aria-hidden
-      className={cn("pointer-events-none absolute inset-x-0 z-[5]", side === "top" ? "top-0" : "bottom-0")}
+      // blur-edge: in power-saving mode the layers and wash below give way
+      // to one plain block of the background over this whole edge — see
+      // [data-power-saving] in globals.css.
+      className={cn("blur-edge pointer-events-none absolute inset-x-0 z-[5]", side === "top" ? "top-0" : "bottom-0")}
       style={{ height: hold + extent }}
     >
       {layers.map(({ blur, solid, stop }, i) => {
@@ -103,7 +106,7 @@ export function ProgressiveBlurEdge({
           // transparent anyway, and blurring there would be wasted work.
           <div
             key={i}
-            className={cn("absolute inset-x-0", side === "top" ? "top-0" : "bottom-0")}
+            className={cn("blur-edge-layer absolute inset-x-0", side === "top" ? "top-0" : "bottom-0")}
             style={{
               height: hold + stop * extent,
               backdropFilter: `blur(${radius}px)`,
@@ -115,7 +118,7 @@ export function ProgressiveBlurEdge({
         );
       })}
       <div
-        className={cn("absolute inset-x-0", side === "top" ? "top-0" : "bottom-0")}
+        className={cn("blur-edge-layer absolute inset-x-0", side === "top" ? "top-0" : "bottom-0")}
         style={{ height: hold + scrimExtent, background: scrim }}
       />
     </div>

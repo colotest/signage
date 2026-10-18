@@ -948,6 +948,28 @@ body {
   );
 }
 
+/* Power-saving mode (the account menu's toggle; see usePowerSaving): scroll
+   windows end in a plain cut at the edge of their clear content instead of
+   blurring and fading out past it. Every blur edge (ProgressiveBlurEdge,
+   including section titles' bands) becomes one solid block of whatever the
+   list sits on, over exactly the area it used to blur, and the lists' own
+   fade masks go — so the windows look shorter, as the faded zones no longer
+   show anything, and nothing at rest is hidden, since every list already
+   keeps its rows clear of those zones. Neither blur layers (recomputed every
+   frame anything scrolls beneath them) nor masks are left to composite. */
+[data-power-saving] .blur-edge {
+  background: var(--edge-scrim, var(--background));
+}
+
+[data-power-saving] .blur-edge-layer {
+  display: none;
+}
+
+[data-power-saving] .scroll-fade-y {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
 /* The app shell now genuinely extends behind iOS Safari's floating
    toolbar (see app-shell-height above), so content that can end up last
    on a page — the playlists list, or the screens grid's own bottom row —

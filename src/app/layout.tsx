@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PressEffects } from "@/components/PressEffects";
+import { POWER_SAVING_KEY } from "@/lib/powerSaving";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -58,8 +59,17 @@ export default function RootLayout({
     // toolbar — recent iOS versions let page content extend the full
     // screen behind that (translucent) toolbar on purpose, which is what
     // we want here so the lists reach the true bottom edge.
-    <html lang="en" className="app-shell-height overflow-hidden">
+    // suppressHydrationWarning: the head script below may add
+    // data-power-saving to <html> before React gets to it.
+    <html lang="en" className="app-shell-height overflow-hidden" suppressHydrationWarning>
       <head>
+        {/* Power-saving mode (see usePowerSaving), applied before the first
+            paint so a page never shows its blurred list edges first. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem(${JSON.stringify(POWER_SAVING_KEY)})){document.documentElement.setAttribute("data-power-saving","")}}catch(e){}`,
+          }}
+        />
         {/* Safety net for the "page shifted upward, header clipped" iOS
             Safari bug. html/body are overflow:hidden and meant to never
             scroll themselves — overscroll-behavior in globals.css stops
