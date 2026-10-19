@@ -1,7 +1,16 @@
 @import "tailwindcss";
 
-/* Installed to the Home Screen (no Safari around the app). */
-@custom-variant standalone (@media (display-mode: standalone));
+/* Installed to the Home Screen (no Safari around the app): the media query,
+   or data-standalone, set on <html> by the head script in layout.tsx from
+   iOS's own navigator.standalone, in case the query doesn't match. */
+@custom-variant standalone {
+  @media (display-mode: standalone) {
+    @slot;
+  }
+  [data-standalone] & {
+    @slot;
+  }
+}
 
 :root {
   --background: #f2f2f7;
@@ -1120,12 +1129,18 @@ body {
 /* Installed to the Home Screen there's no Safari toolbar to clear — only
    the home indicator, which env(safe-area-inset-bottom) reports there —
    so the lists run on down to just above it. After the rules above, which
-   would otherwise win (same specificity, later in the file). */
+   would otherwise win (same specificity, later in the file); the
+   data-standalone pair outranks them outright. */
 @media (display-mode: standalone) {
   .safari-toolbar-inset,
   .playlists-touch-inset {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
   }
+}
+
+[data-standalone] .safari-toolbar-inset,
+[data-standalone] .playlists-touch-inset {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
 }
 
 

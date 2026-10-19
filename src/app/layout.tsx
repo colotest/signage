@@ -70,6 +70,14 @@ export default function RootLayout({
             __html: `try{if(localStorage.getItem(${JSON.stringify(POWER_SAVING_KEY)})){document.documentElement.setAttribute("data-power-saving","")}}catch(e){}`,
           }}
         />
+        {/* Opened from the Home Screen: marks <html> data-standalone, for
+            the standalone rules in globals.css — iOS's navigator.standalone
+            alongside the display-mode query, which it doesn't always match. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(navigator.standalone||matchMedia("(display-mode: standalone)").matches){document.documentElement.setAttribute("data-standalone","")}}catch(e){}`,
+          }}
+        />
         {/* Safety net for the "page shifted upward, header clipped" iOS
             Safari bug. html/body are overflow:hidden and meant to never
             scroll themselves — overscroll-behavior in globals.css stops
