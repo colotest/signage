@@ -28,6 +28,7 @@ import {
 } from "@/lib/actions/playlists";
 import { cn } from "@/lib/utils/cn";
 import { useLiveRefresh } from "@/lib/realtime/useLiveRefresh";
+import { useContentSplit } from "@/lib/hooks/useContentSplit";
 import { FileTree, MENU_ITEM_CLASS, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
 import { Button } from "@/components/ui/Button";
@@ -352,6 +353,13 @@ export function LibraryView({
   }
 
 
+  // On a phone, files and playlists share the column by what they hold
+  // (see useContentSplit).
+  const columnRef = useRef<HTMLDivElement>(null);
+  const filesSectionRef = useRef<HTMLElement>(null);
+  const playlistsSectionRef = useRef<HTMLElement>(null);
+  useContentSplit(columnRef, filesSectionRef, playlistsSectionRef);
+
   return (
     <DndContext
       id="library"
@@ -362,12 +370,13 @@ export function LibraryView({
       onDragEnd={handleDragEnd}
       onDragCancel={clearDragState}
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
+      <div ref={columnRef} className="flex h-full min-h-0 flex-col gap-4">
         {/* Two fixed sections, both always in view at once, with only their
             own content scrolling internally rather than the whole page
-            growing past the viewport. On mobile the split is 3:4 (Media
-            smaller, Playlists larger) rather than an even half each — sm:
-            resets that back to equal halves on desktop.
+            growing past the viewport. On a phone the split follows what
+            each holds (useContentSplit, set on the Media section); 3:4 is
+            only the starting point before that's measured. sm: resets that
+            back to equal halves on desktop.
 
             gap-4 rather than something roomier: what separates the two on
             screen is mostly their facing fade zones (shallow there for
@@ -377,7 +386,7 @@ export function LibraryView({
             edge and the media list 20px down past its bottom, so a smaller
             gap starts pushing the playlists list's own background wash over
             the media list's last rows before they've finished fading. */}
-        <section className="flex min-h-0 flex-[3] flex-col sm:flex-1">
+        <section ref={filesSectionRef} className="flex min-h-0 flex-[3] flex-col sm:flex-1">
           {/* relative z-10 keeps this above FileTree's own list, which now
               overlaps up underneath it (see FileTree) so scrolled-past rows
               fade away rather than popping in and out below this row. */}
@@ -440,7 +449,7 @@ export function LibraryView({
           />
         </section>
 
-        <section className="flex min-h-0 flex-[4] flex-col sm:flex-1">
+        <section ref={playlistsSectionRef} className="flex min-h-0 flex-[4] flex-col sm:flex-1">
           <PlaylistSection
             className="min-h-0 flex-1"
             listClassName="playlists-touch-inset"
