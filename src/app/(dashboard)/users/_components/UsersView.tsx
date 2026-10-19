@@ -4,7 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Menu } from "@/components/ui/Menu";
-import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
+import { ScrollWindow } from "@/components/ScrollWindow";
 import { RoleDot, RoleDots } from "@/components/RoleDot";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -152,8 +152,8 @@ export function UsersView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Same overlap-and-fade arrangement as PlaylistSection — see there
-          for what each of these offsets is paying for. */}
+      {/* relative z-10: above the list, which reaches up underneath it (see
+          ScrollWindow). */}
       <div className="relative z-10 flex items-center justify-between">
         <h1 className="text-[28px] font-semibold tracking-tight">Users</h1>
         <UsersMenuButton
@@ -167,24 +167,20 @@ export function UsersView({
         />
       </div>
 
-      <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
-        <div className="scroll-fade-y [--fade-top:24px] no-scrollbar safari-toolbar-inset absolute inset-0 overflow-y-auto overscroll-contain pt-[47px]">
-          <ul className="flex flex-col gap-3">
-            {sorted.map((user) => (
-              <UserRow
-                key={user.id}
-                user={user}
-                isSelf={user.id === viewer.id}
-                isExpanded={expanded.has(user.id)}
-                onToggleExpanded={() => toggleExpanded(user.id)}
-                onShowAll={() => setShowingAllFor(user)}
-              />
-            ))}
-          </ul>
-        </div>
-        <ProgressiveBlurEdge side="top" extent={48} />
-        <ProgressiveBlurEdge side="bottom" />
-      </div>
+      <ScrollWindow top="title" bottom="toolbar" className="mx-[-10px] flex-1" scrollerClassName="safari-toolbar-inset">
+        <ul className="flex flex-col gap-3">
+          {sorted.map((user) => (
+            <UserRow
+              key={user.id}
+              user={user}
+              isSelf={user.id === viewer.id}
+              isExpanded={expanded.has(user.id)}
+              onToggleExpanded={() => toggleExpanded(user.id)}
+              onShowAll={() => setShowingAllFor(user)}
+            />
+          ))}
+        </ul>
+      </ScrollWindow>
 
       <UserActivityOverlay user={showingAllFor} onClose={() => setShowingAllFor(null)} />
       <SignupDialog pending={pendingSignup} onClose={() => setPendingSignup(null)} />
@@ -550,9 +546,9 @@ function UsersMenuButton({
         onClick={() => setOpen((o) => !o)}
         aria-label="User options"
         aria-expanded={open}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+        className="title-action-round shrink-0 bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
       >
-        <ThreeDotIcon className="h-4 w-4" />
+        <ThreeDotIcon className="title-action-glyph" />
       </button>
 
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-56 p-1">

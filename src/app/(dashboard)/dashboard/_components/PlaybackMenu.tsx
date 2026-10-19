@@ -9,13 +9,15 @@ import { Sheet } from "@/components/ui/Sheet";
 import {
   SECTION_TITLE_HEIGHT,
   SectionTitle,
-  TITLE_BAND_FADE,
+  LIST_FOOT_BAND,
+  LIST_FOOT_HEIGHT,
   TITLE_CLEAR_ABOVE,
   TITLE_CLEAR_BELOW,
   TITLE_TUCK_BELOW,
+  titleBand,
 } from "@/components/SectionTitle";
 import { ListScroller } from "@/components/ListScroller";
-import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
+import { EdgeBand } from "@/components/EdgeBand";
 import { cn } from "@/lib/utils/cn";
 import { AlarmClockIcon, CheckIcon, CloseIcon, PlayIcon } from "@/components/icons/PlaybackIcons";
 import { formatDuration } from "@/lib/utils/format";
@@ -73,17 +75,16 @@ const FILE_PICKER_MS = 300;
 const SCROLL_SETTLE_MS = 350;
 const ROW_ENTER_MS = 500;
 
-// The file browser's bottom fade (see FileTree) — the "Done" pill sits
-// right at its upper edge.
-const PICKER_FADE = 48;
+// The file browser's bottom edge is a "plain" one (see FileTree) — the
+// "Done" pill sits right at its upper edge.
+const PICKER_FADE = "var(--edge-plain-size)";
 
-// How far the scroll view reaches up under the popup's title — the same
-// depth the lists tuck under the section headings, so the band under the
-// title works exactly like theirs.
-const HEADER_TUCK = SECTION_TITLE_HEIGHT;
-// How far the fade along the bottom of the Playlists list reaches up — the
-// same as the one above a heading.
-const PLAYLISTS_FOOTER = TITLE_BAND_FADE;
+// How far the scroll view reaches up under the popup's title — about half
+// its 80px header, the same depth the lists used to tuck under the section
+// headings when those were 40px, which the title's band was tuned with.
+const HEADER_TUCK = 40;
+// The fade along the bottom of the Playlists list is the same as the one
+// above a heading (LIST_FOOT_BAND).
 
 // How far above the view's bottom padding "Calendar" sits at the lowest —
 // half its own 28px type.
@@ -113,8 +114,11 @@ function withScrollHeld(view: HTMLElement, set: () => void) {
 }
 
 // Over how much of the file browser's last stretch, as it's scrolled shut,
-// "Done" fades out — it's sitting behind the title by then.
-const DONE_FADE_DISTANCE = PICKER_FADE + HEADER_TUCK;
+// "Done" fades out — it's sitting behind the title by then: the browser's
+// bottom edge (a preset, so read off the page) plus the tuck.
+function doneFadeDistance(done: HTMLElement) {
+  return (parseFloat(getComputedStyle(done).getPropertyValue("--edge-plain-size")) || 0) + HEADER_TUCK;
+}
 
 // Pending timers by playlist — the ones that have fired stay listed until
 // their window ends (0022), but have no countdown left to show.
@@ -612,7 +616,7 @@ export function PlaybackMenu({
         const done = doneRef.current;
         if (pickerRef.current && done) {
           const remaining = m.pickerSpan - top;
-          done.style.opacity = String(Math.min(1, Math.max(0, remaining / DONE_FADE_DISTANCE)));
+          done.style.opacity = String(Math.min(1, Math.max(0, remaining / Math.max(1, doneFadeDistance(done)))));
         }
 
         // Likewise Now Playing's height: while the browser is scrolled shut
@@ -823,10 +827,15 @@ export function PlaybackMenu({
 
   // Playlists are read-only here (editable={false} below) — editing them is
   // the Library page's job.
+  // Taken afresh whenever the server sends a new list — during render, as
+  // React recommends, rather than in an effect that would first render the
+  // stale copy once more.
   const [localPlaylists, setLocalPlaylists] = useState(library.playlists);
-  useEffect(() => {
+  const [syncedPlaylists, setSyncedPlaylists] = useState(library.playlists);
+  if (library.playlists !== syncedPlaylists) {
+    setSyncedPlaylists(library.playlists);
     setLocalPlaylists(library.playlists);
-  }, [library.playlists]);
+  }
 
   // --- Timed playback (alarm clock, Calendar) -------------------------------
 
@@ -1014,11 +1023,12 @@ export function PlaybackMenu({
             clipped by its own box. pb-[90px] on a phone: the sheet is
             full-screen there, and this is the same clearance the Library
             page keeps for iOS Safari's floating toolbar
-            (safari-toolbar-inset). */}
+            (safari-toolbar-inset) — installed to the Home Screen, just
+            the home indicator's. */}
         <div className="relative -mx-5 flex min-h-0 flex-1 flex-col" style={{ marginTop: -HEADER_TUCK }}>
           <div
             ref={pageRef}
-            className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[90px] sm:pb-5"
+            className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[90px] standalone:max-sm:pb-[env(safe-area-inset-bottom,0px)] sm:pb-5"
             style={{ paddingTop: HEADER_TUCK }}
           >
             {/* The file browser — the scroll view's first section while
@@ -1122,7 +1132,7 @@ export function PlaybackMenu({
                 aria-hidden={!picking}
                 title="Done picking"
                 className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-accent px-5 py-2 text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-control)]"
-                style={{ top: `calc(100% - ${PICKER_FADE}px)` }}
+                style={{ top: `calc(100% - ${PICKER_FADE})` }}
               >
                 Done
               </button>
@@ -1145,12 +1155,12 @@ export function PlaybackMenu({
                 outerRef={pageRef}
                 scrollRef={nowPlayingScrollRef}
                 onNaturalHeight={reportNowPlayingNatural}
-                // Starts right under the popup's title (its band ends where the
-                // tuck does); ends TITLE_CLEAR_ABOVE short of "Playlists", clear
-                // of its band. Its box ends at the heading's top edge, right
+                // Starts TITLE_CLEAR_BELOW under the popup's title, as a list
+                // does under a heading; ends TITLE_CLEAR_ABOVE short of
+                // "Playlists". Its box ends at the heading's top edge, right
                 // under the band's strongest line.
                 contentClassName="px-[10px]"
-                contentStyle={{ paddingBottom: TITLE_CLEAR_ABOVE }}
+                contentStyle={{ paddingTop: TITLE_CLEAR_BELOW, paddingBottom: TITLE_CLEAR_ABOVE }}
               >
                 {/* The way into the file browser, as the list's first row —
                     dashed like the Library's "+ Create". While picking it folds
@@ -1223,7 +1233,7 @@ export function PlaybackMenu({
                   outerRef={pageRef}
                   onNaturalHeight={reportPlaylistsNatural}
                   contentClassName="px-[10px]"
-                  contentStyle={{ paddingTop: TITLE_CLEAR_BELOW, paddingBottom: PLAYLISTS_FOOTER }}
+                  contentStyle={{ paddingTop: TITLE_CLEAR_BELOW, paddingBottom: TITLE_CLEAR_ABOVE }}
                 >
                   <PlaylistSection
                     playlists={localPlaylists}
@@ -1270,9 +1280,9 @@ export function PlaybackMenu({
                 <div
                   aria-hidden
                   className="pointer-events-none relative z-10 -mx-[10px]"
-                  style={{ height: PLAYLISTS_FOOTER, marginTop: -PLAYLISTS_FOOTER }}
+                  style={{ height: LIST_FOOT_HEIGHT, marginTop: `calc(-1 * ${LIST_FOOT_HEIGHT})` }}
                 >
-                  <ProgressiveBlurEdge side="bottom" extent={PLAYLISTS_FOOTER} />
+                  <EdgeBand side="bottom" {...LIST_FOOT_BAND} />
                 </div>
               </div>
 
@@ -1301,11 +1311,11 @@ export function PlaybackMenu({
               )}
             </div>
           </div>
-          {/* Always there, like the headings' bands: under the popup's
-              title, fading out over the tuck behind it (so Now Playing can
-              start right below the tick). Content only ever reaches it by
-              scrolling. */}
-          <ProgressiveBlurEdge side="top" extent={HEADER_TUCK} />
+          {/* Always there, like the headings' bands: from the top of the
+              tuck behind the popup's title, reaching past it as far as a
+              heading's band reaches past the heading. Content only ever
+              reaches it by scrolling. */}
+          <EdgeBand side="top" {...titleBand(HEADER_TUCK)} />
         </div>
 
         <ScheduleDialog

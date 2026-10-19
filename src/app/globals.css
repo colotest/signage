@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Installed to the Home Screen (no Safari around the app): the media query,
+   or data-standalone, set on <html> by the head script in layout.tsx from
+   iOS's own navigator.standalone, in case the query doesn't match. */
+@custom-variant standalone {
+  @media (display-mode: standalone) {
+    @slot;
+  }
+  [data-standalone] & {
+    @slot;
+  }
+}
+
 :root {
   --background: #f2f2f7;
   --surface: #ffffff;
@@ -10,6 +22,12 @@
      own systemGray5/4. Solid rather than see-through so a popup launched
      from one can fade back into its colour (see lib/animation/popupLaunch). */
   --control-fill: #e5e5ea;
+  /* The action buttons beside page and section titles ("+ New Group",
+     Upload, search, "⋯"), sized like iOS 26's: their height (a round one's
+     diameter), the glyph inside a round one, and a pill's label. */
+  --title-action: 48px;
+  --title-action-glyph: calc(var(--title-action) * 4 / 9);
+  --title-action-text: 17px;
   --control-fill-hover: #d1d1d6;
   --border: rgba(60, 60, 67, 0.13);
   --accent: #007aff;
@@ -254,8 +272,7 @@ body {
    control — blurring, fading and shrinking a little where it stands, while
    the search bar grows on over its place, and reforming there as the bar
    draws back. It leaves the row's flow at once (absolute, at the very spot
-   it held: 3rem in from the right, past the 2.25rem "⋯" and the row's
-   0.75rem gap) — so the bar's measured end width is its final one, and
+   it held, in from the right past the "⋯" and the row's 0.75rem gap) — so the bar's measured end width is its final one, and
    nothing else in the row is shoved about — and stays out of it until the
    bar has finished closing (data-search-closing), or the bar on its way
    back would push it along instead. Desktop has the room: Upload stays. */
@@ -282,11 +299,11 @@ body {
 
 @media (max-width: 639.98px) {
   /* max-content: out of flow, its width would otherwise be worked out
-     against the row's remaining controls — just the 36px "⋯" — and
+     against the row's remaining controls — just the "⋯" — and
      "+ Upload" would wrap onto two lines on its way out. */
   .search-row:has([data-search-open], [data-search-closing]) .search-yields {
     position: absolute;
-    right: 3rem;
+    right: calc(var(--title-action) + 0.75rem);
     width: max-content;
   }
 
@@ -420,7 +437,7 @@ body {
 }
 
 /* Lists inside the popup end in stacked backdrop-filter blurs (see
-   ProgressiveBlurEdge), each re-rendered every frame while the popup is
+   EdgeBand), each re-rendered every frame while the popup is
    scaling. Off for the length of the animation; mid-motion, nobody can
    tell. */
 .launch-popup[data-animating] * {
@@ -795,16 +812,6 @@ body {
   :root {
     --shell-h: 100lvh;
   }
-
-  .safari-toolbar-inset {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
-  }
-}
-
-@media (display-mode: standalone) and (pointer: coarse) {
-  .playlists-touch-inset {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
-  }
 }
 
 /* env(safe-area-inset-top) has the exact same problem as
@@ -896,56 +903,206 @@ body {
   display: none;
 }
 
-/* Edge-to-edge scrolling lists have no rounded/bordered frame left to hide
-   scrolled-past content popping in and out at the top/bottom — this fades
-   it instead. Static (not scroll-position-aware): simpler, and the fade
-   reads fine even at the very start/end of a list. 40px matches the lists'
-   own pt-10/pb-10 padding, so the fade lands entirely on that blank padding
-   rather than eating into the first/last row. The extra intermediate stops
-   ease the curve so content stays much fainter through the first half of
-   the zone, where the blur is strongest — that's where a flat highlight
-   colour would otherwise still read clearly while the text beside it had
-   already blurred into nothing. Long enough
-   now that, combined with the lists' own negative top margin (see FileTree/
-   PlaylistSection), scrolled-past rows fade away underneath the "Media"/
-   "Playlists" title rows rather than popping in and out beneath them. */
+/* A scroll window's content fade (see ScrollWindow): content passing into
+   an edge fades out towards the window's hard edge, over --fade-top /
+   --fade-bottom. Shaped like a square root — rising steeply from the edge,
+   then levelling off — so content starts showing right at the edge, where
+   the background wash above it is at full tint and easing off just as fast
+   (see ScrollWindow's WASH_STOPS). An eased curve here once held content at
+   next to nothing over the outer fifth of the fade, which together with a
+   wash that also held near full there read as a flat strip of background
+   between the window's edge and its fade. */
 .scroll-fade-y {
-  /* Per-edge, so an edge with another list right beyond it can fade over a
-     shorter distance than one at the page's own edge — the fade is what
-     most of the empty band between two stacked lists is made of. Override
-     with [--fade-bottom:12px] / [--fade-top:12px] on the element; the 40px
-     default lives in the var() fallbacks below rather than in a declaration
-     here, which — being unlayered — would outrank those utilities. */
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0, 0, 0, 0.06) calc(var(--fade-top, 40px) * 0.2),
-    rgba(0, 0, 0, 0.2) calc(var(--fade-top, 40px) * 0.4),
-    rgba(0, 0, 0, 0.45) calc(var(--fade-top, 40px) * 0.6),
-    rgba(0, 0, 0, 0.75) calc(var(--fade-top, 40px) * 0.8),
+    rgba(0, 0, 0, 0.32) calc(var(--fade-top, 40px) * 0.1),
+    rgba(0, 0, 0, 0.5) calc(var(--fade-top, 40px) * 0.25),
+    rgba(0, 0, 0, 0.71) calc(var(--fade-top, 40px) * 0.5),
+    rgba(0, 0, 0, 0.87) calc(var(--fade-top, 40px) * 0.75),
     black var(--fade-top, 40px),
     black calc(100% - var(--fade-bottom, 40px)),
-    rgba(0, 0, 0, 0.75) calc(100% - var(--fade-bottom, 40px) * 0.8),
-    rgba(0, 0, 0, 0.45) calc(100% - var(--fade-bottom, 40px) * 0.6),
-    rgba(0, 0, 0, 0.2) calc(100% - var(--fade-bottom, 40px) * 0.4),
-    rgba(0, 0, 0, 0.06) calc(100% - var(--fade-bottom, 40px) * 0.2),
+    rgba(0, 0, 0, 0.87) calc(100% - var(--fade-bottom, 40px) * 0.75),
+    rgba(0, 0, 0, 0.71) calc(100% - var(--fade-bottom, 40px) * 0.5),
+    rgba(0, 0, 0, 0.5) calc(100% - var(--fade-bottom, 40px) * 0.25),
+    rgba(0, 0, 0, 0.32) calc(100% - var(--fade-bottom, 40px) * 0.1),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    rgba(0, 0, 0, 0.06) calc(var(--fade-top, 40px) * 0.2),
-    rgba(0, 0, 0, 0.2) calc(var(--fade-top, 40px) * 0.4),
-    rgba(0, 0, 0, 0.45) calc(var(--fade-top, 40px) * 0.6),
-    rgba(0, 0, 0, 0.75) calc(var(--fade-top, 40px) * 0.8),
+    rgba(0, 0, 0, 0.32) calc(var(--fade-top, 40px) * 0.1),
+    rgba(0, 0, 0, 0.5) calc(var(--fade-top, 40px) * 0.25),
+    rgba(0, 0, 0, 0.71) calc(var(--fade-top, 40px) * 0.5),
+    rgba(0, 0, 0, 0.87) calc(var(--fade-top, 40px) * 0.75),
     black var(--fade-top, 40px),
     black calc(100% - var(--fade-bottom, 40px)),
-    rgba(0, 0, 0, 0.75) calc(100% - var(--fade-bottom, 40px) * 0.8),
-    rgba(0, 0, 0, 0.45) calc(100% - var(--fade-bottom, 40px) * 0.6),
-    rgba(0, 0, 0, 0.2) calc(100% - var(--fade-bottom, 40px) * 0.4),
-    rgba(0, 0, 0, 0.06) calc(100% - var(--fade-bottom, 40px) * 0.2),
+    rgba(0, 0, 0, 0.87) calc(100% - var(--fade-bottom, 40px) * 0.75),
+    rgba(0, 0, 0, 0.71) calc(100% - var(--fade-bottom, 40px) * 0.5),
+    rgba(0, 0, 0, 0.5) calc(100% - var(--fade-bottom, 40px) * 0.25),
+    rgba(0, 0, 0, 0.32) calc(100% - var(--fade-bottom, 40px) * 0.1),
     transparent 100%
   );
+}
+
+/* Scroll windows' edges (see ScrollWindow): what a scrolling list does at
+   its top and bottom, by what sits there — a page or section title
+   ("title"), the page's bottom edge behind Safari's toolbar ("toolbar"), or
+   another list ("plain"). One preset per kind, so every list's edges match,
+   and changing a number here changes them all (the tuning panel — account
+   menu, admins — overrides these live). For each:
+   - tuck: how far the window reaches in under what's beside it (the title
+     above, the space below), so content passes beneath it rather than
+     stopping at a hard line short of it.
+   - size: how deep the soft edge is, from the window's hard edge in — its
+     blur, and the wash of background that takes everything the rest of the
+     way out (see EdgeBand).
+   - fade: how far content itself fades out, from the hard edge.
+   - clear: room before the first (or after the last) row at rest, so
+     nothing sits in the edge until it's scrolled there.
+   - hold: how deep the edge stays at full strength before it starts easing
+     off — for hiding content right behind a title's text.
+   - blur: the strongest blur, right at the hard edge.
+   Tuned by eye on device with the tuning panel. A toolbar edge has no
+   depth of its own (size 0): iOS Safari's own fade under its toolbar does
+   that job. */
+:root {
+  --edge-title-tuck: 59px;
+  --edge-title-size: 88px;
+  --edge-title-fade: 96px;
+  --edge-title-clear: 74px;
+  --edge-title-hold: 0px;
+  --edge-title-blur: 9.6px;
+  --edge-toolbar-tuck: 0px;
+  --edge-toolbar-size: 0px;
+  --edge-toolbar-fade: 0px;
+  --edge-toolbar-clear: 0px;
+  --edge-toolbar-hold: 0px;
+  --edge-toolbar-blur: 11px;
+  --edge-plain-tuck: 0px;
+  --edge-plain-size: 64px;
+  --edge-plain-fade: 0px;
+  --edge-plain-clear: 24px;
+  --edge-plain-hold: 0px;
+  --edge-plain-blur: 1.5px;
+}
+
+/* Round title-row buttons ("⋯", search) and their glyphs, at
+   --title-action (see :root). */
+@utility title-action-round {
+  display: flex;
+  height: var(--title-action);
+  width: var(--title-action);
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+@utility title-action-glyph {
+  height: var(--title-action-glyph);
+  width: var(--title-action-glyph);
+}
+
+@layer components {
+  /* Layered, so a Tailwind utility on one window can still override a value
+     (e.g. sm:[--edge-top-clear:…] for the file browser's sort bar). */
+  .scroll-window {
+    position: relative;
+    margin-top: calc(-1 * var(--edge-top-tuck, 0px));
+    margin-bottom: calc(-1 * var(--edge-bottom-tuck, 0px));
+  }
+
+  /* A toolbar edge is the screen's own bottom edge, so the window reaches
+     through the page's bottom padding (--page-inset-bottom, set on the
+     dashboard's <main>) right down to it, tuck or no tuck — stopping at the
+     padding left it just short. */
+  .scroll-window[data-edge-bottom="toolbar"] {
+    margin-bottom: calc(-1 * (var(--page-inset-bottom, 0px) + var(--edge-bottom-tuck, 0px)));
+  }
+
+  .scroll-window-scroller {
+    padding-top: var(--edge-top-clear, 0px);
+    padding-bottom: var(--edge-bottom-clear, 0px);
+    --fade-top: var(--edge-top-fade, 0px);
+    --fade-bottom: var(--edge-bottom-fade, 0px);
+  }
+
+  .scroll-window[data-edge-top="title"] {
+    --edge-top-tuck: var(--edge-title-tuck);
+    --edge-top-size: var(--edge-title-size);
+    --edge-top-fade: var(--edge-title-fade);
+    --edge-top-clear: var(--edge-title-clear);
+    --edge-top-hold: var(--edge-title-hold);
+    --edge-top-blur: var(--edge-title-blur);
+  }
+
+  .scroll-window[data-edge-top="toolbar"] {
+    --edge-top-tuck: var(--edge-toolbar-tuck);
+    --edge-top-size: var(--edge-toolbar-size);
+    --edge-top-fade: var(--edge-toolbar-fade);
+    --edge-top-clear: var(--edge-toolbar-clear);
+    --edge-top-hold: var(--edge-toolbar-hold);
+    --edge-top-blur: var(--edge-toolbar-blur);
+  }
+
+  .scroll-window[data-edge-top="plain"] {
+    --edge-top-tuck: var(--edge-plain-tuck);
+    --edge-top-size: var(--edge-plain-size);
+    --edge-top-fade: var(--edge-plain-fade);
+    --edge-top-clear: var(--edge-plain-clear);
+    --edge-top-hold: var(--edge-plain-hold);
+    --edge-top-blur: var(--edge-plain-blur);
+  }
+
+  .scroll-window[data-edge-bottom="title"] {
+    --edge-bottom-tuck: var(--edge-title-tuck);
+    --edge-bottom-size: var(--edge-title-size);
+    --edge-bottom-fade: var(--edge-title-fade);
+    --edge-bottom-clear: var(--edge-title-clear);
+    --edge-bottom-hold: var(--edge-title-hold);
+    --edge-bottom-blur: var(--edge-title-blur);
+  }
+
+  .scroll-window[data-edge-bottom="toolbar"] {
+    --edge-bottom-tuck: var(--edge-toolbar-tuck);
+    --edge-bottom-size: var(--edge-toolbar-size);
+    --edge-bottom-fade: var(--edge-toolbar-fade);
+    --edge-bottom-clear: var(--edge-toolbar-clear);
+    --edge-bottom-hold: var(--edge-toolbar-hold);
+    --edge-bottom-blur: var(--edge-toolbar-blur);
+  }
+
+  .scroll-window[data-edge-bottom="plain"] {
+    --edge-bottom-tuck: var(--edge-plain-tuck);
+    --edge-bottom-size: var(--edge-plain-size);
+    --edge-bottom-fade: var(--edge-plain-fade);
+    --edge-bottom-clear: var(--edge-plain-clear);
+    --edge-bottom-hold: var(--edge-plain-hold);
+    --edge-bottom-blur: var(--edge-plain-blur);
+  }
+
+}
+
+/* Power-saving mode (the account menu's toggle; see usePowerSaving): scroll
+   windows end in a plain cut at the edge of their clear content instead of
+   blurring and fading out past it. Every blur edge (EdgeBand,
+   including section titles' bands) becomes one solid block of whatever the
+   list sits on, over exactly the area it used to blur, and the lists' own
+   fade masks go — so the windows look shorter, as the faded zones no longer
+   show anything, and nothing at rest is hidden, since every list already
+   keeps its rows clear of those zones. Neither blur layers (recomputed every
+   frame anything scrolls beneath them) nor masks are left to composite. */
+[data-power-saving] .blur-edge {
+  background: var(--edge-scrim, var(--background));
+}
+
+[data-power-saving] .blur-edge-layer {
+  display: none;
+}
+
+[data-power-saving] .scroll-fade-y {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 /* The app shell now genuinely extends behind iOS Safari's floating
@@ -967,6 +1124,23 @@ body {
   .playlists-touch-inset {
     padding-bottom: 114px;
   }
+}
+
+/* Installed to the Home Screen there's no Safari toolbar to clear — only
+   the home indicator, which env(safe-area-inset-bottom) reports there —
+   so the lists run on down to just above it. After the rules above, which
+   would otherwise win (same specificity, later in the file); the
+   data-standalone pair outranks them outright. */
+@media (display-mode: standalone) {
+  .safari-toolbar-inset,
+  .playlists-touch-inset {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+[data-standalone] .safari-toolbar-inset,
+[data-standalone] .playlists-touch-inset {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 

@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, useState } from "react";
 import { UserIcon } from "@/components/icons/UserIcon";
 import { Menu } from "@/components/ui/Menu";
+import { openEdgeTuner } from "@/lib/edgeTuning";
+import { usePowerSaving } from "@/lib/hooks/usePowerSaving";
 import { logoutAction } from "@/lib/actions/auth";
 import { useViewer } from "@/lib/auth/ViewerContext";
 import { PAGES } from "@/lib/auth/access";
@@ -148,7 +150,23 @@ function UserMenu() {
             Users
           </Link>
         )}
-        <form action={logoutAction} className={cn(!viewer.access.pages.users && "mt-1")}>
+        <PowerSavingItem />
+        {/* The scroll-edge tuning panel — a design tool, so the super
+            admin's only. */}
+        {viewer.access.superAdmin && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              openEdgeTuner();
+            }}
+            className="press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+          >
+            Tune Scroll Edges…
+          </button>
+        )}
+        <form action={logoutAction}>
           <button
             type="submit"
             role="menuitem"
@@ -159,5 +177,37 @@ function UserMenu() {
         </form>
       </Menu>
     </div>
+  );
+}
+
+// Power-saving mode's switch (see usePowerSaving). Stays in the menu when
+// pressed — the switch is the feedback, and it's often flipped back and forth
+// to compare.
+function PowerSavingItem() {
+  const [on, setOn] = usePowerSaving();
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={on}
+      onClick={() => setOn(!on)}
+      className="press-ghost-fit mt-1 flex w-full items-center justify-between gap-3 rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+    >
+      Power Saving
+      <span
+        aria-hidden
+        className={cn(
+          "relative h-[18px] w-[30px] shrink-0 rounded-full transition-colors duration-200",
+          on ? "bg-success" : "bg-black/[.12] dark:bg-white/[.2]",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute left-[2px] top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.25)] transition-transform duration-200 ease-[var(--ease-spring)]",
+            on && "translate-x-[12px]",
+          )}
+        />
+      </span>
+    </button>
   );
 }

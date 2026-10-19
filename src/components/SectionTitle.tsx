@@ -2,36 +2,51 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
-import { ProgressiveBlurEdge } from "./ProgressiveBlurEdge";
+import { EdgeBand } from "./EdgeBand";
 
 // The fixed height of a section's title row. The Playback Menu docks these
 // rows at the top and bottom edges of its scroll view and sizes the lists
 // around them, so it has to be an exact number rather than whatever the
-// text happens to measure.
-export const SECTION_TITLE_HEIGHT = 40;
-
-// How far a heading's blur-fade band reaches up above the heading.
-export const TITLE_BAND_FADE = 32;
-
-// Below its top edge, the band holds at full strength down through the
-// heading's text, then fades out a little past the heading — so content
-// scrolling up under a docked heading is gone behind the text, and shows
-// again only past it (as it does past the tick under the popup's title).
-const TITLE_BAND_HOLD = 24;
-export const TITLE_BAND_BELOW = 12;
+// text happens to measure. Matches the title-row buttons' height
+// (--title-action in globals.css), so the sort "⋯" fits the row.
+export const SECTION_TITLE_HEIGHT = 48;
 
 // How far the list below a heading tucks in underneath it: its whole
-// height, up to the band's strongest line along the heading's top edge, so
-// the list's hard edge is never seen.
+// height, so the list's hard edge is never seen. Structural (the Playback
+// Menu's layout counts on it), unlike the edges' looks below.
 export const TITLE_TUCK_BELOW = SECTION_TITLE_HEIGHT;
 
-// How much room the list below a heading keeps above its first row at
-// rest — clear of the band's lower reach.
-export const TITLE_CLEAR_BELOW = TITLE_BAND_BELOW;
+// The headings' bands look like the scroll windows' edges, from the same
+// presets ("Scroll windows' edges" in globals.css), so a list under a
+// heading here fades exactly as one under the Library's titles does. The
+// presets are measured against the Library's windows, which tuck --edge-
+// title-tuck up under their title; a heading here is its own 40px instead.
+// So rather than the raw numbers, what's kept is what they come to past the
+// title: the band reaches (depth - tuck) below it, and the first row at rest
+// sits (clear - tuck) below it.
+export function titleBand(titleHeight: number) {
+  return {
+    hold: "var(--edge-title-hold)",
+    depth: `max(0px, calc(${titleHeight}px + var(--edge-title-size) - var(--edge-title-tuck) - var(--edge-title-hold)))`,
+    blur: "var(--edge-title-blur)",
+  };
+}
 
-// How much room the list above a heading keeps between its last row and the
-// heading at rest — clear of the band's upper reach.
-export const TITLE_CLEAR_ABOVE = TITLE_BAND_FADE;
+// Room the list below a heading keeps above its first row at rest.
+export const TITLE_CLEAR_BELOW = "max(0px, calc(var(--edge-title-clear) - var(--edge-title-tuck)))";
+
+// The bottom edge of a list ending above a heading (or ending anywhere in
+// the Playback Menu) — a "plain" edge, as the Library's file browser has
+// facing the playlists below it.
+export const LIST_FOOT_BAND = {
+  hold: "var(--edge-plain-hold)",
+  depth: "var(--edge-plain-size)",
+  blur: "var(--edge-plain-blur)",
+};
+export const LIST_FOOT_HEIGHT = "calc(var(--edge-plain-hold) + var(--edge-plain-size))";
+
+// Room such a list keeps below its last row at rest.
+export const TITLE_CLEAR_ABOVE = "var(--edge-plain-clear)";
 
 // A page-sized section heading ("Playlists", "Calendar"). Given `onToggle`,
 // it gets a chevron to the right of the text: pointing down while the
@@ -40,19 +55,17 @@ export const TITLE_CLEAR_ABOVE = TITLE_BAND_FADE;
 // `trailing` sits at the row's far end (a sort "⋯") and stays outside that
 // button.
 //
-// The heading has no background of its own. It carries a blur-fade band,
-// always there, strongest from its top edge down through its text: from
-// there it fades out to TITLE_BAND_BELOW past the heading, and upwards over
-// TITLE_BAND_FADE. The list above ends at that top edge — its hard edge
-// under the strongest line — and keeps TITLE_CLEAR_ABOVE of padding; the
+// The heading has no background of its own. It carries soft edges (see
+// EdgeBand), always there: below, the band content scrolling up under it
+// passes into, from its top edge down past it (titleBand); above, the
+// bottom edge of the list before it (LIST_FOOT_BAND). The list above ends
+// at the heading's top edge and keeps TITLE_CLEAR_ABOVE of padding; the
 // list below tucks in under the whole heading (TITLE_TUCK_BELOW) and keeps
-// TITLE_CLEAR_BELOW above its first row. So at rest nothing sits
-// in the band — it only ever shows on content actually scrolling towards or
-// behind the heading. Being part of the heading, the band goes wherever it
-// goes, docked or not.
+// TITLE_CLEAR_BELOW above its first row. Being part of the heading, the
+// bands go wherever it goes, docked or not.
 //
-// bandAbove={false} leaves out the upper part, for a heading whose list
-// above brings its own fade; bandBelow={false} the lower one, for a heading
+// bandAbove={false} leaves out the upper one, for a heading whose list
+// above brings its own; bandBelow={false} the lower one, for a heading
 // nothing ever scrolls in under (both: the Playback Menu's "Calendar",
 // which doesn't dock and sits under the Playlists list's footer). A band
 // costs something even with nothing behind it, so none is drawn for
@@ -82,18 +95,12 @@ export function SectionTitle({
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 bottom-full"
-          style={{ height: TITLE_BAND_FADE }}
+          style={{ height: LIST_FOOT_HEIGHT }}
         >
-          <ProgressiveBlurEdge side="bottom" extent={TITLE_BAND_FADE} />
+          <EdgeBand side="bottom" {...LIST_FOOT_BAND} />
         </div>
       )}
-      {bandBelow && (
-        <ProgressiveBlurEdge
-          side="top"
-          hold={TITLE_BAND_HOLD}
-          extent={SECTION_TITLE_HEIGHT + TITLE_BAND_BELOW - TITLE_BAND_HOLD}
-        />
-      )}
+      {bandBelow && <EdgeBand side="top" {...titleBand(SECTION_TITLE_HEIGHT)} />}
       {/* relative z-10: the text and buttons sit above the band. */}
       <div className="relative z-10 flex h-full items-center justify-between gap-3">
         {onToggle ? (

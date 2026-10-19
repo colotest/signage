@@ -6,7 +6,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Menu } from "@/components/ui/Menu";
 import { MediaThumbSlot } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
-import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
+import { ScrollWindow } from "@/components/ScrollWindow";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
 import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatResolutionAndDuration, kindLabel } from "@/lib/utils/format";
@@ -403,26 +403,16 @@ export function FileTree({
   return (
     <UploadLinksContext.Provider value={uploadLinks ?? null}>
     <UploadersContext.Provider value={uploaderNames}>
-      {/* -mx-5 bleeds this whole section — header row included, so it stays
-          aligned with the rows below it — out of the page's own left/right
-          inset to reach the screen edges for more row width. -mt-10 pulls
-          the whole thing up 40px, overlapping the "Media" title row above
-          (LibraryView, which needs its own relative z-10 to stay on top) —
-          on mobile, where the sort bar below is hidden, this is what lets
-          scrolled-past rows fade away underneath that title instead of
-          popping in and out below it, and (with pt-20 matching it below)
-          the reach is pure fade zone — no row moves. sm:pt-10 gives back
-          40px of it once the sort bar becomes visible, so the bar and the
-          first row stay exactly where they were on desktop; the sort bar's
-          own top-10 does the rest.
-
-          -mb-5 stays at its original 20px rather than reaching as deep as
-          the top: the playlists list sits directly below, and a list's own
-          background wash (ProgressiveBlurEdge) paints over whatever is
-          behind it. Reaching further down put the playlists list's wash
-          straight over these rows as they faded, cutting them off dead
-          instead of fading them — a title can layer itself above a
-          neighbouring list's edge, another list's rows can't. */}
+      {/* -mx-5 bleeds this whole section — the list and its sort bar — out
+          of the page's own left/right inset to reach the screen edges for
+          more row width. Its list reaches up under the Media title row
+          (which needs its own relative z-10 to stay on top) and down into
+          the gap above the next list, by the presets' tucks (see
+          ScrollWindow). The bottom one ("plain") stays shallow: a list's own
+          background wash paints over whatever is behind it, and reaching
+          deeper put the playlists list's wash straight over these rows as
+          they faded, cutting them off dead — a title can layer itself above
+          a neighbouring list's edge, another list's rows can't. */}
       <div
         onDragEnter={handleNativeDragEnter}
         onDragOver={handleNativeDragOver}
@@ -431,151 +421,129 @@ export function FileTree({
         // @container: the desktop columns below show by how wide the tree
         // itself is, not the screen — the Playback Menu's popup is far
         // narrower than the Library page on the same screen.
-        className={cn("@container relative -mx-5 -mt-20 -mb-5 flex min-h-0 flex-col sm:pt-10", className)}
+        className={cn("@container relative -mx-5 flex min-h-0 flex-col", className)}
       >
-        {/* overflow-x-hidden (not scroll) is the point — file details and
+        {/* The list's window: under the Media title at the top, the next
+            list (or the Playback Menu's Now Playing) right below — see
+            ScrollWindow. On desktop the sort bar overlays its top edge, so
+            the first row starts that much lower there (the tuck, 12px, and
+            the bar's own 40px).
+
+            overflow-x-hidden (not scroll) is the point — file details and
             row actions live behind the "⋯" menu precisely so a narrow row
-            never needs to scroll sideways to reach them. Sharp corners:
-            edge-to-edge leaves no room for rounding to actually read.
-            pt-10/pb-10 (matching the fade's own 40px) keep the fade off the
-            first and last row themselves, landing on blank padding instead.
-            no-scrollbar: the native scrollbar track/thumb looked odd
-            crossing the blurred/faded edges, and this list is easily
-            scrollable by touch/trackpad without it.
-
-            ProgressiveBlurEdge is a SIBLING of the scrolling div, not a
-            child of it — a position:absolute descendant still scrolls along
-            with the rest of a scroll container's content (only mask-image
-            on the scrolling box itself is exempt from that). Making this
-            wrapper the relative anchor instead, with the scrolling div
-            sized via inset-0, is what keeps the blur pinned in place while
-            content scrolls underneath it.
-
-            scroll-fade-y sits on the scrolling div ITSELF, with the blur
-            (and the background wash it carries — see ProgressiveBlurEdge)
-            deliberately outside that mask. The blur has to stay at full
-            strength right up to the edge: it's what dissolves the content
-            there, and the wash on top is what takes everything — text and
-            flat highlight colours alike — the rest of the way to the page
-            background. A mask over both instead would fade the wash away
-            exactly where it does its work, leaving hovered/target rows
-            still showing their colour at the edge. */}
-        <div className="relative min-h-0 flex-1">
-          <div className="absolute inset-0">
-            <div
-              style={{ WebkitTouchCallout: "none" }}
-              className="scroll-fade-y [--fade-bottom:24px] no-scrollbar absolute inset-0 select-none overflow-x-hidden overflow-y-auto overscroll-contain pt-20 pb-11 sm:pt-[92px]"
-            >
-              <div ref={rowsRef}>
-                {/* Its trigger sits up beside Upload on desktop, and in the
-                    "⋯" menu on mobile (both LibraryView) — so the field
-                    belongs at the top of the list, where pressing either one
-                    leaves it in view. A subfolder's field renders down in
-                    the folder it belongs to instead (TreeLevel). */}
-                {creatingIn === null && (
-                  <NewFolderRow
-                    depth={0}
-                    parentId={null}
-                    onDone={() => onCreatingChange(undefined)}
-                    onCreated={markCreatedFolder}
-                    router={router}
-                  />
-                )}
-                <TreeLevel
-                  folders={sortFolders(roots)}
-                  files={sortFiles(rootFiles)}
-                  decks={sortDecks(rootDecks)}
-                  depth={0}
-                  isRoot
-                  expanded={shownExpanded}
-                  onFolderRowClick={handleFolderRowClick}
-                  onFolderChevronClick={handleFolderChevronClick}
-                  onToggleDeck={toggleExpanded}
-                  creatingIn={creatingIn}
-                  onStartCreating={startCreatingIn}
-                  onDoneCreating={() => onCreatingChange(undefined)}
-                  onCreatedFolder={markCreatedFolder}
-                  selectionMode={selectionMode}
-                  selectedIds={selectedIds}
-                  onToggleMedia={onToggleMedia}
-                  onToggleFolderIds={onToggleFolderIds}
-                  uploadTargetId={uploadTargetId}
-                  sortFiles={sortFiles}
-                  sortFolders={sortFolders}
-                  sortDecks={sortDecks}
-                  dropTargetFolderId={dropTargetFolderId}
-                  router={router}
-                />
-              </div>
+            never needs to scroll sideways to reach them. */}
+        <ScrollWindow
+          top="title"
+          bottom="plain"
+          className="flex-1 sm:[--edge-top-clear:calc(var(--edge-top-tuck)+52px)]"
+          scrollerClassName="select-none overflow-x-hidden"
+          scrollerStyle={{ WebkitTouchCallout: "none" }}
+          overlay={
+            <>
+            {/* Desktop-only sort bar — absolutely positioned so it overlays
+                the blur/fade zone instead of taking its own row above it,
+                which used to leave a visible gap (its own height, plus the
+                list's separate pt-10 fade reservation below that) between it
+                and the first real row. Its own (translucent, blurred)
+                background is what lets it sit on top of the fade zone and
+                still read — thinned further here so the rows passing behind
+                it stay visible through it. 12px below the Media title:
+                past the reach this window takes up under the title (its
+                tuck), plus one of its own font sizes, with the window's
+                desktop clear (below) matching so the first row still
+                clears it.
+                Hidden on mobile — the mobile equivalent is the round "⋯" sort
+                button next to the Upload pill (LibraryView). */}
+            <div className="hidden absolute inset-x-0 top-[calc(var(--edge-top-tuck)+12px)] z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)]/65 px-4 py-2 text-[14px] text-muted backdrop-blur-xl sm:flex">
+              <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} className="flex-1" />
+              <SortButton
+                label="Kind"
+                sortKey="kind"
+                active={sortKey}
+                dir={sortDir}
+                onClick={onToggleSort}
+                className="hidden w-28 shrink-0 @3xl:inline-flex"
+              />
+              <SortButton
+                label="Resolution & Duration"
+                sortKey="resolution"
+                active={sortKey}
+                dir={sortDir}
+                onClick={onToggleSort}
+                className="hidden w-44 shrink-0 @3xl:inline-flex"
+              />
+              <SortButton
+                label="Uploaded By"
+                sortKey="uploader"
+                active={sortKey}
+                dir={sortDir}
+                onClick={onToggleSort}
+                className="hidden w-28 shrink-0 @5xl:inline-flex"
+              />
+              <SortButton
+                label="Size"
+                sortKey="size"
+                active={sortKey}
+                dir={sortDir}
+                onClick={onToggleSort}
+                className="hidden w-20 shrink-0 @3xl:inline-flex"
+              />
+              <SortButton
+                label="Date Added"
+                sortKey="date"
+                active={sortKey}
+                dir={sortDir}
+                onClick={onToggleSort}
+                className="hidden w-40 shrink-0 @5xl:inline-flex"
+              />
+              {/* Over the rows' "⋯" menu (28px), whichever columns show. */}
+              <span aria-hidden className="w-7 shrink-0" />
             </div>
-            <ProgressiveBlurEdge side="top" />
-            {/* Shallower: the playlists list (or Now Playing, in the Playback
-            Menu) starts right below, so this edge has no room for the deep
-            version — and its depth is most of the empty band between the
-            two. */}
-        <ProgressiveBlurEdge side="bottom" extent={48} />
+            </>
+          }
+        >
+          <div ref={rowsRef}>
+            {/* Its trigger sits up beside Upload on desktop, and in the
+                "⋯" menu on mobile (both LibraryView) — so the field
+                belongs at the top of the list, where pressing either one
+                leaves it in view. A subfolder's field renders down in
+                the folder it belongs to instead (TreeLevel). */}
+            {creatingIn === null && (
+              <NewFolderRow
+                depth={0}
+                parentId={null}
+                onDone={() => onCreatingChange(undefined)}
+                onCreated={markCreatedFolder}
+                router={router}
+              />
+            )}
+            <TreeLevel
+              folders={sortFolders(roots)}
+              files={sortFiles(rootFiles)}
+              decks={sortDecks(rootDecks)}
+              depth={0}
+              isRoot
+              expanded={shownExpanded}
+              onFolderRowClick={handleFolderRowClick}
+              onFolderChevronClick={handleFolderChevronClick}
+              onToggleDeck={toggleExpanded}
+              creatingIn={creatingIn}
+              onStartCreating={startCreatingIn}
+              onDoneCreating={() => onCreatingChange(undefined)}
+              onCreatedFolder={markCreatedFolder}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onToggleMedia={onToggleMedia}
+              onToggleFolderIds={onToggleFolderIds}
+              uploadTargetId={uploadTargetId}
+              sortFiles={sortFiles}
+              sortFolders={sortFolders}
+              sortDecks={sortDecks}
+              dropTargetFolderId={dropTargetFolderId}
+              router={router}
+            />
           </div>
-          {/* Desktop-only sort bar — absolutely positioned so it overlays
-              the blur/fade zone instead of taking its own row above it,
-              which used to leave a visible gap (its own height, plus the
-              list's separate pt-10 fade reservation below that) between it
-              and the first real row. Its own (translucent, blurred)
-              background is what lets it sit on top of the fade zone and
-              still read — thinned further here so the rows passing behind
-              it stay visible through it. top-[52px] rather than flush with
-              the list's own top edge: 40px of that is the reach this list
-              takes past that edge (see -mt-20 above), and the remaining
-              12px — one of its own font sizes — keeps it off the Media
-              title above, with sm:pt-[92px] on the list below matching so
-              the first row still clears it.
-              Hidden on mobile — the mobile equivalent is the round "⋯" sort
-              button next to the Upload pill (LibraryView). */}
-          <div className="hidden absolute inset-x-0 top-[52px] z-10 items-center gap-2 border-b border-border bg-[var(--surface-elevated)]/65 px-4 py-2 text-[14px] text-muted backdrop-blur-xl sm:flex">
-            <SortButton label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} className="flex-1" />
-            <SortButton
-              label="Kind"
-              sortKey="kind"
-              active={sortKey}
-              dir={sortDir}
-              onClick={onToggleSort}
-              className="hidden w-28 shrink-0 @3xl:inline-flex"
-            />
-            <SortButton
-              label="Resolution & Duration"
-              sortKey="resolution"
-              active={sortKey}
-              dir={sortDir}
-              onClick={onToggleSort}
-              className="hidden w-44 shrink-0 @3xl:inline-flex"
-            />
-            <SortButton
-              label="Uploaded By"
-              sortKey="uploader"
-              active={sortKey}
-              dir={sortDir}
-              onClick={onToggleSort}
-              className="hidden w-28 shrink-0 @5xl:inline-flex"
-            />
-            <SortButton
-              label="Size"
-              sortKey="size"
-              active={sortKey}
-              dir={sortDir}
-              onClick={onToggleSort}
-              className="hidden w-20 shrink-0 @3xl:inline-flex"
-            />
-            <SortButton
-              label="Date Added"
-              sortKey="date"
-              active={sortKey}
-              dir={sortDir}
-              onClick={onToggleSort}
-              className="hidden w-40 shrink-0 @5xl:inline-flex"
-            />
-            {/* Over the rows' "⋯" menu (28px), whichever columns show. */}
-            <span aria-hidden className="w-7 shrink-0" />
-          </div>
-        </div>
+        </ScrollWindow>
         {isDraggingOsFile && <UploadDropOverlay folderName={uploadTargetFolderName} />}
       </div>
     </UploadersContext.Provider>
