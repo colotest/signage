@@ -1028,7 +1028,7 @@ export function PlaybackMenu({
         <div className="relative -mx-5 flex min-h-0 flex-1 flex-col" style={{ marginTop: -HEADER_TUCK }}>
           <div
             ref={pageRef}
-            className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[90px] standalone:pb-[calc(env(safe-area-inset-bottom,0px)+20px)] sm:pb-5"
+            className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[90px] standalone:max-sm:pb-[env(safe-area-inset-bottom,0px)] sm:pb-5"
             style={{ paddingTop: HEADER_TUCK }}
           >
             {/* The file browser — the scroll view's first section while
