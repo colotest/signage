@@ -14,7 +14,7 @@ export default async function SignupPage({ params }: { params: Promise<{ token: 
   const admin = createAdminClient();
   const { data: invite, error } = await admin
     .from("signup_invites")
-    .select("used_at, expires_at")
+    .select("used_at, expires_at, nickname")
     .eq("token_hash", hashInviteToken(token))
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -26,7 +26,15 @@ export default async function SignupPage({ params }: { params: Promise<{ token: 
         <h1 className={`${brandFont.className} text-[52px] uppercase tracking-tight`}>Colo Cloud</h1>
         {valid ? (
           <>
-            <p className="mt-1 text-sm text-muted">Create your account.</p>
+            {/* Named by whoever made the link, if they gave a nickname. */}
+            {invite.nickname ? (
+              <>
+                <p className="mt-3 text-[17px] font-semibold">Welcome, {invite.nickname}!</p>
+                <p className="mt-0.5 text-sm text-muted">Create your account to get started.</p>
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-muted">Create your account.</p>
+            )}
             <SignupForm token={token} />
           </>
         ) : (

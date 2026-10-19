@@ -91,11 +91,15 @@ class TileTouchSensor extends TouchSensor {
 
 export function ScreenGrid({
   screens,
+  memberOnlyScreens,
   groups,
   statuses,
   library,
 }: {
   screens: ScreenWithPlaylist[];
+  // Screens the viewer can't see on their own, but which sit in a group
+  // they can — shown only on that group's tile.
+  memberOnlyScreens: ScreenWithPlaylist[];
   groups: GroupWithMembers[];
   statuses: ScreenStatusRow[] | null;
   library: LibraryData;
@@ -119,7 +123,10 @@ export function ScreenGrid({
   // What a group tile needs of each member screen: the screen, what's on
   // air there, and its live status.
   const memberViews = new Map<number, GroupMemberView>(
-    screens.map((screen) => [screen.id, { screen, playlist: screen.playlist, status: statusOf(screen.id) }]),
+    [...screens, ...memberOnlyScreens].map((screen) => [
+      screen.id,
+      { screen, playlist: screen.playlist, status: statusOf(screen.id) },
+    ]),
   );
   const screenOptions = screens.map((s) => ({ id: s.id, name: s.name }));
 
@@ -158,8 +165,9 @@ export function ScreenGrid({
       {/* min-h-10: the Add Screen button's height, kept when it's hidden. */}
       <div className="flex min-h-10 items-center justify-between gap-3">
         <h1 className="text-[28px] font-semibold tracking-tight">Screens</h1>
-        {/* Adding screens and groups is for admins (the actions check too). */}
-        {viewer.isAdmin && (
+        {/* Adding screens and groups comes with the Screens page's settings
+            (the actions check too). */}
+        {viewer.access.screens.settings && (
           <div className="flex shrink-0 items-center gap-2">
             <AddGroupButton screens={screenOptions} />
             <AddScreenButton />
@@ -171,9 +179,9 @@ export function ScreenGrid({
         <div className="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border py-20 text-center">
           <p className="text-[17px] font-medium">No screens yet</p>
           <p className="text-sm text-muted">
-            {viewer.isAdmin
+            {viewer.access.screens.settings
               ? "Add a screen to get a player URL you can open on a TV."
-              : "An admin can add screens for you to manage here."}
+              : "Screens you're given access to show up here."}
           </p>
         </div>
       ) : (
@@ -181,7 +189,7 @@ export function ScreenGrid({
           <SortableContext items={ordered.map((t) => t.key)} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
               {ordered.map((tile) => (
-                <SortableTile key={tile.key} id={tile.key}>
+                <SortableTile key={tile.key} id={tile.key} disabled={!viewer.access.screens.reorder}>
                   {tile.kind === "screen" ? (
                     <ScreenTile
                       screen={tile.screen}
@@ -243,8 +251,10 @@ function useFireTimersOnTime(runAts: string[]) {
 // otherwise start a text selection or pop the image preview menu instead.
 // The rename field opts back in — iOS Safari won't edit text inside a
 // user-select: none subtree.
-function SortableTile({ id, children }: { id: string; children: React.ReactNode }) {
-  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+// disabled: the viewer's roles don't let them rearrange the grid, so tiles
+// stay put (reorderDashboard refuses it too).
+function SortableTile({ id, disabled, children }: { id: string; disabled: boolean; children: React.ReactNode }) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
 
   return (
     <div
@@ -253,7 +263,8 @@ function SortableTile({ id, children }: { id: string; children: React.ReactNode 
       data-screen-tile
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "cursor-grab select-none [-webkit-touch-callout:none] [&_input]:select-text",
+        "select-none [-webkit-touch-callout:none] [&_input]:select-text",
+        !disabled && "cursor-grab",
         isDragging && "relative z-10 cursor-grabbing",
       )}
     >

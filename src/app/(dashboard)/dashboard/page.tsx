@@ -1,3 +1,5 @@
+import { canSeeGroup, canSeeScreen } from "@/lib/auth/access";
+import { pageViewer } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchUploaderNames } from "@/lib/uploads/uploaders";
 import { ScreenGrid } from "./_components/ScreenGrid";
@@ -13,6 +15,7 @@ import type { PlaylistWithEntries } from "../library/_components/PlaylistSection
 import { decksWithPages } from "../library/page";
 
 export default async function DashboardPage() {
+  const viewer = await pageViewer("screens");
   const admin = createAdminClient();
 
   // Previews show what each screen's player last reported it was showing
@@ -152,7 +155,11 @@ export default async function DashboardPage() {
     if (list) list.push(member);
     else membersByGroup.set(member.group_id, [member]);
   }
+  // Only the screens and groups the viewer's roles let them see make it to
+  // the page. A visible group still shows all of its members on its tile,
+  // hidden ones included — controlling the group plays on all of them.
   const groupsWithMembers = (groups ?? []).flatMap((group) => {
+    if (!canSeeGroup(viewer.access, group.id)) return [];
     const setup = setupByGroup.get(group.id);
     if (!setup) return [];
     return [{ ...group, members: membersByGroup.get(group.id) ?? [], setup }];
@@ -170,9 +177,16 @@ export default async function DashboardPage() {
     entries: entriesByPlaylist.get(playlist.id) ?? [],
   }));
 
+  const visibleScreens = screensWithPlaylists.filter((screen) => canSeeScreen(viewer.access, screen.id));
+  const inVisibleGroups = new Set(groupsWithMembers.flatMap((group) => group.members.map((m) => m.screen_id)));
+  const memberOnlyScreens = screensWithPlaylists.filter(
+    (screen) => !canSeeScreen(viewer.access, screen.id) && inVisibleGroups.has(screen.id),
+  );
+
   return (
     <ScreenGrid
-      screens={screensWithPlaylists}
+      screens={visibleScreens}
+      memberOnlyScreens={memberOnlyScreens}
       groups={groupsWithMembers}
       statuses={statusesError ? null : (statuses ?? [])}
       library={{

@@ -2,13 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { quote, recordActivity, screenName } from "@/lib/activity";
-import { requireAdmin, requireSession } from "@/lib/auth/session";
+import { assertScreenVisible, requirePage, requireScreensPermission } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { FitMode, ScreenRotation } from "@/types/domain";
 
 export async function createScreen() {
-  // Adding screens is for admins only (see ScreenGrid).
-  const user = await requireAdmin();
+  // Adding screens comes with the Screens page's settings (see ScreenGrid).
+  const user = await requireScreensPermission("settings");
   const admin = createAdminClient();
 
   // Reuse the smallest free id (e.g. a deleted screen's slot) instead of
@@ -39,9 +39,11 @@ export async function createScreen() {
   return data;
 }
 
-// Rename, rotation and delete live in the wrench menu, which only admins get.
+// Rename, rotation and delete live in the wrench menu, which comes with the
+// Screens page's settings — and only for screens the user can see.
 export async function renameScreen(id: number, name: string) {
-  const user = await requireAdmin();
+  const user = await requireScreensPermission("settings");
+  assertScreenVisible(user, id);
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
   const admin = createAdminClient();
@@ -53,7 +55,8 @@ export async function renameScreen(id: number, name: string) {
 }
 
 export async function setFitMode(id: number, fitMode: FitMode) {
-  const user = await requireSession();
+  const user = await requirePage("screens");
+  assertScreenVisible(user, id);
   const admin = createAdminClient();
   const { error } = await admin.from("screens").update({ fit_mode: fitMode }).eq("id", id);
   if (error) throw new Error(error.message);
@@ -66,7 +69,8 @@ export async function setFitMode(id: number, fitMode: FitMode) {
 }
 
 export async function setScreenRotation(id: number, rotation: ScreenRotation) {
-  const user = await requireAdmin();
+  const user = await requireScreensPermission("settings");
+  assertScreenVisible(user, id);
   const admin = createAdminClient();
   const { error } = await admin.from("screens").update({ rotation }).eq("id", id);
   if (error) throw new Error(error.message);
@@ -79,7 +83,8 @@ export async function setScreenRotation(id: number, rotation: ScreenRotation) {
 }
 
 export async function deleteScreen(id: number) {
-  const user = await requireAdmin();
+  const user = await requireScreensPermission("settings");
+  assertScreenVisible(user, id);
   const admin = createAdminClient();
   const { data: deleted, error } = await admin.from("screens").delete().eq("id", id).select("name");
   if (error) throw new Error(error.message);

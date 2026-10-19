@@ -4,14 +4,40 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { quote, recordActivity } from "@/lib/activity";
 import { hashInviteToken, newInviteToken } from "@/lib/auth/invites";
-import { requireAdmin, roleRank } from "@/lib/auth/session";
+import { requireUsersPermission, type CurrentUser } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { displayNameOf } from "@/lib/uploads/uploaders";
 import type { ActivityEntry } from "@/types/domain";
 
-// A fresh single-use link for one new default user. Returned as a full URL
-// for the admin to copy and hand over; the token in it is never stored.
-export async function createSignupLink(): Promise<string> {
-  const user = await requireAdmin();
+type Admin = ReturnType<typeof createAdminClient>;
+
+const MAX_NICKNAME = 60;
+
+function cleanNickname(nickname: string) {
+  return nickname.trim().slice(0, MAX_NICKNAME) || null;
+}
+
+// Roles someone may hand out — to an invite, or to another user — are only
+// ever ones they hold themselves.
+function assertOwnRoles(user: CurrentUser, roleIds: string[]) {
+  if (roleIds.some((id) => !user.access.roleIds.includes(id))) throw new Error("You can only give out roles you have.");
+}
+
+// Another account to act on: never the super admin's, whose roles and
+// account aren't anyone else's to change.
+async function targetUser(admin: Admin, id: string) {
+  const { data, error } = await admin.from("users").select("email, nickname, is_super_admin").eq("id", id).single();
+  if (error) throw new Error(error.message);
+  if (data.is_super_admin) throw new Error("The super admin's account can't be changed here.");
+  return data;
+}
+
+// A fresh single-use link. Made the moment "New Signup" is pressed, so it
+// can be copied right away; the nickname and roles set in the popup that
+// opens with it are added to it afterwards (updateSignupInvite). Its token
+// is never stored — only a hash — so it comes back here to be handed on.
+export async function createSignupLink(): Promise<{ url: string; token: string }> {
+  const user = await requireUsersPermission("signups");
   const token = newInviteToken();
   const admin = createAdminClient();
   const { error } = await admin
@@ -23,23 +49,32 @@ export async function createSignupLink(): Promise<string> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "https";
-  return `${protocol}://${host}/signup/${token}`;
+  return { url: `${protocol}://${host}/signup/${token}`, token };
 }
 
-// Only someone ranked above an account can delete it — an admin can remove
-// default users, the super admin can remove admins too — and never their
-// own account from here.
+// The new user's nickname and first roles, set in the signup popup. Only
+// on a link of one's own that hasn't been used yet.
+export async function updateSignupInvite(token: string, nickname: string, roleIds: string[]) {
+  const user = await requireUsersPermission("signups");
+  assertOwnRoles(user, roleIds);
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("signup_invites")
+    .update({ nickname: cleanNickname(nickname), role_ids: [...new Set(roleIds)] })
+    .eq("token_hash", hashInviteToken(token))
+    .eq("created_by", user.id)
+    .is("used_at", null)
+    .select("token_hash");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("That signup link has already been used.");
+}
+
+// Never one's own account, and never the super admin's.
 export async function deleteUser(id: string) {
-  const user = await requireAdmin();
+  const user = await requireUsersPermission("delete");
   if (id === user.id) throw new Error("You can't delete your own account.");
   const admin = createAdminClient();
-  const { data: target, error: fetchError } = await admin
-    .from("users")
-    .select("email, role")
-    .eq("id", id)
-    .single();
-  if (fetchError) throw new Error(fetchError.message);
-  if (roleRank(target.role) >= roleRank(user.role)) throw new Error("Forbidden");
+  const target = await targetUser(admin, id);
 
   const { error } = await admin.from("users").delete().eq("id", id);
   if (error) throw new Error(error.message);
@@ -47,22 +82,46 @@ export async function deleteUser(id: string) {
   revalidatePath("/users");
 }
 
-// Admins (and the super admin) can raise a default user to admin. Nothing
-// above that: there's only ever the one super admin, and taking admin
-// rights away again isn't something this page does.
-export async function makeAdmin(id: string) {
-  const user = await requireAdmin();
+// An empty nickname clears it, back to the name made from their email.
+export async function setNickname(id: string, nickname: string) {
+  const user = await requireUsersPermission("nicknames");
   const admin = createAdminClient();
-  const { data: promoted, error } = await admin
-    .from("users")
-    .update({ role: "admin" })
-    .eq("id", id)
-    .eq("role", "default")
-    .select("email");
+  const { data: before, error: fetchError } = await admin.from("users").select("email, nickname").eq("id", id).single();
+  if (fetchError) throw new Error(fetchError.message);
+  const next = cleanNickname(nickname);
+  const { error } = await admin.from("users").update({ nickname: next }).eq("id", id);
   if (error) throw new Error(error.message);
-  const target = promoted?.[0];
-  if (!target) throw new Error("Only a default user can be made an admin.");
-  recordActivity(user, { action: "user.make_admin", summary: `Made ${quote(target.email)} an admin` });
+  recordActivity(user, {
+    action: "user.nickname",
+    target: `user:${id}`,
+    summary: next
+      ? `Renamed ${quote(displayNameOf(before))} to ${quote(next)}`
+      : `Cleared the nickname of ${quote(before.email)}`,
+  });
+  revalidatePath("/users");
+  revalidatePath("/library");
+  revalidatePath("/dashboard");
+}
+
+// "Make <Role>" / "Revoke <Role>" in a user's menu.
+export async function setUserRole(userId: string, roleId: string, assigned: boolean) {
+  const user = await requireUsersPermission("assignRoles");
+  assertOwnRoles(user, [roleId]);
+  const admin = createAdminClient();
+  const target = await targetUser(admin, userId);
+
+  const { error } = assigned
+    ? await admin.from("user_roles").upsert({ user_id: userId, role_id: roleId }, { onConflict: "user_id,role_id" })
+    : await admin.from("user_roles").delete().eq("user_id", userId).eq("role_id", roleId);
+  if (error) throw new Error(error.message);
+
+  const { data: role } = await admin.from("roles").select("name").eq("id", roleId).maybeSingle();
+  recordActivity(user, {
+    action: assigned ? "user.role_add" : "user.role_remove",
+    summary: assigned
+      ? `Made ${quote(displayNameOf(target))} ${quote(role?.name)}`
+      : `Revoked ${quote(role?.name)} from ${quote(displayNameOf(target))}`,
+  });
   revalidatePath("/users");
 }
 
@@ -74,7 +133,7 @@ export async function getUserActivity(
   userId: string,
   before: { createdAt: string; id: number } | null,
 ): Promise<{ entries: ActivityEntry[]; done: boolean }> {
-  await requireAdmin();
+  await requireUsersPermission("viewChanges");
   const admin = createAdminClient();
   let query = admin
     .from("activity_log")

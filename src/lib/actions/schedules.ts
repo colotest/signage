@@ -1,7 +1,7 @@
 "use server";
 
 import { playlistName, recordActivity, screenName } from "@/lib/activity";
-import { requireSession } from "@/lib/auth/session";
+import { assertScreenVisible, requirePage, requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // The longest window a timer can reserve — generous (a fortnight), just a
@@ -34,7 +34,8 @@ export async function schedulePlaylist(
   runAtIso: string,
   hours: number,
 ): Promise<{ error: string } | { ok: true }> {
-  const user = await requireSession();
+  const user = await requirePage("screens");
+  assertScreenVisible(user, screenId);
   const runAt = new Date(runAtIso);
   if (Number.isNaN(runAt.getTime())) return { error: "That isn't a valid date." };
   if (runAt.getTime() <= Date.now()) return { error: "Pick a time in the future." };
@@ -88,7 +89,8 @@ export async function schedulePlaylist(
 // playing. Cancelling one that's playing doesn't change what's on screen;
 // it just lets another playlist be scheduled into that time.
 export async function cancelScheduledPlayback(screenId: number, playlistId: string) {
-  const user = await requireSession();
+  const user = await requirePage("screens");
+  assertScreenVisible(user, screenId);
   const admin = createAdminClient();
   const { error } = await admin
     .from("scheduled_playbacks")

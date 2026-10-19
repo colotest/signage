@@ -38,7 +38,7 @@ export async function loginAction(
   }
 
   await setSessionCookie(user.id);
-  redirect("/dashboard");
+  redirect("/home");
 }
 
 export async function logoutAction() {
@@ -76,5 +76,5 @@ export async function signupAction(
 
   await setSessionCookie(userId);
   recordActivity({ id: userId, email }, { action: "user.signup", summary: "Created their account" });
-  redirect("/dashboard");
+  redirect("/home");
 }

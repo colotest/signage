@@ -3,7 +3,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { quote, recordActivity } from "@/lib/activity";
-import { requireSession } from "@/lib/auth/session";
+import { requireEditable } from "@/lib/auth/owned";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { insertDeck, type DeckPageInput } from "@/lib/uploads/insertDeck";
 import { folderForUploadLink } from "@/lib/uploads/links";
@@ -25,7 +25,7 @@ type Admin = ReturnType<typeof createAdminClient>;
 // Returns the folder's link token, making one the first time. Asking again
 // hands back the same link, so it can be copied as often as needed.
 export async function createUploadLink(folderId: string): Promise<string> {
-  const user = await requireSession();
+  const user = await requireEditable("folder", folderId);
   const admin = createAdminClient();
 
   const { data: existing, error: existingError } = await admin
@@ -47,7 +47,7 @@ export async function createUploadLink(folderId: string): Promise<string> {
 }
 
 export async function revokeUploadLink(folderId: string) {
-  const user = await requireSession();
+  const user = await requireEditable("folder", folderId);
   const admin = createAdminClient();
   const { error } = await admin.from("folder_upload_links").delete().eq("folder_id", folderId);
   if (error) throw new Error(error.message);

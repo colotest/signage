@@ -18,6 +18,10 @@ import { animateEntrance, removeWithAnimation } from "@/lib/animation/listMotion
 import { useFlipRows } from "@/lib/animation/useFlipRows";
 import { mediaPublicUrl, type DeckWithPages, type Folder, type MediaItem } from "@/types/domain";
 import { RenameableTitle } from "./RenameableTitle";
+import { RoleDot, RoleDots } from "@/components/RoleDot";
+import { canEditOwned, canRestrictOwned } from "@/lib/auth/access";
+import { useViewer } from "@/lib/auth/ViewerContext";
+import { setEditRole } from "@/lib/actions/restrictions";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
 import { ReplaceDeckButton } from "./ReplaceDeckButton";
 
@@ -742,6 +746,7 @@ function TreeLevel({
                   item={page}
                   depth={depth + 1}
                   inDeck
+                  deckOwner={{ ownerId: deck.uploaded_by, editRoleIds: deck.edit_role_ids ?? [] }}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(page.id)}
                   onToggleSelect={() => onToggleMedia(page.id)}
@@ -930,6 +935,66 @@ function Checkbox({
 // delete, +subfolder) now lives in here instead, so a row never needs to
 // grow wider or taller than its title + date to stay fully usable, and the
 // actions stay reachable on touch (hover was never going to fire there).
+// Who owns a file, PDF or folder, and which roles it's limited to (0032).
+type Ownership = { ownerId: string | null; editRoleIds: string[] };
+
+// What the viewer may do with one: edit it (rename, move, delete, replace,
+// share), change its limits (only its owner), and which of their own
+// roles it's limited to — the flags shown beside its name. Roles the viewer
+// doesn't hold are never shown.
+function useEditRights(owner: Ownership) {
+  const viewer = useViewer();
+  return {
+    editable: canEditOwned(viewer, owner),
+    restrictable: canRestrictOwned(viewer, owner.ownerId),
+    flags: viewer.roles.filter((role) => owner.editRoleIds.includes(role.id)),
+    roles: viewer.roles,
+  };
+}
+
+// The owner's "Limit to <Role>" / "Remove <Role> Limit" lines, one per role
+// they hold: once limited, only members of those roles (and the owner) can
+// edit it. Anyone can still put it on a screen or in a playlist.
+function LimitMenuItems({
+  kind,
+  id,
+  owner,
+  router,
+}: {
+  kind: "media" | "deck" | "folder";
+  id: string;
+  owner: Ownership;
+  router: Router;
+}) {
+  const { restrictable, roles } = useEditRights(owner);
+  const [pending, startTransition] = useTransition();
+  if (!restrictable || roles.length === 0) return null;
+
+  function toggle(roleId: string, limited: boolean) {
+    startTransition(async () => {
+      await setEditRole(kind, id, roleId, limited);
+      router.refresh();
+    });
+  }
+
+  return (
+    <>
+      <div className="my-1 border-t border-border" />
+      {roles.map((role) => {
+        const limited = owner.editRoleIds.includes(role.id);
+        return (
+          <MenuItem key={role.id} disabled={pending} onClick={() => toggle(role.id, !limited)}>
+            <span className="flex items-center gap-2">
+              <RoleDot role={role} />
+              <span className="truncate">{limited ? `Remove ${role.name} Limit` : `Limit to ${role.name}`}</span>
+            </span>
+          </MenuItem>
+        );
+      })}
+    </>
+  );
+}
+
 function RowMenu({ label, children }: { label: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
@@ -1036,6 +1101,8 @@ function FolderRow({
   const uploadLinks = useContext(UploadLinksContext);
   const creator = useCreatorLabel(folder);
   const uploadLinkToken = uploadLinks?.[folder.id] ?? null;
+  const owner = { ownerId: folder.created_by, editRoleIds: folder.edit_role_ids ?? [] };
+  const { editable, flags } = useEditRights(owner);
 
   // The link is minted server-side, so the clipboard write happens after an
   // await — Safari only allows that through a ClipboardItem handed a
@@ -1128,18 +1195,25 @@ function FolderRow({
 
       <RowInfo
         title={
-          <InlineRename
-            value={folder.name}
-            editing={renaming}
-            onEditingChange={setRenaming}
-            onSave={(next) => {
-              startTransition(async () => {
-                await renameFolder(folder.id, next);
-                router.refresh();
-              });
-            }}
-            className="truncate text-[15px] font-medium"
-          />
+          <span className="flex min-w-0 items-center gap-1.5">
+            {editable ? (
+              <InlineRename
+                value={folder.name}
+                editing={renaming}
+                onEditingChange={setRenaming}
+                onSave={(next) => {
+                  startTransition(async () => {
+                    await renameFolder(folder.id, next);
+                    router.refresh();
+                  });
+                }}
+                className="truncate text-[15px] font-medium"
+              />
+            ) : (
+              <span className="truncate text-[15px] font-medium">{folder.name}</span>
+            )}
+            <RoleDots roles={flags} />
+          </span>
         }
         date={formatDate(folder.created_at)}
         uploader={creator}
@@ -1159,25 +1233,30 @@ function FolderRow({
       <RowColumn width="w-40" wide>{formatDate(folder.created_at)}</RowColumn>
 
       <RowMenu label={`${folder.name} actions`}>
-        <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>
+        {editable && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
         <MenuInfo>
           {itemCount} item{itemCount === 1 ? "" : "s"}
         </MenuInfo>
         <div className="my-1 border-t border-border" />
         <MenuItem onClick={onStartCreating}>+ New Subfolder</MenuItem>
-        {uploadLinks && (
+        {/* Sharing and deleting are edits like renaming: not for those a
+            limited folder keeps out (see LimitMenuItems). */}
+        {editable && uploadLinks && (
           <MenuItem disabled={pending} onClick={handleCopyUploadLink}>
             {uploadLinkToken ? "Copy Upload Link" : "Create Upload Link"}
           </MenuItem>
         )}
-        {uploadLinkToken && (
+        {editable && uploadLinkToken && (
           <MenuItem disabled={pending} onClick={handleRevokeUploadLink}>
             Turn Off Upload Link
           </MenuItem>
         )}
-        <MenuItem danger disabled={pending} onClick={handleDelete}>
-          Delete Folder
-        </MenuItem>
+        {editable && (
+          <MenuItem danger disabled={pending} onClick={handleDelete}>
+            Delete Folder
+          </MenuItem>
+        )}
+        <LimitMenuItems kind="folder" id={folder.id} owner={owner} router={router} />
       </RowMenu>
     </div>
   );
@@ -1187,6 +1266,7 @@ function FileRow({
   item,
   depth,
   inDeck = false,
+  deckOwner,
   selectionMode,
   selected,
   onToggleSelect,
@@ -1198,12 +1278,16 @@ function FileRow({
   // else, but with no file of its own to replace and no folder to move to —
   // the deck it belongs to has both.
   inDeck?: boolean;
+  // A PDF page goes by its PDF's owner and limits.
+  deckOwner?: Ownership;
   selectionMode: boolean;
   selected: boolean;
   onToggleSelect: () => void;
   router: Router;
 }) {
   const [pending, startTransition] = useTransition();
+  const owner = deckOwner ?? { ownerId: item.uploaded_by, editRoleIds: item.edit_role_ids ?? [] };
+  const { editable, flags } = useEditRights(owner);
   // Held here rather than inside the title, so the "⋯" menu can open the
   // rename too — a double-click on the name still does its own thing.
   const [renaming, setRenaming] = useState(false);
@@ -1268,14 +1352,19 @@ function FileRow({
 
       <RowInfo
         title={
-          <RenameableTitle
-            id={item.id}
-            name={item.name}
-            selecting={selectionMode}
-            editing={renaming}
-            onEditingChange={setRenaming}
-            className="truncate text-[15px] font-medium"
-          />
+          <span className="flex min-w-0 items-center gap-1.5">
+            <RenameableTitle
+              id={item.id}
+              name={item.name}
+              // Not renameable by double-click when it's limited to roles
+              // the viewer doesn't have.
+              selecting={selectionMode || !editable}
+              editing={renaming}
+              onEditingChange={setRenaming}
+              className="truncate text-[15px] font-medium"
+            />
+            {!inDeck && <RoleDots roles={flags} />}
+          </span>
         }
         date={formatDate(item.created_at)}
         uploader={uploader}
@@ -1290,12 +1379,12 @@ function FileRow({
       <RowMenu label={`${item.name} actions`}>
         {/* Grouped with the file's own details rather than the actions
             below: it's about this file, not something done to it. */}
-        <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>
+        {editable && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
         <MenuInfo>{kindLabel(item)}</MenuInfo>
         {dimensions && <MenuInfo>{dimensions}</MenuInfo>}
         {item.media_type !== "page" && <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>}
         {(item.folder_id || item.media_type !== "page") && <div className="my-1 border-t border-border" />}
-        {item.folder_id && !inDeck && (
+        {item.folder_id && !inDeck && editable && (
           <MenuItem disabled={pending} onClick={handleMoveToRoot}>
             Move to Root
           </MenuItem>
@@ -1315,12 +1404,15 @@ function FileRow({
             >
               Download
             </a>
-            {!inDeck && <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />}
-            <MenuItem danger disabled={pending} onClick={handleDelete}>
-              Delete
-            </MenuItem>
+            {!inDeck && editable && <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />}
+            {editable && (
+              <MenuItem danger disabled={pending} onClick={handleDelete}>
+                Delete
+              </MenuItem>
+            )}
           </>
         )}
+        {!inDeck && <LimitMenuItems kind="media" id={item.id} owner={owner} router={router} />}
       </RowMenu>
     </div>
   );
@@ -1504,6 +1596,8 @@ function DeckRow({
   const rowRef = useRef<HTMLDivElement | null>(null);
   const uploader = useUploaderLabel(deck);
   const [renaming, setRenaming] = useState(false);
+  const owner = { ownerId: deck.uploaded_by, editRoleIds: deck.edit_role_ids ?? [] };
+  const { editable, flags } = useEditRights(owner);
   const cover = deck.pages[0];
   const fileName = `${deck.name}.pdf`;
 
@@ -1560,10 +1654,11 @@ function DeckRow({
               name={deck.name}
               editing={renaming}
               onEditingChange={setRenaming}
-              selecting={selectionMode}
+              selecting={selectionMode || !editable}
               onRename={renameDeck}
               className="truncate text-[15px] font-medium"
             />
+            <RoleDots roles={flags} className="mx-1" />
             <button
               type="button"
               onClick={(e) => {
@@ -1595,13 +1690,13 @@ function DeckRow({
       <RowColumn width="w-40" wide>{formatDate(deck.created_at)}</RowColumn>
 
       <RowMenu label={`${deck.name} actions`}>
-        <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>
+        {editable && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
         <MenuInfo>
           PDF · {deck.pages.length} {deck.pages.length === 1 ? "page" : "pages"}
         </MenuInfo>
         <MenuInfo>{formatBytes(deck.size_bytes)}</MenuInfo>
         <div className="my-1 border-t border-border" />
-        {deck.folder_id && (
+        {deck.folder_id && editable && (
           <MenuItem disabled={pending} onClick={handleMoveToRoot}>
             Move to Root
           </MenuItem>
@@ -1616,10 +1711,13 @@ function DeckRow({
         >
           Download
         </a>
-        <ReplaceDeckButton deck={deck} className={MENU_ITEM_CLASS} />
-        <MenuItem danger disabled={pending} onClick={handleDelete}>
-          Delete
-        </MenuItem>
+        {editable && <ReplaceDeckButton deck={deck} className={MENU_ITEM_CLASS} />}
+        {editable && (
+          <MenuItem danger disabled={pending} onClick={handleDelete}>
+            Delete
+          </MenuItem>
+        )}
+        <LimitMenuItems kind="deck" id={deck.id} owner={owner} router={router} />
       </RowMenu>
     </div>
   );

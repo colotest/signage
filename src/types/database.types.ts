@@ -19,8 +19,8 @@ export type ScreenTransition = "cut" | "dip" | "crossfade" | "slide";
 export type ScreenTransitionSpeed = "fast" | "normal" | "slow";
 // Which edge a sliding transition enters from — see 0021.
 export type ScreenSlideDirection = "right" | "left" | "top" | "bottom";
-// Strict ladder, highest first — see 0023_users.sql.
-export type UserRole = "super_admin" | "admin" | "default";
+
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
   public: {
@@ -78,6 +78,8 @@ export type Database = {
           created_at: string;
           // Who made it (0028).
           created_by: string | null;
+          // Roles allowed to edit it besides its owner; empty = anyone (0032).
+          edit_role_ids: string[];
         };
         Insert: {
           id?: string;
@@ -85,6 +87,7 @@ export type Database = {
           name: string;
           created_at?: string;
           created_by?: string | null;
+          edit_role_ids?: string[];
         };
         Update: {
           id?: string;
@@ -92,6 +95,7 @@ export type Database = {
           name?: string;
           created_at?: string;
           created_by?: string | null;
+          edit_role_ids?: string[];
         };
         Relationships: [
           {
@@ -152,6 +156,8 @@ export type Database = {
           uploaded_via_link: boolean;
           // The folder whose upload link it came in through (0028).
           upload_link_folder_id: string | null;
+          // Roles allowed to edit it besides its owner; empty = anyone (0032).
+          edit_role_ids: string[];
         };
         Insert: {
           id?: string;
@@ -170,6 +176,7 @@ export type Database = {
           uploaded_by?: string | null;
           uploaded_via_link?: boolean;
           upload_link_folder_id?: string | null;
+          edit_role_ids?: string[];
         };
         Update: {
           id?: string;
@@ -188,6 +195,7 @@ export type Database = {
           uploaded_by?: string | null;
           uploaded_via_link?: boolean;
           upload_link_folder_id?: string | null;
+          edit_role_ids?: string[];
         };
         Relationships: [
           {
@@ -221,6 +229,8 @@ export type Database = {
           uploaded_via_link: boolean;
           // The folder whose upload link it came in through (0028).
           upload_link_folder_id: string | null;
+          // Roles allowed to edit it besides its owner; empty = anyone (0032).
+          edit_role_ids: string[];
         };
         Insert: {
           id?: string;
@@ -234,6 +244,7 @@ export type Database = {
           uploaded_by?: string | null;
           uploaded_via_link?: boolean;
           upload_link_folder_id?: string | null;
+          edit_role_ids?: string[];
         };
         Update: {
           id?: string;
@@ -247,6 +258,7 @@ export type Database = {
           uploaded_by?: string | null;
           uploaded_via_link?: boolean;
           upload_link_folder_id?: string | null;
+          edit_role_ids?: string[];
         };
         Relationships: [
           {
@@ -418,21 +430,29 @@ export type Database = {
           id: string;
           email: string;
           password_hash: string;
-          role: UserRole;
+          // Unused since roles (0032); kept until a later migration drops it.
+          role: string;
+          // Can do everything, and counts as holding every role (0032).
+          is_super_admin: boolean;
+          nickname: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           email: string;
           password_hash: string;
-          role?: UserRole;
+          role?: string;
+          is_super_admin?: boolean;
+          nickname?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
           email?: string;
           password_hash?: string;
-          role?: UserRole;
+          role?: string;
+          is_super_admin?: boolean;
+          nickname?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -445,6 +465,8 @@ export type Database = {
           expires_at: string;
           used_at: string | null;
           used_by: string | null;
+          nickname: string | null;
+          role_ids: string[];
         };
         Insert: {
           token_hash: string;
@@ -453,6 +475,8 @@ export type Database = {
           expires_at?: string;
           used_at?: string | null;
           used_by?: string | null;
+          nickname?: string | null;
+          role_ids?: string[];
         };
         Update: {
           token_hash?: string;
@@ -461,6 +485,8 @@ export type Database = {
           expires_at?: string;
           used_at?: string | null;
           used_by?: string | null;
+          nickname?: string | null;
+          role_ids?: string[];
         };
         Relationships: [];
       };
@@ -650,6 +676,60 @@ export type Database = {
           },
         ];
       };
+      roles: {
+        Row: {
+          id: string;
+          name: string;
+          color: string;
+          // See RoleAccess in src/lib/auth/access.ts.
+          access: Json;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          color: string;
+          access?: Json;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          color?: string;
+          access?: Json;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      user_roles: {
+        Row: {
+          user_id: string;
+          role_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          role_id: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          role_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_role_id_fkey";
+            columns: ["role_id"];
+            isOneToOne: false;
+            referencedRelation: "roles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       screen_status_live: {
@@ -735,6 +815,10 @@ export type Database = {
       };
       report_screen_offline: {
         Args: { p_screen_id: number; p_session_id: string };
+        Returns: undefined;
+      };
+      delete_role: {
+        Args: { p_role_id: string };
         Returns: undefined;
       };
       redeem_signup_invite: {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { shortName } from "@/lib/uploads/uploaders";
+import { displayNameOf } from "@/lib/uploads/uploaders";
 import { folderForUploadLink } from "@/lib/uploads/links";
 import { LANG_COOKIE, parseLang } from "./copy";
 import { UploadPage as UploadPageView, type UploadedFile } from "./UploadWindow";
@@ -46,8 +46,8 @@ async function ownerName(admin: Admin, folderId: string): Promise<string | null>
   ]);
   const userId = folder?.created_by ?? link?.created_by;
   if (!userId) return null;
-  const { data: user } = await admin.from("users").select("email").eq("id", userId).maybeSingle();
-  return user ? shortName(user.email) : null;
+  const { data: user } = await admin.from("users").select("email, nickname").eq("id", userId).maybeSingle();
+  return user ? displayNameOf(user) : null;
 }
 
 // Just this folder's own files, as bare listing rows — no storage paths or

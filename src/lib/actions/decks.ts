@@ -3,7 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { folderName, plural, quote, recordActivity } from "@/lib/activity";
-import { requireSession } from "@/lib/auth/session";
+import { requirePage } from "@/lib/auth/session";
+import { requireEditable } from "@/lib/auth/owned";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { insertDeck, pageName, type DeckPageInput } from "@/lib/uploads/insertDeck";
 import { replaceDeckFiles } from "@/lib/uploads/replace";
@@ -32,7 +33,7 @@ async function signedUpload(extension: string): Promise<SignedUpload> {
 // written to the database here: a deck row only appears once every one of
 // its pages is actually in storage (see finalizeDeck).
 export async function createDeckUploadUrls({ pageCount }: { pageCount: number }) {
-  await requireSession();
+  await requirePage("media");
   if (pageCount < 1) throw new Error("A PDF needs at least one page.");
 
   const original = await signedUpload(".pdf");
@@ -54,7 +55,7 @@ export async function finalizeDeckUpload({
   sizeBytes: number;
   pages: DeckPageInput[];
 }) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const admin = createAdminClient();
 
   const deck = await insertDeck(admin, { name, folderId, storagePath, sizeBytes, pages, uploadedBy: user.id });
@@ -85,7 +86,7 @@ export async function finalizeDeckReplace({
   sizeBytes: number;
   pages: DeckPageInput[];
 }) {
-  const user = await requireSession();
+  const user = await requireEditable("deck", deckId);
   const admin = createAdminClient();
 
   const { data: deck, error: deckError } = await admin
@@ -106,7 +107,7 @@ export async function finalizeDeckReplace({
 }
 
 export async function renameDeck(id: string, name: string) {
-  const user = await requireSession();
+  const user = await requireEditable("deck", id);
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
   const admin = createAdminClient();
@@ -140,7 +141,7 @@ export async function renameDeck(id: string, name: string) {
 }
 
 export async function moveDeck(id: string, folderId: string | null) {
-  const user = await requireSession();
+  const user = await requireEditable("deck", id);
   const admin = createAdminClient();
   const { data: moved, error } = await admin.from("decks").update({ folder_id: folderId }).eq("id", id).select("name");
   if (error) throw new Error(error.message);
@@ -153,7 +154,7 @@ export async function moveDeck(id: string, folderId: string | null) {
 }
 
 export async function deleteDeck(id: string) {
-  const user = await requireSession();
+  const user = await requireEditable("deck", id);
   const admin = createAdminClient();
 
   const [{ data: deck, error: deckError }, { data: pages, error: pagesError }] = await Promise.all([

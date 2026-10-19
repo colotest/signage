@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { mediaNames, playlistName, plural, quote, recordActivity } from "@/lib/activity";
-import { requireSession } from "@/lib/auth/session";
+import { requirePage } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Reusable, named playlists — independent of any screen. Kept in their own
@@ -14,7 +14,7 @@ type EntryNames = { media_item: { name: string } | null; playlist: { name: strin
 const ENTRY_NAMES = "media_item:media_items(name), playlist:playlists(name)";
 
 export async function createPlaylist() {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const admin = createAdminClient();
   const { data: last } = await admin
     .from("playlists")
@@ -35,7 +35,7 @@ export async function createPlaylist() {
 }
 
 export async function renamePlaylist(id: string, name: string) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
   const admin = createAdminClient();
@@ -51,7 +51,7 @@ export async function renamePlaylist(id: string, name: string) {
 }
 
 export async function deletePlaylist(id: string) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const admin = createAdminClient();
   const { data: deleted, error } = await admin.from("playlists").delete().eq("id", id).select("name");
   if (error) throw new Error(error.message);
@@ -60,7 +60,7 @@ export async function deletePlaylist(id: string) {
 }
 
 export async function reorderPlaylists(orderedIds: string[]) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const admin = createAdminClient();
   const { error } = await admin.rpc("reorder_playlists", { p_ids: orderedIds });
   if (error) throw new Error(error.message);
@@ -68,7 +68,7 @@ export async function reorderPlaylists(orderedIds: string[]) {
 }
 
 export async function addMediaToPlaylist(playlistId: string, mediaIds: string[]) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   if (mediaIds.length === 0) return;
   const admin = createAdminClient();
   const { error } = await admin.rpc("add_media_to_playlist", {
@@ -85,7 +85,7 @@ export async function addMediaToPlaylist(playlistId: string, mediaIds: string[])
 }
 
 export async function removePlaylistEntry(entryId: string) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const admin = createAdminClient();
   const { data: removed, error } = await admin
     .from("playlist_entries")
@@ -106,7 +106,7 @@ export async function removePlaylistEntry(entryId: string) {
 // means adding normally, then reading the entry ids back to find it and
 // reorder it to the front — this is what that second step reads.
 export async function getPlaylistEntryIds(playlistId: string): Promise<string[]> {
-  await requireSession();
+  await requirePage("media");
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("playlist_entries")
@@ -118,7 +118,7 @@ export async function getPlaylistEntryIds(playlistId: string): Promise<string[]>
 }
 
 export async function reorderPlaylistEntries(playlistId: string, orderedEntryIds: string[]) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const admin = createAdminClient();
   const { error } = await admin.rpc("reorder_playlist_entries", {
     p_playlist_id: playlistId,
@@ -133,7 +133,7 @@ export async function reorderPlaylistEntries(playlistId: string, orderedEntryIds
 }
 
 export async function updatePlaylistEntryDuration(entryId: string, durationSeconds: number) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const admin = createAdminClient();
   const seconds = Math.max(1, Math.round(durationSeconds));
   const { data: updated, error } = await admin

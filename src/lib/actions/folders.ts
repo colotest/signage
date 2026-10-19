@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { quote, recordActivity } from "@/lib/activity";
-import { requireSession } from "@/lib/auth/session";
+import { assertCanEdit, requirePage } from "@/lib/auth/session";
+import { requireEditable } from "@/lib/auth/owned";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function createFolder(name: string, parentId: string | null = null) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
   const admin = createAdminClient();
@@ -22,7 +23,7 @@ export async function createFolder(name: string, parentId: string | null = null)
 }
 
 export async function renameFolder(id: string, name: string) {
-  const user = await requireSession();
+  const user = await requireEditable("folder", id);
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
   const admin = createAdminClient();
@@ -38,8 +39,24 @@ export async function renameFolder(id: string, name: string) {
 }
 
 export async function deleteFolder(id: string) {
-  const user = await requireSession();
+  const user = await requireEditable("folder", id);
   const admin = createAdminClient();
+  // Its subfolders go with it, so each of those has to be one the user may
+  // delete too.
+  const { data: folders, error: foldersError } = await admin.from("folders").select("id, parent_id, created_by, edit_role_ids");
+  if (foldersError) throw new Error(foldersError.message);
+  const doomed = new Set([id]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const folder of folders ?? []) {
+      if (folder.parent_id && doomed.has(folder.parent_id) && !doomed.has(folder.id)) {
+        doomed.add(folder.id);
+        grew = true;
+        assertCanEdit(user, { ownerId: folder.created_by, editRoleIds: folder.edit_role_ids ?? [] });
+      }
+    }
+  }
+
   // media_items.folder_id references folders with ON DELETE SET NULL, so
   // files move to "Unsorted" automatically rather than being deleted.
   const { data: deleted, error } = await admin.from("folders").delete().eq("id", id).select("name");

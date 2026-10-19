@@ -304,9 +304,9 @@ export function ScreenTile({
                 editing={renaming}
                 onDoneEditing={() => setRenaming(false)}
               />
-              {/* Screen setup (rename, rotation, reload, delete) is for
-                  admins only — the actions behind it check too. */}
-              {!renaming && viewer.isAdmin && (
+              {/* Screen setup (rename, rotation, reload, delete) comes with
+                  the Screens page's settings — the actions check too. */}
+              {!renaming && viewer.access.screens.settings && (
                 <ScreenSetupMenu
                   screenId={screen.id}
                   playerPath={playerPath}

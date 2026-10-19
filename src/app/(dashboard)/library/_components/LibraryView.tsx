@@ -27,6 +27,8 @@ import {
   reorderPlaylistEntries,
 } from "@/lib/actions/playlists";
 import { cn } from "@/lib/utils/cn";
+import { canEditOwned } from "@/lib/auth/access";
+import { useViewer } from "@/lib/auth/ViewerContext";
 import { useLiveRefresh } from "@/lib/realtime/useLiveRefresh";
 import { FileTree, MENU_ITEM_CLASS, ThreeDotIcon, type SortDir, type SortKey } from "./FileTree";
 import { PlaylistSection, type PlaylistWithEntries } from "./PlaylistSection";
@@ -78,6 +80,7 @@ export function LibraryView({
   uploaders: Record<string, string>;
 }) {
   const router = useRouter();
+  const viewer = useViewer();
   // Another person's uploads, renames, moves and playlist edits appear
   // here as they happen.
   useLiveRefresh("live-library");
@@ -160,6 +163,8 @@ export function LibraryView({
       // on a folder does nothing, while dropping it on a playlist (below)
       // works like any other file.
       if (!item || item.deck_id || item.folder_id === target.folderId) return;
+      // Nor does a file its owner has limited to roles the viewer lacks.
+      if (!canEditOwned(viewer, { ownerId: item.uploaded_by, editRoleIds: item.edit_role_ids ?? [] })) return;
       setLocalMedia((current) =>
         current.map((m) => (m.id === mediaId ? { ...m, folder_id: target.folderId } : m)),
       );

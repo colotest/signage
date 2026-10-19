@@ -5,25 +5,35 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Menu } from "@/components/ui/Menu";
 import { ProgressiveBlurEdge } from "@/components/ProgressiveBlurEdge";
+import { RoleDot, RoleDots } from "@/components/RoleDot";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
-import { createSignupLink, deleteUser, getUserActivity, makeAdmin } from "@/lib/actions/users";
+import { deleteUser, getUserActivity, setNickname, setUserRole } from "@/lib/actions/users";
 import { removeWithAnimation } from "@/lib/animation/listMotion";
-import { ROLE_LABELS, ROLE_RANK } from "@/lib/auth/roles";
-import { useViewer } from "@/lib/auth/ViewerContext";
+import { useOwnRoles, useViewer } from "@/lib/auth/ViewerContext";
 import { cn } from "@/lib/utils/cn";
-import type { ActivityEntry, User } from "@/types/domain";
+import type { ActivityEntry, Role, User } from "@/types/domain";
 import { ThreeDotIcon, type SortDir } from "../../library/_components/FileTree";
+import { RoleDialog } from "./RoleDialog";
+import { SignupDialog, startSignup, type PendingSignup } from "./SignupDialog";
 
+// displayName: their nickname, or the name made from their email.
+// roleIds: which of the viewer's own roles they hold (never anyone else's).
 // recent: the latest few changes (the page fetches 5 — fewer means that's
 // all of them). latestChangeTimes: when each of the last day and a half's
-// changes happened, for counting today's.
-export type UserWithActivity = User & { recent: ActivityEntry[]; latestChangeTimes: string[] };
+// changes happened, for counting today's. Both empty for a viewer whose
+// roles don't let them see changes.
+export type UserWithActivity = User & {
+  displayName: string;
+  roleIds: string[];
+  recent: ActivityEntry[];
+  latestChangeTimes: string[];
+};
 
 const RECENT_COUNT = 5;
 
-type UserSortKey = "activity" | "name" | "role" | "date";
+type UserSortKey = "activity" | "name" | "date";
 
 function userSortValue(user: UserWithActivity, key: UserSortKey): string | number {
   switch (key) {
@@ -31,9 +41,7 @@ function userSortValue(user: UserWithActivity, key: UserSortKey): string | numbe
       // Never-active users sort as the oldest.
       return user.recent[0] ? new Date(user.recent[0].created_at).getTime() : 0;
     case "name":
-      return user.email.toLowerCase();
-    case "role":
-      return ROLE_RANK[user.role];
+      return user.displayName.toLowerCase();
     case "date":
       return new Date(user.created_at).getTime();
   }
@@ -60,9 +68,9 @@ function todayLabel(count: number) {
   return `${count} change${count === 1 ? "" : "s"} today`;
 }
 
-// "Admin · You" — skipping any part that's blank (the super admin's role
-// label is, see ROLE_LABELS) so no stray separator is left behind.
-function joinDescriptors(...parts: (string | false)[]) {
+// "joline@… · You" — skipping any part that's blank, so no stray separator
+// is left behind.
+function joinDescriptors(...parts: (string | false | null)[]) {
   return parts.filter(Boolean).join(" · ");
 }
 
@@ -90,21 +98,39 @@ function formatWhen(iso: string): string {
 // Laid out like the Library's Playlists list (see PlaylistSection): the
 // same heading row with its "⋯" menu, and one card per user that opens to
 // show their latest changes, the way a playlist opens to show its files.
-export function UsersView({ users }: { users: UserWithActivity[] }) {
+// What's on offer — the changes, each card's menu, the "⋯" menu's lines —
+// depends on what the viewer's roles allow on this page.
+export function UsersView({
+  users,
+  roles,
+  screens,
+  groups,
+}: {
+  users: UserWithActivity[];
+  // The viewer's own roles in full, for editing — empty unless their roles
+  // let them manage roles.
+  roles: Role[];
+  // What the role editor offers to show or hide on the Screens grid.
+  screens: { id: number; name: string }[];
+  groups: { id: string; name: string }[];
+}) {
   const viewer = useViewer();
+  const can = viewer.access.users;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  // Whoever's been at it most recently first.
-  const [sortKey, setSortKey] = useState<UserSortKey>("activity");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  // Whoever's been at it most recently first — when changes can be seen.
+  const [sortKey, setSortKey] = useState<UserSortKey>(can.viewChanges ? "activity" : "name");
+  const [sortDir, setSortDir] = useState<SortDir>(can.viewChanges ? "desc" : "asc");
   const [showingAllFor, setShowingAllFor] = useState<UserWithActivity | null>(null);
+  const [pendingSignup, setPendingSignup] = useState<PendingSignup | null>(null);
+  // undefined: closed. null: a new role. A role: that one, being edited.
+  const [editingRole, setEditingRole] = useState<Role | null | undefined>(undefined);
 
   function toggleSort(key: UserSortKey) {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
       setSortKey(key);
-      // Highest role first, and most recent activity first, are the useful
-      // way round for those two.
-      setSortDir(key === "role" || key === "activity" ? "desc" : "asc");
+      // Most recent activity first is the useful way round for that one.
+      setSortDir(key === "activity" ? "desc" : "asc");
     }
   }
 
@@ -130,7 +156,15 @@ export function UsersView({ users }: { users: UserWithActivity[] }) {
           for what each of these offsets is paying for. */}
       <div className="relative z-10 flex items-center justify-between">
         <h1 className="text-[28px] font-semibold tracking-tight">Users</h1>
-        <UsersMenuButton sortKey={sortKey} sortDir={sortDir} onToggleSort={toggleSort} />
+        <UsersMenuButton
+          roles={roles}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onToggleSort={toggleSort}
+          onNewSignup={() => setPendingSignup(startSignup())}
+          onNewRole={() => setEditingRole(null)}
+          onEditRole={setEditingRole}
+        />
       </div>
 
       <div className="relative -mt-10 -mb-5 mx-[-10px] min-h-0 flex-1">
@@ -141,8 +175,6 @@ export function UsersView({ users }: { users: UserWithActivity[] }) {
                 key={user.id}
                 user={user}
                 isSelf={user.id === viewer.id}
-                canDelete={user.id !== viewer.id && ROLE_RANK[user.role] < ROLE_RANK[viewer.role]}
-                canMakeAdmin={user.role === "default"}
                 isExpanded={expanded.has(user.id)}
                 onToggleExpanded={() => toggleExpanded(user.id)}
                 onShowAll={() => setShowingAllFor(user)}
@@ -155,6 +187,17 @@ export function UsersView({ users }: { users: UserWithActivity[] }) {
       </div>
 
       <UserActivityOverlay user={showingAllFor} onClose={() => setShowingAllFor(null)} />
+      <SignupDialog pending={pendingSignup} onClose={() => setPendingSignup(null)} />
+      <RoleDialog
+        // A fresh form for each role (and each new one).
+        key={editingRole === undefined ? "closed" : (editingRole?.id ?? "new")}
+        open={editingRole !== undefined}
+        onOpenChange={(open) => !open && setEditingRole(undefined)}
+        role={editingRole ?? null}
+        existingColors={roles.filter((r) => r.id !== editingRole?.id).map((r) => r.color)}
+        screens={screens}
+        groups={groups}
+      />
     </div>
   );
 }
@@ -162,30 +205,39 @@ export function UsersView({ users }: { users: UserWithActivity[] }) {
 function UserRow({
   user,
   isSelf,
-  canDelete,
-  canMakeAdmin,
   isExpanded,
   onToggleExpanded,
   onShowAll,
 }: {
   user: UserWithActivity;
   isSelf: boolean;
-  canDelete: boolean;
-  canMakeAdmin: boolean;
   isExpanded: boolean;
   onToggleExpanded: () => void;
   onShowAll: () => void;
 }) {
   const router = useRouter();
+  const viewer = useViewer();
+  const can = viewer.access.users;
   const [, startTransition] = useTransition();
   const rowRef = useRef<HTMLLIElement | null>(null);
   const today = useStartOfToday();
+  const flags = useOwnRoles(user.roleIds);
+  const [editingNickname, setEditingNickname] = useState(false);
 
   // Mounted while open (and while sliding shut), same as a playlist card.
   const [contentMounted, setContentMounted] = useState(isExpanded);
   if (isExpanded && !contentMounted) setContentMounted(true);
 
+  // Without the changes to show, a card has nothing to open into.
+  const expandable = can.viewChanges;
+  // The super admin's account and roles aren't anyone else's to change,
+  // and nobody deletes their own from here (the actions refuse it too).
+  const canDelete = can.delete && !isSelf && !user.is_super_admin;
+  const canAssign = can.assignRoles && !user.is_super_admin && viewer.roles.length > 0;
+  const hasMenu = can.nicknames || canDelete || canAssign;
+
   function handleCardClick(e: React.MouseEvent) {
+    if (!expandable) return;
     if ((e.target as Element).closest("button, input, a, [data-no-toggle]")) return;
     onToggleExpanded();
   }
@@ -197,9 +249,18 @@ function UserRow({
     });
   }
 
-  function handleMakeAdmin() {
+  function handleRole(roleId: string, assigned: boolean) {
     startTransition(async () => {
-      await makeAdmin(user.id);
+      await setUserRole(user.id, roleId, assigned);
+      router.refresh();
+    });
+  }
+
+  function handleNickname(next: string) {
+    setEditingNickname(false);
+    if (next.trim() === (user.nickname ?? "")) return;
+    startTransition(async () => {
+      await setNickname(user.id, next);
       router.refresh();
     });
   }
@@ -208,32 +269,48 @@ function UserRow({
     <li
       ref={rowRef}
       onClick={handleCardClick}
-      className="cursor-pointer rounded-[var(--radius-md)] border border-border bg-surface p-3"
+      className={cn("rounded-[var(--radius-md)] border border-border bg-surface p-3", expandable && "cursor-pointer")}
     >
       <div className="flex items-center gap-3">
-        <button type="button" onClick={onToggleExpanded} className="no-press text-muted" aria-label={isExpanded ? "Collapse" : "Expand"}>
-          <Chevron open={isExpanded} />
-        </button>
+        {expandable ? (
+          <button type="button" onClick={onToggleExpanded} className="no-press text-muted" aria-label={isExpanded ? "Collapse" : "Expand"}>
+            <Chevron open={isExpanded} />
+          </button>
+        ) : (
+          <span className="w-4 shrink-0" />
+        )}
 
-        <div className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="truncate text-[15px] font-semibold">{user.email}</span>
-          <span className="shrink-0 text-[12px] text-muted">
-            {joinDescriptors(ROLE_LABELS[user.role], isSelf && "You")}
-          </span>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {editingNickname ? (
+            <NicknameField initial={user.nickname ?? ""} placeholder={user.displayName} onDone={handleNickname} />
+          ) : (
+            <span className="truncate text-[15px] font-semibold">{user.nickname || user.email}</span>
+          )}
+          <RoleDots roles={flags} />
+          {!editingNickname && (
+            <span className="min-w-0 shrink truncate text-[12px] text-muted">
+              {joinDescriptors(user.nickname && user.email, isSelf && "You")}
+            </span>
+          )}
         </div>
 
         <span className="hidden shrink-0 text-[12px] text-muted sm:block">{formatDate(user.created_at)}</span>
         {/* Fixed-width slot reserved even before it fills in after
             hydration (see useStartOfToday), so the row doesn't shift. */}
-        <span className="min-w-[96px] shrink-0 text-right text-[12px] text-muted">
-          {today !== null && todayLabel(countSince(user.latestChangeTimes, today))}
-        </span>
+        {can.viewChanges && (
+          <span className="min-w-[96px] shrink-0 text-right text-[12px] text-muted">
+            {today !== null && todayLabel(countSince(user.latestChangeTimes, today))}
+          </span>
+        )}
 
-        {canMakeAdmin || canDelete ? (
+        {hasMenu ? (
           <UserRowMenu
-            canMakeAdmin={canMakeAdmin}
+            user={user}
+            canNickname={can.nicknames}
+            canAssign={canAssign}
             canDelete={canDelete}
-            onMakeAdmin={handleMakeAdmin}
+            onEditNickname={() => setEditingNickname(true)}
+            onRole={handleRole}
             onDelete={handleDelete}
           />
         ) : (
@@ -242,39 +319,78 @@ function UserRow({
         )}
       </div>
 
-      <div
-        data-no-toggle
-        inert={!isExpanded}
-        onTransitionEnd={(e) => {
-          if (e.target === e.currentTarget && !isExpanded) setContentMounted(false);
-        }}
-        className={cn(
-          "grid cursor-auto transition-[grid-template-rows] duration-[400ms] ease-[var(--ease-spring)]",
-          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-        )}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {contentMounted && (
-            <div className="mt-3 border-t border-border pt-3">
-              {user.recent.length === 0 ? (
-                <p className="text-[13px] text-muted">No changes yet.</p>
-              ) : (
-                <>
-                  <ActivityList entries={user.recent} />
-                  <button
-                    type="button"
-                    onClick={onShowAll}
-                    className="press-ghost mt-3 text-[13px] font-medium text-accent hover:opacity-70"
-                  >
-                    Show all
-                  </button>
-                </>
-              )}
-            </div>
+      {expandable && (
+        <div
+          data-no-toggle
+          inert={!isExpanded}
+          onTransitionEnd={(e) => {
+            if (e.target === e.currentTarget && !isExpanded) setContentMounted(false);
+          }}
+          className={cn(
+            "grid cursor-auto transition-[grid-template-rows] duration-[400ms] ease-[var(--ease-spring)]",
+            isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
           )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            {contentMounted && (
+              <div className="mt-3 border-t border-border pt-3">
+                {user.recent.length === 0 ? (
+                  <p className="text-[13px] text-muted">No changes yet.</p>
+                ) : (
+                  <>
+                    <ActivityList entries={user.recent} />
+                    <button
+                      type="button"
+                      onClick={onShowAll}
+                      className="press-ghost mt-3 text-[13px] font-medium text-accent hover:opacity-70"
+                    >
+                      Show all
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </li>
+  );
+}
+
+// In place of the name while it's being changed. Enter or leaving the
+// field saves; Escape cancels. Left empty, the nickname is cleared.
+function NicknameField({
+  initial,
+  placeholder,
+  onDone,
+}: {
+  initial: string;
+  placeholder: string;
+  onDone: (next: string) => void;
+}) {
+  const cancelled = useRef(false);
+  return (
+    <input
+      autoFocus
+      defaultValue={initial}
+      placeholder={placeholder}
+      maxLength={60}
+      data-no-toggle
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={(e) => onDone(cancelled.current ? initial : e.currentTarget.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cancelled.current = true;
+          e.currentTarget.blur();
+        }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="min-w-0 flex-1 rounded-[3px] border border-accent bg-transparent px-1 -mx-1 text-[15px] font-semibold outline-none"
+    />
   );
 }
 
@@ -360,12 +476,9 @@ function UserActivityCard({ user, onClose }: { user: UserWithActivity; onClose: 
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex items-baseline gap-2 border-b border-border px-5 pb-3 pt-4">
-        <Dialog.Title className="truncate text-[22px] font-semibold tracking-tight">{user.email}</Dialog.Title>
+        <Dialog.Title className="truncate text-[22px] font-semibold tracking-tight">{user.nickname || user.email}</Dialog.Title>
         <span className="shrink-0 text-[13px] text-muted">
-          {joinDescriptors(
-            ROLE_LABELS[user.role],
-            today !== null && todayLabel(countSince(user.latestChangeTimes, today)),
-          )}
+          {joinDescriptors(today !== null && todayLabel(countSince(user.latestChangeTimes, today)))}
         </span>
       </div>
 
@@ -396,20 +509,38 @@ function UserActivityCard({ user, onClose }: { user: UserWithActivity; onClose: 
   );
 }
 
-// The page's "⋯": makes signup links as well as sorting, since both are
-// about the list as a whole rather than any one user in it.
+const MENU_ITEM =
+  "press-ghost-fit flex w-full items-center gap-2 rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]";
+
+// The page's "⋯": about the list as a whole rather than any one user in it
+// — new signup links, the roles themselves, and sorting.
 function UsersMenuButton({
+  roles,
   sortKey,
   sortDir,
   onToggleSort,
+  onNewSignup,
+  onNewRole,
+  onEditRole,
 }: {
+  roles: Role[];
   sortKey: UserSortKey;
   sortDir: SortDir;
   onToggleSort: (key: UserSortKey) => void;
+  onNewSignup: () => void;
+  onNewRole: () => void;
+  onEditRole: (role: Role) => void;
 }) {
+  const viewer = useViewer();
+  const can = viewer.access.users;
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
+  const hasActions = can.signups || can.manageRoles;
 
+  function pick(action: () => void) {
+    setOpen(false);
+    action();
+  }
 
   return (
     <div className="relative shrink-0">
@@ -425,30 +556,59 @@ function UsersMenuButton({
       </button>
 
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-56 p-1">
-        <CopySignupLinkItem />
-        <div className="mt-1 border-t border-border px-2.5 pb-1 pt-2 text-[12px] text-muted">Sort by</div>
-        <SortMenuItem label="Last Change" sortKey="activity" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        {can.signups && (
+          // Its link is made and copied in this very press — see startSignup.
+          <button type="button" onClick={() => pick(onNewSignup)} className={cn(MENU_ITEM, "text-accent")}>
+            New Signup
+          </button>
+        )}
+        {can.manageRoles && (
+          <>
+            <button type="button" onClick={() => pick(onNewRole)} className={cn(MENU_ITEM, "text-accent")}>
+              New Role
+            </button>
+            {roles.map((role) => (
+              <button key={role.id} type="button" onClick={() => pick(() => onEditRole(role))} className={MENU_ITEM}>
+                <RoleDot role={role} />
+                <span className="truncate">Edit {role.name}</span>
+              </button>
+            ))}
+          </>
+        )}
+        <div className={cn("px-2.5 pb-1 pt-2 text-[12px] text-muted", hasActions && "mt-1 border-t border-border")}>
+          Sort by
+        </div>
+        {can.viewChanges && (
+          <SortMenuItem label="Last Change" sortKey="activity" active={sortKey} dir={sortDir} onClick={onToggleSort} />
+        )}
         <SortMenuItem label="Name" sortKey="name" active={sortKey} dir={sortDir} onClick={onToggleSort} />
-        <SortMenuItem label="Role" sortKey="role" active={sortKey} dir={sortDir} onClick={onToggleSort} />
         <SortMenuItem label="Date Created" sortKey="date" active={sortKey} dir={sortDir} onClick={onToggleSort} />
       </Menu>
     </div>
   );
 }
 
-// A user's own "⋯": what can be done to that one account. Delete asks
-// first, in place, the way the playlists' Delete does.
+// A user's own "⋯": what can be done to that one account — their nickname,
+// a "Make <Role>" / "Revoke <Role>" line for each of the viewer's roles,
+// and Delete, which asks first, in place, the way the playlists' does.
 function UserRowMenu({
-  canMakeAdmin,
+  user,
+  canNickname,
+  canAssign,
   canDelete,
-  onMakeAdmin,
+  onEditNickname,
+  onRole,
   onDelete,
 }: {
-  canMakeAdmin: boolean;
+  user: UserWithActivity;
+  canNickname: boolean;
+  canAssign: boolean;
   canDelete: boolean;
-  onMakeAdmin: () => void;
+  onEditNickname: () => void;
+  onRole: (roleId: string, assigned: boolean) => void;
   onDelete: () => void;
 }) {
+  const viewer = useViewer();
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
@@ -464,9 +624,10 @@ function UserRowMenu({
     setOpen(true);
   }
 
-
-  const itemClass =
-    "press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]";
+  function pick(action: () => void) {
+    close();
+    action();
+  }
 
   return (
     <div data-no-toggle className="relative shrink-0">
@@ -481,19 +642,12 @@ function UserRowMenu({
         <ThreeDotIcon className="h-4 w-4" />
       </button>
 
-      <Menu open={open} onClose={close} anchorRef={anchorRef} className="w-44 p-1">
+      <Menu open={open} onClose={close} anchorRef={anchorRef} className="w-52 p-1">
         {confirmingDelete ? (
           <div className="pop-in origin-top px-2.5 py-1.5">
             <p className="mb-1.5 text-[12px] text-muted">Delete this account?</p>
             <div className="flex items-center gap-3 text-[13px]">
-              <button
-                type="button"
-                onClick={() => {
-                  close();
-                  onDelete();
-                }}
-                className="press-ghost font-medium text-danger hover:opacity-70"
-              >
+              <button type="button" onClick={() => pick(onDelete)} className="press-ghost font-medium text-danger hover:opacity-70">
                 Confirm
               </button>
               <button type="button" onClick={() => setConfirmingDelete(false)} className="press-ghost text-muted hover:opacity-70">
@@ -503,87 +657,35 @@ function UserRowMenu({
           </div>
         ) : (
           <>
-            {canMakeAdmin && (
-              <button
-                type="button"
-                onClick={() => {
-                  close();
-                  onMakeAdmin();
-                }}
-                className={itemClass}
-              >
-                Make Admin
+            {canNickname && (
+              <button type="button" onClick={() => pick(onEditNickname)} className={MENU_ITEM}>
+                {user.nickname ? "Edit Nickname" : "Give Nickname"}
               </button>
             )}
+            {canAssign && (
+              <div className={cn(canNickname && "mt-1 border-t border-border pt-1")}>
+                {viewer.roles.map((role) => {
+                  const assigned = user.roleIds.includes(role.id);
+                  return (
+                    <button key={role.id} type="button" onClick={() => pick(() => onRole(role.id, !assigned))} className={MENU_ITEM}>
+                      <RoleDot role={role} />
+                      <span className="truncate">{assigned ? `Revoke ${role.name}` : `Make ${role.name}`}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {canDelete && (
-              <button type="button" onClick={() => setConfirmingDelete(true)} className={cn(itemClass, "text-danger")}>
-                Delete
-              </button>
+              <div className={cn((canNickname || canAssign) && "mt-1 border-t border-border pt-1")}>
+                <button type="button" onClick={() => setConfirmingDelete(true)} className={cn(MENU_ITEM, "text-danger")}>
+                  Delete
+                </button>
+              </div>
             )}
           </>
         )}
       </Menu>
     </div>
-  );
-}
-
-// Every press makes a brand-new single-use link and copies it. The
-// clipboard write is started right in the press, with the link handed in
-// as a promise: Safari refuses clipboard writes that only begin after an
-// await, which is where the link would otherwise arrive. If copying fails
-// anyway, the link is shown to copy by hand — it exists either way.
-function CopySignupLinkItem() {
-  const [state, setState] = useState<"idle" | "working" | "copied" | { link: string }>("idle");
-  const resetRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(resetRef.current), []);
-
-  async function handleClick() {
-    clearTimeout(resetRef.current);
-    setState("working");
-    const link = createSignupLink();
-    try {
-      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-        await navigator.clipboard.write([
-          new ClipboardItem({ "text/plain": link.then((url) => new Blob([url], { type: "text/plain" })) }),
-        ]);
-      } else {
-        await navigator.clipboard.writeText(await link);
-      }
-      setState("copied");
-      resetRef.current = setTimeout(() => setState("idle"), 2000);
-    } catch {
-      try {
-        setState({ link: await link });
-      } catch {
-        setState("idle");
-      }
-    }
-  }
-
-  if (typeof state === "object") {
-    return (
-      <div className="px-2.5 py-1.5">
-        <p className="mb-1 text-[12px] text-muted">Couldn&apos;t copy — here&apos;s the link:</p>
-        <input
-          readOnly
-          value={state.link}
-          onFocus={(e) => e.currentTarget.select()}
-          autoFocus
-          className="w-full rounded-[var(--radius-sm)] bg-black/[.03] px-2 py-1 font-mono text-[11px] outline-none dark:bg-white/[.05]"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={state === "working"}
-      className="press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium text-accent hover:bg-black/[.04] disabled:opacity-60 dark:hover:bg-white/[.06]"
-    >
-      {state === "copied" ? "Link copied ✓" : state === "working" ? "Creating link…" : "Copy Signup Link"}
-    </button>
   );
 }
 

@@ -1,3 +1,4 @@
+import { pageViewer } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchUploaderNames } from "@/lib/uploads/uploaders";
 import { LibraryView } from "./_components/LibraryView";
@@ -5,6 +6,8 @@ import type { DeckWithPages, MediaItem, PlaylistEntryWithMedia } from "@/types/d
 import type { PlaylistWithEntries } from "./_components/PlaylistSection";
 
 export default async function LibraryPage() {
+  // Also reached with the Screens page alone (see resolveAccess).
+  await pageViewer("media");
   const admin = createAdminClient();
 
   const [

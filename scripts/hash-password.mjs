@@ -6,8 +6,8 @@
 //
 //   node scripts/hash-password.mjs
 //
-// then: insert into users (email, password_hash, role)
-//       values ('someone@example.com', '<printed hash>', 'super_admin');
+// then: insert into users (email, password_hash, is_super_admin)
+//       values ('someone@example.com', '<printed hash>', true);
 import { randomBytes, scryptSync } from "node:crypto";
 import { createInterface } from "node:readline";
 

@@ -7,18 +7,19 @@ import { UserIcon } from "@/components/icons/UserIcon";
 import { Menu } from "@/components/ui/Menu";
 import { logoutAction } from "@/lib/actions/auth";
 import { useViewer } from "@/lib/auth/ViewerContext";
-import { ROLE_LABELS } from "@/lib/auth/roles";
+import { PAGES } from "@/lib/auth/access";
+import { RoleDot } from "@/components/RoleDot";
 import { brandFont } from "@/lib/fonts";
 import { cn } from "@/lib/utils/cn";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Screens" },
-  { href: "/library", label: "Media" },
-  { href: "/forms", label: "Forms" },
-];
+// Users lives in the account menu rather than here (see UserMenu).
+const NAV_PAGES = PAGES.filter((page) => page.key !== "users");
 
 export function Header() {
   const pathname = usePathname();
+  const viewer = useViewer();
+  // Pages the viewer's roles don't reach aren't shown at all.
+  const navItems = NAV_PAGES.filter((page) => viewer.access.pages[page.key]);
   const headerRef = useRef<HTMLElement | null>(null);
 
   // Installed to the Home Screen this header lies over the page rather than
@@ -68,7 +69,7 @@ export function Header() {
         <span className={`${brandFont.className} mt-[0.1em] text-[28.5px] uppercase tracking-tight`}>
           Colo Cloud
         </span>
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
@@ -88,8 +89,8 @@ export function Header() {
 
 // Log Out lives behind a round avatar button rather than in plain view —
 // it's rarely needed, and a stray tap on it signed the whole dashboard out.
-// So does everything about accounts: who's signed in, and for admins, the
-// Users page.
+// So does everything about accounts: who's signed in, their roles, and for
+// those whose roles reach it, the Users page.
 function UserMenu() {
   const viewer = useViewer();
   const pathname = usePathname();
@@ -121,10 +122,21 @@ function UserMenu() {
           inset, so their corners run parallel to its own. */}
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-56 p-1">
         <div className="border-b border-border px-2.5 pb-2 pt-1.5">
-          <p className="truncate text-[13px] font-medium">{viewer.email}</p>
-          {ROLE_LABELS[viewer.role] && <p className="text-[12px] text-muted">{ROLE_LABELS[viewer.role]}</p>}
+          <p className="truncate text-[13px] font-medium">{viewer.nickname || viewer.email}</p>
+          {viewer.nickname && <p className="truncate text-[12px] text-muted">{viewer.email}</p>}
+          {/* The super admin holds every role, so listing them says nothing. */}
+          {!viewer.access.superAdmin && viewer.roles.length > 0 && (
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {viewer.roles.map((role) => (
+                <li key={role.id} className="flex items-center gap-1.5 text-[12px] text-muted">
+                  <RoleDot role={role} />
+                  <span className="truncate">{role.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        {viewer.isAdmin && (
+        {viewer.access.pages.users && (
           <Link
             href="/users"
             role="menuitem"
@@ -136,7 +148,7 @@ function UserMenu() {
             Users
           </Link>
         )}
-        <form action={logoutAction} className={cn(!viewer.isAdmin && "mt-1")}>
+        <form action={logoutAction} className={cn(!viewer.access.pages.users && "mt-1")}>
           <button
             type="submit"
             role="menuitem"

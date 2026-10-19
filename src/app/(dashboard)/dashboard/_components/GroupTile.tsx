@@ -177,7 +177,7 @@ export function GroupTile({
           // stand in for all of them.
           fitOverride={fitMode !== group.fit_mode ? fitMode : null}
           paused={paused}
-          canArrange={viewer.isAdmin}
+          canArrange={viewer.access.screens.settings}
           onMove={handleMove}
           onOpen={() => setMenuOpen(true)}
         />
@@ -191,7 +191,7 @@ export function GroupTile({
                 onDoneEditing={() => setRenaming(false)}
                 onSave={(name) => renameGroup(group.id, name)}
               />
-              {!renaming && viewer.isAdmin && (
+              {!renaming && viewer.access.screens.settings && (
                 <GroupSetupMenu
                   groupId={group.id}
                   rows={rows}
@@ -258,8 +258,8 @@ export function GroupTile({
 
 // The arrangement: rows × cols cells filling the preview square, each
 // holding one member's monitor (or nothing), with its name underneath.
-// Admins can drag a monitor into another cell; whoever was there swaps
-// into its old one.
+// Those with the Screens page's settings can drag a monitor into another
+// cell; whoever was there swaps into its old one.
 function MonitorGrid({
   groupSetupId,
   rows,

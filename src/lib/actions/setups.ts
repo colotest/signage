@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { mediaNames, plural, quote, recordActivity } from "@/lib/activity";
-import { requireSession } from "@/lib/auth/session";
+import { assertGroupVisible, assertScreenVisible, requirePage, type CurrentUser } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   ScreenBackground,
@@ -16,6 +16,25 @@ type Admin = ReturnType<typeof createAdminClient>;
 
 // Edits to a Playback Menu's setup (see 0030): none of these reach a screen
 // on their own — only commitSetup does.
+
+// Playback is for anyone with the Screens page — but only on the screens
+// and groups their roles let them see. Each action checks the setup's owner.
+async function requireSetupAccess(setupId: string): Promise<CurrentUser> {
+  const user = await requirePage("screens");
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("setups").select("screen_id, group_id").eq("id", setupId).single();
+  if (error) throw new Error(error.message);
+  if (data.screen_id !== null) assertScreenVisible(user, data.screen_id);
+  if (data.group_id !== null) assertGroupVisible(user, data.group_id);
+  return user;
+}
+
+async function requireSetupItemAccess(itemId: string): Promise<CurrentUser> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("setup_items").select("setup_id").eq("id", itemId).single();
+  if (error) throw new Error(error.message);
+  return requireSetupAccess(data.setup_id);
+}
 
 // `screen “Lobby”` or `group “Foyer”`, for the activity log.
 async function setupOwner(admin: Admin, setupId: string) {
@@ -37,7 +56,7 @@ export async function addItemsToSetup(
   items: { mediaId: string; durationSeconds?: number }[],
   at: "start" | "end",
 ): Promise<SetupItemWithMedia[]> {
-  const user = await requireSession();
+  const user = await requireSetupAccess(setupId);
   if (items.length === 0) return [];
   const admin = createAdminClient();
 
@@ -83,7 +102,7 @@ export async function addItemsToSetup(
 }
 
 export async function removeSetupItem(itemId: string) {
-  const user = await requireSession();
+  const user = await requireSetupItemAccess(itemId);
   const admin = createAdminClient();
   const { data: removed, error } = await admin
     .from("setup_items")
@@ -102,7 +121,7 @@ export async function removeSetupItem(itemId: string) {
 }
 
 export async function reorderSetup(setupId: string, orderedItemIds: string[]) {
-  const user = await requireSession();
+  const user = await requireSetupAccess(setupId);
   const admin = createAdminClient();
   const { error } = await admin.rpc("reorder_setup_items", { p_setup_id: setupId, p_ids: orderedItemIds });
   if (error) throw new Error(error.message);
@@ -114,7 +133,7 @@ export async function reorderSetup(setupId: string, orderedItemIds: string[]) {
 }
 
 export async function updateSetupItemDuration(itemId: string, durationSeconds: number) {
-  const user = await requireSession();
+  const user = await requireSetupItemAccess(itemId);
   const admin = createAdminClient();
   const { data: updated, error } = await admin
     .from("setup_items")
@@ -143,7 +162,7 @@ export type SetupSettings = {
 };
 
 export async function updateSetupSettings(setupId: string, settings: SetupSettings) {
-  const user = await requireSession();
+  const user = await requireSetupAccess(setupId);
   const admin = createAdminClient();
   const { error } = await admin.from("setups").update(settings).eq("id", setupId);
   if (error) throw new Error(error.message);
@@ -159,7 +178,7 @@ export async function updateSetupSettings(setupId: string, settings: SetupSettin
 // The Playback Menu's checkmark: puts the setup on air, on its screen or on
 // every screen in its group (commit_setup in 0030).
 export async function commitSetup(setupId: string) {
-  const user = await requireSession();
+  const user = await requireSetupAccess(setupId);
   const admin = createAdminClient();
   const { error } = await admin.rpc("commit_setup", { p_setup_id: setupId });
   if (error) throw new Error(error.message);

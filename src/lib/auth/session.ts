@@ -1,10 +1,21 @@
 import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { User, UserRole } from "@/types/domain";
-import { ROLE_RANK } from "./roles";
+import type { Role, User } from "@/types/domain";
+import {
+  canEditOwned,
+  canSeeGroup,
+  canSeeScreen,
+  landingPath,
+  resolveAccess,
+  type Access,
+  type PageKey,
+  type RoleSummary,
+  type UsersPermission,
+} from "./access";
 
 export const SESSION_COOKIE_NAME = "signage_session";
 const SESSION_DURATION = "7d";
@@ -47,45 +58,101 @@ export async function verifySession(token: string | undefined): Promise<string |
   }
 }
 
+// The signed-in user, with their roles and what those add up to.
+export type CurrentUser = User & {
+  access: Access;
+  // The roles they hold — every role, for the super admin.
+  roles: RoleSummary[];
+};
+
 // The user behind this request, looked up fresh (once per request) so a
 // deleted account or a changed role takes effect immediately rather than
 // whenever its cookie runs out.
-export const getCurrentUser = cache(async (): Promise<User | null> => {
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const cookieStore = await cookies();
   const userId = await verifySession(cookieStore.get(SESSION_COOKIE_NAME)?.value);
   if (!userId) return null;
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data: user, error } = await admin
     .from("users")
-    .select("id, email, role, created_at")
+    .select("id, email, nickname, is_super_admin, created_at")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return data;
+  if (!user) return null;
+
+  // The super admin holds every role, including ones made after them.
+  const { data: roleRows, error: rolesError } = user.is_super_admin
+    ? await admin.from("roles").select("id, name, color, access").order("created_at", { ascending: true })
+    : await admin
+        .from("user_roles")
+        .select("role:roles(id, name, color, access, created_at)")
+        .eq("user_id", user.id)
+        .then((result) => ({
+          ...result,
+          data: (result.data ?? [])
+            .map((row) => (row as unknown as { role: Role | null }).role)
+            .filter((role): role is Role => role !== null)
+            .sort((a, b) => a.created_at.localeCompare(b.created_at)),
+        }));
+  if (rolesError) throw new Error(rolesError.message);
+  const roles = roleRows ?? [];
+
+  return {
+    ...user,
+    access: resolveAccess(user.is_super_admin, roles),
+    roles: roles.map(({ id, name, color }) => ({ id, name, color })),
+  };
 });
 
-export function roleRank(role: UserRole): number {
-  return ROLE_RANK[role];
-}
-
-export function isAdmin(user: Pick<User, "role"> | null): boolean {
-  return !!user && roleRank(user.role) >= ROLE_RANK.admin;
-}
-
 // Server Functions are reachable via direct POST requests, not just through
-// the dashboard UI — call this at the top of every mutating Server Action
-// so the app's own session is checked independently of the proxy gate.
-// Returns the user, for the action to record its change against.
-export async function requireSession(): Promise<User> {
+// the dashboard UI — every mutating Server Action starts with one of these,
+// so the app's own session (and the user's roles) are checked
+// independently of the proxy gate and of what the UI chose to show.
+// Each returns the user, for the action to record its change against.
+export async function requireSession(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");
   return user;
 }
 
-// Same, for what only admins (and the super admin) may do. The UI hides
-// these controls from everyone else; this is what actually enforces it.
-export async function requireAdmin(): Promise<User> {
+export async function requirePage(page: PageKey): Promise<CurrentUser> {
   const user = await requireSession();
-  if (!isAdmin(user)) throw new Error("Forbidden");
+  if (!user.access.pages[page]) throw new Error("Forbidden");
+  return user;
+}
+
+// The Screens page's own options: its wrench menus (and adding screens and
+// groups), or rearranging its grid.
+export async function requireScreensPermission(permission: "settings" | "reorder"): Promise<CurrentUser> {
+  const user = await requirePage("screens");
+  if (!user.access.screens[permission]) throw new Error("Forbidden");
+  return user;
+}
+
+export async function requireUsersPermission(permission: UsersPermission): Promise<CurrentUser> {
+  const user = await requirePage("users");
+  if (!user.access.users[permission]) throw new Error("Forbidden");
+  return user;
+}
+
+export function assertScreenVisible(user: CurrentUser, screenId: number) {
+  if (!canSeeScreen(user.access, screenId)) throw new Error("Forbidden");
+}
+
+export function assertGroupVisible(user: CurrentUser, groupId: string) {
+  if (!canSeeGroup(user.access, groupId)) throw new Error("Forbidden");
+}
+
+export function assertCanEdit(user: CurrentUser, item: { ownerId: string | null; editRoleIds: string[] }) {
+  if (!canEditOwned(user, item)) throw new Error("This is limited to roles you don't have.");
+}
+
+// For a page itself: whoever's roles don't reach it is sent to one they do
+// reach (or to the empty /home), rather than shown an error.
+export async function pageViewer(page: PageKey): Promise<CurrentUser> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/logout");
+  if (!user.access.pages[page]) redirect(landingPath(user.access));
   return user;
 }

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser, isAdmin } from "@/lib/auth/session";
+import { getCurrentUser } from "@/lib/auth/session";
 import { ViewerProvider } from "@/lib/auth/ViewerContext";
 import { Header } from "./_components/Header";
 
@@ -18,7 +18,7 @@ export default async function DashboardLayout({
   if (!user) redirect("/logout");
 
   return (
-    <ViewerProvider viewer={{ ...user, isAdmin: isAdmin(user) }}>
+    <ViewerProvider viewer={user}>
       {/* app-shell-height, not plain lvh/svh/dvh — see the root layout for why.
           app-shell: on a phone its blurs go off under a popup, and it
           shrinks back behind one as a native card sheet's page does; app-main:

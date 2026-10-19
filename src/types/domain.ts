@@ -7,7 +7,6 @@ import type {
   ScreenSlideDirection,
   ScreenTransition,
   ScreenTransitionSpeed,
-  UserRole,
 } from "./database.types";
 
 export type {
@@ -18,11 +17,12 @@ export type {
   ScreenSlideDirection,
   ScreenTransition,
   ScreenTransitionSpeed,
-  UserRole,
 };
 
-// A user as the app hands them around — never with their password hash.
-export type User = Omit<Database["public"]["Tables"]["users"]["Row"], "password_hash">;
+// A user as the app hands them around — never with their password hash
+// (nor the unused legacy role column).
+export type User = Omit<Database["public"]["Tables"]["users"]["Row"], "password_hash" | "role">;
+export type Role = Database["public"]["Tables"]["roles"]["Row"];
 export type ActivityEntry = Database["public"]["Tables"]["activity_log"]["Row"];
 
 export type Screen = Database["public"]["Tables"]["screens"]["Row"];

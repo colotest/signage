@@ -2,7 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { plural, quote, recordActivity } from "@/lib/activity";
-import { requireAdmin, requireSession } from "@/lib/auth/session";
+import { canSeeScreen } from "@/lib/auth/access";
+import {
+  assertGroupVisible,
+  assertScreenVisible,
+  requirePage,
+  requireScreensPermission,
+  type CurrentUser,
+} from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MAX_GRID, defaultGrid, regrid } from "@/lib/groups/grid";
 import type { FitMode } from "@/types/domain";
@@ -14,11 +21,19 @@ async function groupName(admin: Admin, id: string) {
   return quote(data?.name);
 }
 
-// Creating, editing and arranging groups is for admins, like the screen
-// wrench menu it mirrors. Playback (the group's menu, Fit/Fill, the
-// play/pause/skip buttons) is for everyone, as it is on a screen.
+// Creating, editing and arranging groups comes with the Screens page's
+// settings, like the screen wrench menu it mirrors — and only for groups
+// (and screens) the user can see. Playback (the group's menu, Fit/Fill,
+// the play/pause/skip buttons) is for anyone who can see the group.
+async function requireGroupSettings(groupId: string): Promise<CurrentUser> {
+  const user = await requireScreensPermission("settings");
+  assertGroupVisible(user, groupId);
+  return user;
+}
+
 export async function createGroup(name: string, screenIds: number[]) {
-  const user = await requireAdmin();
+  const user = await requireScreensPermission("settings");
+  for (const id of screenIds) assertScreenVisible(user, id);
   const trimmed = name.trim() || "New Group";
   const admin = createAdminClient();
   const { rows, cols } = defaultGrid(screenIds.length);
@@ -55,8 +70,9 @@ export async function createGroup(name: string, screenIds: number[]) {
 // "Edit Group": the new set of members. Screens that stay keep their cells;
 // new ones fill the free cells in order, and the grid grows by rows if it
 // runs out.
-export async function setGroupMembers(groupId: string, screenIds: number[]) {
-  const user = await requireAdmin();
+export async function setGroupMembers(groupId: string, requestedIds: number[]) {
+  const user = await requireGroupSettings(groupId);
+  for (const id of requestedIds) assertScreenVisible(user, id);
   const admin = createAdminClient();
   const [{ data: group, error: groupError }, { data: current, error: currentError }] = await Promise.all([
     admin.from("screen_groups").select("grid_rows, grid_cols").eq("id", groupId).single(),
@@ -64,6 +80,13 @@ export async function setGroupMembers(groupId: string, screenIds: number[]) {
   ]);
   if (groupError) throw new Error(groupError.message);
   if (currentError) throw new Error(currentError.message);
+
+  // Members the user can't see weren't in the picker they chose from, so
+  // leaving them out of the list doesn't mean taking them out of the group.
+  const screenIds = [
+    ...(current ?? []).filter((m) => !canSeeScreen(user.access, m.screen_id)).map((m) => m.screen_id),
+    ...requestedIds,
+  ];
 
   const wanted = new Set(screenIds);
   const removed = (current ?? []).filter((m) => !wanted.has(m.screen_id)).map((m) => m.screen_id);
@@ -116,7 +139,7 @@ export async function setGroupMembers(groupId: string, screenIds: number[]) {
 }
 
 export async function renameGroup(groupId: string, name: string) {
-  const user = await requireAdmin();
+  const user = await requireGroupSettings(groupId);
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name cannot be empty");
   const admin = createAdminClient();
@@ -135,7 +158,7 @@ export async function renameGroup(groupId: string, name: string) {
 // they still fit; any that fall outside the new grid move into its free
 // cells, in reading order. Refused if it can't hold every member.
 export async function setGroupGrid(groupId: string, rows: number, cols: number) {
-  const user = await requireAdmin();
+  const user = await requireGroupSettings(groupId);
   if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows < 1 || cols < 1 || rows > MAX_GRID || cols > MAX_GRID) {
     throw new Error("Invalid grid size");
   }
@@ -188,7 +211,7 @@ async function applyGrid(admin: Admin, groupId: string, rows: number, cols: numb
 
 // Drops a member into a cell; whoever was there swaps into its old one.
 export async function moveGroupMember(groupId: string, screenId: number, slot: number) {
-  const user = await requireAdmin();
+  const user = await requireGroupSettings(groupId);
   const admin = createAdminClient();
   const { error } = await admin.rpc("move_group_member", { p_group_id: groupId, p_screen_id: screenId, p_slot: slot });
   if (error) throw new Error(error.message);
@@ -203,7 +226,8 @@ export async function moveGroupMember(groupId: string, screenId: number, slot: n
 // The group card's Fit/Fill pill: a card control, so — like a screen's —
 // it applies straight away, here to every member.
 export async function setGroupFitMode(groupId: string, fitMode: FitMode) {
-  const user = await requireSession();
+  const user = await requirePage("screens");
+  assertGroupVisible(user, groupId);
   const admin = createAdminClient();
   const { data: members, error: membersError } = await admin
     .from("screen_group_members")
@@ -231,7 +255,7 @@ export async function setGroupFitMode(groupId: string, fitMode: FitMode) {
 // The screens keep playing whatever they have; only the grouping (and the
 // group's own setup) goes.
 export async function deleteGroup(groupId: string) {
-  const user = await requireAdmin();
+  const user = await requireGroupSettings(groupId);
   const admin = createAdminClient();
   const { data: deleted, error } = await admin.from("screen_groups").delete().eq("id", groupId).select("name");
   if (error) throw new Error(error.message);
@@ -241,10 +265,31 @@ export async function deleteGroup(groupId: string) {
 
 // Screens and groups share the dashboard grid's order. Keys are
 // "s:<screen id>" or "g:<group id>".
+//
+// The grid a user drags around only holds what they can see, so their new
+// order is laid back into the places those tiles had among all of them:
+// tiles hidden from them keep their own spots.
 export async function reorderDashboard(keys: string[]) {
-  const user = await requireSession();
+  const user = await requireScreensPermission("reorder");
   const admin = createAdminClient();
-  const { error } = await admin.rpc("reorder_dashboard", { p_keys: keys });
+  const [{ data: screens, error: screensError }, { data: groups, error: groupsError }] = await Promise.all([
+    admin.from("screens").select("id, position"),
+    admin.from("screen_groups").select("id, position, created_at"),
+  ]);
+  if (screensError) throw new Error(screensError.message);
+  if (groupsError) throw new Error(groupsError.message);
+  const all = [
+    ...(screens ?? []).map((s) => ({ key: `s:${s.id}`, position: s.position })),
+    ...(groups ?? []).map((g) => ({ key: `g:${g.id}`, position: g.position })),
+  ].sort((a, b) => a.position - b.position);
+  const visible = (key: string) =>
+    key.startsWith("s:") ? canSeeScreen(user.access, Number(key.slice(2))) : !user.access.screens.hiddenGroups.includes(key.slice(2));
+  const known = new Set(all.map((t) => t.key));
+  const moved = keys.filter((key) => known.has(key) && visible(key));
+  const queue = [...moved];
+  const merged = all.map((t) => (visible(t.key) && moved.includes(t.key) ? queue.shift()! : t.key));
+
+  const { error } = await admin.rpc("reorder_dashboard", { p_keys: merged });
   if (error) throw new Error(error.message);
   recordActivity(user, { action: "screens.reorder", target: "screens", summary: "Reordered the screens" });
   revalidatePath("/dashboard");

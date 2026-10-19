@@ -3,7 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { folderName, quote, recordActivity } from "@/lib/activity";
-import { requireSession } from "@/lib/auth/session";
+import { requirePage } from "@/lib/auth/session";
+import { requireEditable } from "@/lib/auth/owned";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { repointMediaItem } from "@/lib/uploads/replace";
 import type { MediaType } from "@/types/domain";
@@ -27,7 +28,7 @@ export async function createUploadUrl({
   filename: string;
   contentType: string;
 }) {
-  await requireSession();
+  await requirePage("media");
   const mediaType = mediaTypeFromMime(contentType);
 
   const mediaItemId = randomUUID();
@@ -70,7 +71,7 @@ export async function finalizeMediaUpload({
   height: number | null;
   durationSeconds: number | null;
 }) {
-  const user = await requireSession();
+  const user = await requirePage("media");
   const admin = createAdminClient();
   const { error } = await admin.from("media_items").insert({
     id: mediaItemId,
@@ -103,7 +104,7 @@ export async function createReplaceUploadUrl({
   filename: string;
   contentType: string;
 }) {
-  await requireSession();
+  await requirePage("media");
   const mediaType = mediaTypeFromMime(contentType);
 
   const ext = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")) : "";
@@ -142,7 +143,7 @@ export async function finalizeMediaReplace({
   height: number | null;
   durationSeconds: number | null;
 }) {
-  const user = await requireSession();
+  const user = await requireEditable("media", mediaItemId);
   const admin = createAdminClient();
 
   const { data: existing, error: fetchError } = await admin
@@ -169,7 +170,7 @@ export async function finalizeMediaReplace({
 }
 
 export async function renameMediaItem(id: string, name: string) {
-  const user = await requireSession();
+  const user = await requireEditable("media", id);
   const admin = createAdminClient();
   const { data: before } = await admin.from("media_items").select("name").eq("id", id).maybeSingle();
   const { error } = await admin.from("media_items").update({ name }).eq("id", id);
@@ -184,7 +185,7 @@ export async function renameMediaItem(id: string, name: string) {
 }
 
 export async function moveMediaItem(id: string, folderId: string | null) {
-  const user = await requireSession();
+  const user = await requireEditable("media", id);
   const admin = createAdminClient();
   const { data: moved, error } = await admin
     .from("media_items")
@@ -201,7 +202,7 @@ export async function moveMediaItem(id: string, folderId: string | null) {
 }
 
 export async function deleteMediaItem(id: string) {
-  const user = await requireSession();
+  const user = await requireEditable("media", id);
   const admin = createAdminClient();
 
   const { data: item, error: fetchError } = await admin
