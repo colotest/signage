@@ -1023,11 +1023,12 @@ export function PlaybackMenu({
             clipped by its own box. pb-[90px] on a phone: the sheet is
             full-screen there, and this is the same clearance the Library
             page keeps for iOS Safari's floating toolbar
-            (safari-toolbar-inset). */}
+            (safari-toolbar-inset) — installed to the Home Screen, just
+            the home indicator's. */}
         <div className="relative -mx-5 flex min-h-0 flex-1 flex-col" style={{ marginTop: -HEADER_TUCK }}>
           <div
             ref={pageRef}
-            className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[90px] sm:pb-5"
+            className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[90px] standalone:pb-[calc(env(safe-area-inset-bottom,0px)+20px)] sm:pb-5"
             style={{ paddingTop: HEADER_TUCK }}
           >
             {/* The file browser — the scroll view's first section while
