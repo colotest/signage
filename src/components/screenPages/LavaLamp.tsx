@@ -53,32 +53,39 @@ const STAGE = 1 / 3;
 const BLUR_RATIO = 0.046;
 const ALPHA_GAIN = 19;
 const ALPHA_BIAS = -8;
-// The halo: the merged silhouette blurred again, tinted hot and laid back
-// underneath the wax, so light appears to carry past the edge of a blob
-// instead of stopping at it. Wider than the goo blur, and the filter region
-// has to be opened up or it would be clipped at the layer's edge.
-// Spread wide and kept weak: a tight halo against the wax's hard edge drew
-// a bright hairline right around every shape, which read as a soap film.
-const HALO_RATIO = 0.115;
-const HALO_STRENGTH = 0.4;
-// The volume. Each blob is filled flat, and every bit of roundness comes
-// from lighting the merged shape as one body: its alpha, softened into a
-// height map, is lit by a point light sitting under the vessel where the
-// bulb is. That is what makes two blobs running into each other read as one
-// irregular mass of wax rather than as two discs overlapping — shading a
-// blob individually leaves its own core sitting visibly on top of the
-// other, however well the outlines merge.
-const RELIEF_RATIO = 0.075;
-const SURFACE_RATIO = 0.045;
-const LIGHT_COLOUR = "#ffd7ab";
-// Diffuse lighting on its own falls to black wherever a surface turns away
-// from the light, which put a hard dark crescent along the top of every
-// blob — and being the sharpest thing on screen, it was also where the
-// upscale's stair-stepping showed. These compress the lighting into a
-// narrow band well clear of black, which is what wax in a lit vessel
-// actually does: it is never unlit, only less lit.
-const SHADE_RANGE = 0.62;
-const SHADE_FLOOR = 0.42;
+// One soft copy of the merged silhouette, read three ways: as the wax's own
+// thickness, as the band of thin wax around its edge, and as the halo
+// beyond it. Blurring the merged alpha gives a field that stands at full
+// height deep inside the mass, passes through half at the edge and falls
+// away outside — near enough a measure of how much wax the light has to
+// cross at each point, and the only thing any of the shading below needs.
+//
+// It costs one blur. Lighting the same field properly (feDiffuseLighting
+// with a point light under the vessel) was the obvious way to do this and
+// is what the previous version did: it cost a second blur and much the
+// most expensive primitive in the filter, dropped the frame rate on the
+// sticks, and looked no more like wax for it.
+// How wide the depth field's gradient is, and so how broad the lit rim
+// reads: too wide and a blob is all rim, a pale ring round a dark middle.
+const RELIEF_RATIO = 0.05;
+// Thick wax swallows light, so the middle of a mass goes deeper than its
+// flat fill. Blue falls fastest, which keeps the shadow warm.
+const DENSITY = [0.3, 0.36, 0.44] as const;
+// Thin wax at the rim lets it through. The table is read across the depth
+// field: nothing outside the shape, a peak where the wax is thin, and down
+// to nothing again deep inside. This is the bevel, and taking it off the
+// merged shape rather than off each blob is what carries it unbroken
+// across a join.
+// Read across the depth field from outside the shape (0) to deep within
+// it (1): nothing beyond the edge, a peak just inside it where the wax is
+// thin, and gone again before the middle.
+const RIM_BAND = "0 0 0.3 0.85 1 0.35 0";
+const RIM_COLOUR = "#ffbb6e";
+const RIM_STRENGTH = 0.5;
+// The halo beyond the edge, tinted hot and laid back underneath the wax, so
+// light appears to carry past a blob instead of stopping at it. The filter
+// region has to be opened up or it would be clipped at the layer's edge.
+const HALO_STRENGTH = 0.32;
 
 // The lamp's own vessel. Deliberately not the screen's black/white
 // background setting: a lava lamp is a dark vessel, and a white one isn't
@@ -236,9 +243,7 @@ export function LavaLamp() {
   const stageHeight = size.height * STAGE;
   const short = Math.min(stageWidth, stageHeight);
   const blur = short * BLUR_RATIO;
-  const halo = short * HALO_RATIO;
   const relief = short * RELIEF_RATIO;
-  const surface = short * SURFACE_RATIO;
 
   return (
     <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
@@ -246,12 +251,14 @@ export function LavaLamp() {
 
       {/* The filter itself draws nothing; it only lends its id to the layer
           below. Blur, then a matrix that leaves R, G and B untouched and
-          multiplies alpha — that pair is the merging. The rest is the
-          halo: the merged shape blurred wide, pushed hot and amber by a
-          second matrix, and laid back under the wax it came from. */}
+          multiplies alpha — that pair is the merging. One more blur gives
+          the depth field, and everything after it is per-pixel arithmetic
+          reading that field: the body's density, the lit rim, the halo. */}
       <svg aria-hidden className="pointer-events-none absolute h-0 w-0">
         <defs>
-          <filter id={gooId} x="-25%" y="-25%" width="150%" height="150%">
+          {/* Opened up just enough for the halo to spread into: the region is
+                filtered in full, so every percent of it is work. */}
+          <filter id={gooId} x="-14%" y="-14%" width="128%" height="128%">
             <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="pooled" />
             <feColorMatrix
               in="pooled"
@@ -259,50 +266,35 @@ export function LavaLamp() {
               values={`1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${ALPHA_GAIN} ${ALPHA_BIAS}`}
               result="wax"
             />
-            {/* The body. Softening the merged alpha gives a height map
-                that rises to a plateau across the middle of the mass and
-                rolls off at every edge, including the saddle where two
-                blobs have run together; lighting that from under the
-                vessel turns the whole silhouette — necks and all — into
-                one rounded body, lit from below like the wax it is. */}
-            <feGaussianBlur in="wax" stdDeviation={relief} result="relief" />
-            <feDiffuseLighting
-              in="relief"
-              surfaceScale={surface}
-              diffuseConstant="1.05"
-              lightingColor={LIGHT_COLOUR}
-              result="lighting"
-            >
-              {/* Under the vessel and well forward: a grazing light draws
-                  a hard terminator across each blob, a frontal one rounds
-                  them. */}
-              <fePointLight x={stageWidth / 2} y={stageHeight * 1.12} z={stageHeight * 0.85} />
-            </feDiffuseLighting>
-            <feComponentTransfer in="lighting" result="softened">
-              <feFuncR type="linear" slope={SHADE_RANGE} intercept={SHADE_FLOOR} />
-              <feFuncG type="linear" slope={SHADE_RANGE} intercept={SHADE_FLOOR} />
-              <feFuncB type="linear" slope={SHADE_RANGE} intercept={SHADE_FLOOR} />
-            </feComponentTransfer>
-            {/* Lighting comes back opaque and square. Multiplying it into
-                the wax in premultiplied space both clips it to the shape
-                and shades it in one step — clipping it and then blending
-                it over left a bright hairline right around every edge,
-                where an antialiased pixel took full lighting over
-                half-present wax. */}
-            <feComposite
-              in="softened"
-              in2="wax"
-              operator="arithmetic"
-              k1="1"
-              k2="0"
-              k3="0"
-              k4="0"
-              result="shaded"
-            />
+            {/* How much wax the light has to cross, everywhere at once. */}
+            <feGaussianBlur in="wax" stdDeviation={relief} result="depth" />
 
-            <feGaussianBlur in="wax" stdDeviation={halo} result="spread" />
+            {/* Deep wax, darker. The matrix turns that depth into a
+                multiplier — 1 where there is no wax, down to 1 - DENSITY
+                where it is thickest — and multiplying it into the wax in
+                premultiplied space shades and clips in the one step. */}
             <feColorMatrix
-              in="spread"
+              in="depth"
+              type="matrix"
+              values={`0 0 0 ${-DENSITY[0]} 1  0 0 0 ${-DENSITY[1]} 1  0 0 0 ${-DENSITY[2]} 1  0 0 0 0 1`}
+              result="density"
+            />
+            <feComposite in="density" in2="wax" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="dense" />
+
+            {/* Thin wax at the rim, lit. The band is a slice of the same
+                depth field, flooded amber and screened back over the
+                body — the bevel, running unbroken around whatever shape
+                the blobs have made between them. */}
+            <feComponentTransfer in="depth" result="band">
+              <feFuncA type="table" tableValues={RIM_BAND} />
+            </feComponentTransfer>
+            <feFlood floodColor={RIM_COLOUR} floodOpacity={RIM_STRENGTH} result="rimColour" />
+            <feComposite in="rimColour" in2="band" operator="in" result="rim" />
+            <feBlend in="rim" in2="dense" mode="screen" result="lifted" />
+            <feComposite in="lifted" in2="wax" operator="in" result="shaded" />
+
+            <feColorMatrix
+              in="depth"
               type="matrix"
               // Weighted towards red: an even warm lift took the halo
               // yellow-green, which read as a fluorescent tube rather than
