@@ -91,7 +91,12 @@ const DENSITY = [0.62, 0.74, 0.88] as const;
 // the merged shape rather than off each blob is what carries the bevel
 // unbroken across a join.
 const RIM_COLOUR = [1, 0.86, 0.55] as const;
-const RIM_STRENGTH = 1.25;
+const RIM_STRENGTH = 1.7;
+// A second light, over the vessel, at half the strength of the bulb under
+// it. It needs no shift of its own: the same two images that give the
+// underside give the top edge with the operands the other way round, so
+// this costs two sums and nothing else.
+const TOP_LIGHT = 0.5;
 // The glow beyond the wax's edge, off the same pooled field. The filter
 // region has to leave it room to spread into.
 const HALO_STRENGTH = 0.55;
@@ -308,11 +313,25 @@ export function LavaLamp() {
                 the wax and negative along the top, where it clamps away. */}
             <feOffset in="pooled" dx="0" dy={lift} result="lowered" />
             <feComposite in="lowered" in2="pooled" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0" result="underside" />
+            {/* The same difference the other way about is positive along
+                the top of the wax, where the other one clamped away: the
+                light above, carried at TOP_LIGHT of the one below. */}
+            <feComposite in="pooled" in2="lowered" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0" result="topside" />
+            <feComposite
+              in="underside"
+              in2="topside"
+              operator="arithmetic"
+              k1="0"
+              k2="1"
+              k3={TOP_LIGHT}
+              k4="0"
+              result="lights"
+            />
             {/* Flat amber at the strength of that difference: constant
                 colour out of a slope of nought, alpha straight off the
                 difference, screened onto the body in premultiplied space,
                 which is one pass rather than a blend. */}
-            <feComponentTransfer in="underside" result="rim">
+            <feComponentTransfer in="lights" result="rim">
               <feFuncR type="linear" slope="0" intercept={RIM_COLOUR[0]} />
               <feFuncG type="linear" slope="0" intercept={RIM_COLOUR[1]} />
               <feFuncB type="linear" slope="0" intercept={RIM_COLOUR[2]} />
