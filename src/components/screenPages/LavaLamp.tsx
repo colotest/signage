@@ -92,11 +92,24 @@ const DENSITY = [0.62, 0.74, 0.88] as const;
 // unbroken across a join.
 const RIM_COLOUR = [1, 0.86, 0.55] as const;
 const RIM_STRENGTH = 1.25;
+// The glow beyond the wax's edge, off the same pooled field. The filter
+// region has to leave it room to spread into.
+const HALO_STRENGTH = 0.55;
 
 // The lamp's own vessel. Deliberately not the screen's black/white
 // background setting: a lava lamp is a dark vessel, and a white one isn't
 // one.
 const GROUND = "#17031a";
+// Every blob is this one colour, flat — which is also what lets two of them
+// become one, since the merging blur mixes colour as well as alpha and
+// there is nothing left to mix. What varies is not the wax but the light
+// reaching it: the ramp below multiplies over the whole vessel, so a blob
+// is at full strength down by the bulb and sinks towards the vessel's own
+// dark as it climbs away from it. One blob crossing the screen passes
+// through the entire range on its own.
+const WAX = "#ff6a12";
+const HEIGHT_RAMP =
+  "linear-gradient(to top, rgba(255, 255, 255, 1) 0%, rgba(255, 216, 190, 1) 18%, rgba(216, 134, 124, 1) 44%, rgba(148, 66, 94, 1) 72%, rgba(104, 40, 78, 1) 100%)";
 // The lamp itself, below the glass: a hot pool at the base and the cone it
 // throws up through the vessel.
 // Carries the glow the filter used to spread around each blob: a halo in
@@ -123,37 +136,23 @@ type Blob = {
   duration: number;
   delay: number;
   // How far it travels and sways, as fractions of the screen's height and
-  // width, and its own colour.
+  // width.
   travel: number;
   sway: number;
-  colour: string;
 };
 
-// One flat colour each, and the lighting pass does the rest. Flat is what
-// lets two of them become one: the merging blur mixes colour as well as
-// alpha, so where blobs meet their fills run together smoothly and the
-// result is a single body of wax in a colour between the two. A gradient
-// fill survives that blur — its core is too big a feature to be smeared
-// away — and stays legible as its own disc inside the merged outline, which
-// is what made overlaps read as passing rather than joining.
-//
-// Brighter than the old core colours, since the lighting below can only
-// take them down from here.
-const AMBER = "#ff9e00" as const;
-const EMBER = "#ff4d16" as const;
-const DEEP = "#ff1361" as const;
 
 const BLOBS: Blob[] = [
-  { x: 0.26, y: 0.74, size: 0.3, motion: "rise", duration: 94, delay: -3, travel: 0.74, sway: 0.09, colour: AMBER },
-  { x: 0.62, y: 0.8, size: 0.4, motion: "rise", duration: 135, delay: -31, travel: 0.86, sway: -0.12, colour: EMBER },
-  { x: 0.46, y: 0.5, size: 0.46, motion: "swell", duration: 110, delay: -17, travel: 0.34, sway: 0.07, colour: DEEP },
-  { x: 0.12, y: 0.32, size: 0.22, motion: "fall", duration: 121, delay: -44, travel: 0.66, sway: 0.13, colour: EMBER },
-  { x: 0.86, y: 0.28, size: 0.28, motion: "fall", duration: 154, delay: -12, travel: 0.78, sway: -0.08, colour: DEEP },
-  { x: 0.4, y: 0.14, size: 0.17, motion: "fall", duration: 80, delay: -27, travel: 0.54, sway: 0.16, colour: AMBER },
-  { x: 0.76, y: 0.54, size: 0.2, motion: "rise", duration: 103, delay: -39, travel: 0.62, sway: -0.15, colour: AMBER },
-  { x: 0.08, y: 0.62, size: 0.15, motion: "rise", duration: 72, delay: -9, travel: 0.48, sway: 0.11, colour: AMBER },
-  { x: 0.94, y: 0.68, size: 0.24, motion: "swell", duration: 126, delay: -52, travel: 0.4, sway: -0.1, colour: EMBER },
-  { x: 0.58, y: 0.22, size: 0.13, motion: "fall", duration: 88, delay: -21, travel: 0.44, sway: -0.14, colour: AMBER },
+  { x: 0.26, y: 0.74, size: 0.3, motion: "rise", duration: 94, delay: -3, travel: 0.74, sway: 0.09 },
+  { x: 0.62, y: 0.8, size: 0.4, motion: "rise", duration: 135, delay: -31, travel: 0.86, sway: -0.12 },
+  { x: 0.46, y: 0.5, size: 0.46, motion: "swell", duration: 110, delay: -17, travel: 0.34, sway: 0.07 },
+  { x: 0.12, y: 0.32, size: 0.22, motion: "fall", duration: 121, delay: -44, travel: 0.66, sway: 0.13 },
+  { x: 0.86, y: 0.28, size: 0.28, motion: "fall", duration: 154, delay: -12, travel: 0.78, sway: -0.08 },
+  { x: 0.4, y: 0.14, size: 0.17, motion: "fall", duration: 80, delay: -27, travel: 0.54, sway: 0.16 },
+  { x: 0.76, y: 0.54, size: 0.2, motion: "rise", duration: 103, delay: -39, travel: 0.62, sway: -0.15 },
+  { x: 0.08, y: 0.62, size: 0.15, motion: "rise", duration: 72, delay: -9, travel: 0.48, sway: 0.11 },
+  { x: 0.94, y: 0.68, size: 0.24, motion: "swell", duration: 126, delay: -52, travel: 0.4, sway: -0.1 },
+  { x: 0.58, y: 0.22, size: 0.13, motion: "fall", duration: 88, delay: -21, travel: 0.44, sway: -0.14 },
 ];
 
 // Slow. A lava lamp takes minutes to turn itself over, and at a frame rate
@@ -274,10 +273,10 @@ export function LavaLamp() {
           fraction of what another blur would. */}
       <svg aria-hidden className="pointer-events-none absolute h-0 w-0">
         <defs>
-          {/* Barely opened up at all, now that nothing spreads beyond the
-              wax: the region is filtered in full, so every percent of it is
-              work on every frame. */}
-          <filter id={gooId} x="-6%" y="-6%" width="112%" height="112%">
+          {/* Opened up just enough for the glow to spread into: the region
+              is filtered in full, so every percent of it is work on every
+              frame. */}
+          <filter id={gooId} x="-9%" y="-9%" width="118%" height="118%">
             <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="pooled" />
             <feColorMatrix
               in="pooled"
@@ -325,6 +324,21 @@ export function LavaLamp() {
             <feComposite in="rim" in2="wax" operator="in" result="litEdge" />
             <feComposite in="litEdge" in2="dense" operator="arithmetic" k1="-1" k2="1" k3="1" k4="0" result="shaded" />
 
+            {/* The glow around each mass, laid back underneath it. The
+                pooled field already reaches past the wax — that is what
+                merging uses — so this is a tint and a merge, with no blur
+                of its own. It used to cost one, which is why it went. */}
+            <feColorMatrix
+              in="pooled"
+              type="matrix"
+              values={`1.5 0.2 0 0 0  0.4 0.42 0 0 0  0.3 0.1 0.4 0 0  0 0 0 ${HALO_STRENGTH} 0`}
+              result="glow"
+            />
+            <feMerge>
+              <feMergeNode in="glow" />
+              <feMergeNode in="shaded" />
+            </feMerge>
+
           </filter>
         </defs>
       </svg>
@@ -362,7 +376,7 @@ export function LavaLamp() {
                   // covering it (see BLOB_ALPHA): two blobs crossing make a
                   // field twice as high, which is what lets the merged mass
                   // come out bigger than the union of the two.
-                  background: blob.colour,
+                  background: WAX,
                   opacity: BLOB_ALPHA,
                   mixBlendMode: "plus-lighter",
                   ...(composited
@@ -383,10 +397,21 @@ export function LavaLamp() {
         </div>
       )}
 
+      {/* The one colour the wax is, graded by where it has got to in the
+          vessel: multiplied over everything under it, so a blob reads at
+          full strength by the bulb and sinks into the vessel's dark as it
+          rises. Over the ground, which is nearly black already, it barely
+          registers. */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: HEIGHT_RAMP, mixBlendMode: "multiply" }}
+      />
+
       {/* The light itself, and what it does to everything above it. All of
           these sit outside the filtered layer, so none of them is dragged
           through the alpha push, and all are static: one paint each and
-          nothing after that. */}
+          nothing after that. The ramp above cannot touch them — they are
+          the lamp, not the wax. */}
       <div className="pointer-events-none absolute inset-0" style={{ background: GLOW }} />
       <div
         className="pointer-events-none absolute inset-0"
