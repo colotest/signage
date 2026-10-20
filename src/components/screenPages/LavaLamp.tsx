@@ -57,8 +57,28 @@ const ALPHA_BIAS = -8;
 // underneath the wax, so light appears to carry past the edge of a blob
 // instead of stopping at it. Wider than the goo blur, and the filter region
 // has to be opened up or it would be clipped at the layer's edge.
-const HALO_RATIO = 0.075;
-const HALO_STRENGTH = 0.5;
+// Spread wide and kept weak: a tight halo against the wax's hard edge drew
+// a bright hairline right around every shape, which read as a soap film.
+const HALO_RATIO = 0.115;
+const HALO_STRENGTH = 0.4;
+// The volume. Each blob is filled flat, and every bit of roundness comes
+// from lighting the merged shape as one body: its alpha, softened into a
+// height map, is lit by a point light sitting under the vessel where the
+// bulb is. That is what makes two blobs running into each other read as one
+// irregular mass of wax rather than as two discs overlapping — shading a
+// blob individually leaves its own core sitting visibly on top of the
+// other, however well the outlines merge.
+const RELIEF_RATIO = 0.075;
+const SURFACE_RATIO = 0.045;
+const LIGHT_COLOUR = "#ffd7ab";
+// Diffuse lighting on its own falls to black wherever a surface turns away
+// from the light, which put a hard dark crescent along the top of every
+// blob — and being the sharpest thing on screen, it was also where the
+// upscale's stair-stepping showed. These compress the lighting into a
+// narrow band well clear of black, which is what wax in a lit vessel
+// actually does: it is never unlit, only less lit.
+const SHADE_RANGE = 0.62;
+const SHADE_FLOOR = 0.42;
 
 // The lamp's own vessel. Deliberately not the screen's black/white
 // background setting: a lava lamp is a dark vessel, and a white one isn't
@@ -90,18 +110,22 @@ type Blob = {
   // width, and its own colour.
   travel: number;
   sway: number;
-  colour: readonly [string, string, string];
+  colour: string;
 };
 
-// Core, body, rim — and the core is the *deepest* of the three. Light
-// coming from under the lamp has the most wax to cross through the middle
-// of a blob and the least at its edges, so it is absorbed into a dense
-// centre and escapes around the rim. That difference across the body is
-// what gives a blob its roundness; an even fill, however warm, reads as a
-// flat disc, and a bright centre reads as a lamp painted on a ball.
-const AMBER = ["#a82d16", "#e35d1e", "#ffc077"] as const;
-const EMBER = ["#8d1a17", "#d14a1d", "#ffa455"] as const;
-const DEEP = ["#640d20", "#b0301b", "#f3833c"] as const;
+// One flat colour each, and the lighting pass does the rest. Flat is what
+// lets two of them become one: the merging blur mixes colour as well as
+// alpha, so where blobs meet their fills run together smoothly and the
+// result is a single body of wax in a colour between the two. A gradient
+// fill survives that blur — its core is too big a feature to be smeared
+// away — and stays legible as its own disc inside the merged outline, which
+// is what made overlaps read as passing rather than joining.
+//
+// Brighter than the old core colours, since the lighting below can only
+// take them down from here.
+const AMBER = "#f5712a" as const;
+const EMBER = "#e3561f" as const;
+const DEEP = "#c43a1b" as const;
 
 const BLOBS: Blob[] = [
   { x: 0.26, y: 0.74, size: 0.3, motion: "rise", duration: 54, delay: -3, travel: 0.74, sway: 0.09, colour: AMBER },
@@ -213,6 +237,8 @@ export function LavaLamp() {
   const short = Math.min(stageWidth, stageHeight);
   const blur = short * BLUR_RATIO;
   const halo = short * HALO_RATIO;
+  const relief = short * RELIEF_RATIO;
+  const surface = short * SURFACE_RATIO;
 
   return (
     <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
@@ -233,6 +259,47 @@ export function LavaLamp() {
               values={`1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${ALPHA_GAIN} ${ALPHA_BIAS}`}
               result="wax"
             />
+            {/* The body. Softening the merged alpha gives a height map
+                that rises to a plateau across the middle of the mass and
+                rolls off at every edge, including the saddle where two
+                blobs have run together; lighting that from under the
+                vessel turns the whole silhouette — necks and all — into
+                one rounded body, lit from below like the wax it is. */}
+            <feGaussianBlur in="wax" stdDeviation={relief} result="relief" />
+            <feDiffuseLighting
+              in="relief"
+              surfaceScale={surface}
+              diffuseConstant="1.05"
+              lightingColor={LIGHT_COLOUR}
+              result="lighting"
+            >
+              {/* Under the vessel and well forward: a grazing light draws
+                  a hard terminator across each blob, a frontal one rounds
+                  them. */}
+              <fePointLight x={stageWidth / 2} y={stageHeight * 1.12} z={stageHeight * 0.85} />
+            </feDiffuseLighting>
+            <feComponentTransfer in="lighting" result="softened">
+              <feFuncR type="linear" slope={SHADE_RANGE} intercept={SHADE_FLOOR} />
+              <feFuncG type="linear" slope={SHADE_RANGE} intercept={SHADE_FLOOR} />
+              <feFuncB type="linear" slope={SHADE_RANGE} intercept={SHADE_FLOOR} />
+            </feComponentTransfer>
+            {/* Lighting comes back opaque and square. Multiplying it into
+                the wax in premultiplied space both clips it to the shape
+                and shades it in one step — clipping it and then blending
+                it over left a bright hairline right around every edge,
+                where an antialiased pixel took full lighting over
+                half-present wax. */}
+            <feComposite
+              in="softened"
+              in2="wax"
+              operator="arithmetic"
+              k1="1"
+              k2="0"
+              k3="0"
+              k4="0"
+              result="shaded"
+            />
+
             <feGaussianBlur in="wax" stdDeviation={halo} result="spread" />
             <feColorMatrix
               in="spread"
@@ -245,7 +312,7 @@ export function LavaLamp() {
             />
             <feMerge>
               <feMergeNode in="glow" />
-              <feMergeNode in="wax" />
+              <feMergeNode in="shaded" />
             </feMerge>
           </filter>
         </defs>
@@ -280,21 +347,11 @@ export function LavaLamp() {
                   width: diameter,
                   height: diameter,
                   borderRadius: "50%",
-                  // Opaque to its own rim: the blur is what softens an
-                  // edge here, and the alpha push is what hardens it again
-                  // where two of them have pooled together.
-                  //
-                  // Two passes, depth then direction. The radial one is the
-                  // wax's own thickness, dense in the middle and thinning
-                  // to a lit rim. The upward one on top of it is the bulb
-                  // underneath, lifting the underside of every blob — which
-                  // is what keeps a round blob from looking like a ring.
-                  // Still no highlight anywhere: a tight bright spot is a
-                  // reflection, and one was enough to turn these glassy.
-                  background: [
-                    `linear-gradient(to top, rgba(255, 196, 124, 0.38) 0%, rgba(255, 170, 96, 0.12) 32%, rgba(255, 150, 80, 0) 66%)`,
-                    `radial-gradient(circle closest-side at 50% 50%, ${blob.colour[0]} 0%, ${blob.colour[1]} 68%, ${blob.colour[2]} 100%)`,
-                  ].join(", "),
+                  // Flat, and opaque to its own rim: the blur is what
+                  // softens an edge here, the alpha push is what hardens it
+                  // again where two have pooled together, and the lighting
+                  // pass is what gives the result its roundness.
+                  background: blob.colour,
                   ...(composited
                     ? {
                         animation: `colo-lava-${blob.motion} ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
