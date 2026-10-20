@@ -18,6 +18,12 @@ const DIALS: { key: keyof LavaTuning; label: string; min: number; max: number; s
   { key: "haloStrength", label: "Translucence", min: 0, max: 1, step: 0.02, note: "The glow outside the edge and the light inside it, together." },
   { key: "density", label: "Wax density", min: 0, max: 1.6, step: 0.05, note: "How much thick wax swallows light — the dark through a blob's middle." },
   { key: "speed", label: "Slowness", min: 0.3, max: 3, step: 0.05, note: "Multiplies every drift's duration. Above 1 is slower." },
+  { key: "waxHue", label: "Wax hue", min: 0, max: 360, step: 1, note: "The one colour every blob is, before the vessel's light reaches it." },
+  { key: "waxSaturation", label: "Wax saturation", min: 0, max: 100, step: 1, note: "How far from grey that colour sits." },
+  { key: "waxLightness", label: "Wax lightness", min: 20, max: 80, step: 0.5, note: "How bright it is at the bottom of the vessel, before anything darkens it." },
+  { key: "rampDepth", label: "Gradient depth", min: 0, max: 1.8, step: 0.05, note: "How far into the vessel's dark a blob sinks as it rises. Zero is one flat colour top to bottom." },
+  { key: "rampStart", label: "Gradient start", min: 0, max: 0.7, step: 0.02, note: "How far up the screen the darkening begins. Higher keeps the lower half at full strength." },
+  { key: "lightDrop", label: "Light drop", min: -6, max: 22, step: 1, note: "How far below the bottom edge the bulb's centre sits, in percent of the height." },
 ];
 
 export function LavaTuner() {

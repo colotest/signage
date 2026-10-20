@@ -115,7 +115,13 @@ const TOP_LIGHT = 0.5;
 // sits at a quarter. Screened over the finished wax rather than merged
 // under it, which is what lets one band do both sides: outside the shape it
 // falls on the background as a halo, inside it lights the body.
-const HALO_BAND = [0, 0.1, 0.46, 0.9, 0.26, 0.04, 0, 0, 0, 0, 0];
+//
+// Pinned tightly either side of the cut, and all but gone by a third.
+// Spread any wider and it lights more than an edge: a neck between two
+// blobs that have just met stands at about a third of the field for its
+// whole width, so a band still strong there lights the entire join and the
+// merge reads brighter than either blob — which is not what thin wax does.
+const HALO_BAND = [0, 0.14, 0.82, 0.86, 0.1, 0, 0, 0, 0, 0, 0];
 const HALO_COLOUR = [1, 0.45, 0.2] as const;
 const HALO_STRENGTH = 0.34;
 
@@ -144,16 +150,48 @@ const GROUND = "#17031a";
 // grew *more* saturated as it darkened. Laying a dark red over it does the
 // same thing — red survives the blend, green and blue give way — which is
 // where the glow in the deep end of the vessel comes from.
-const WAX = "#ff6a12";
-const HEIGHT_RAMP =
-  "linear-gradient(to top, rgba(52, 6, 26, 0) 0%, rgba(50, 6, 26, 0.06) 22%, rgba(46, 5, 26, 0.26) 48%, rgba(34, 4, 24, 0.58) 76%, rgba(24, 3, 20, 0.78) 100%)";
+// Held as hue, saturation and lightness so the tuner can move them: this
+// is #ff6a12, the orange it has been since the neon pass.
+const WAX_HUE = 22;
+const WAX_SATURATION = 100;
+const WAX_LIGHTNESS = 53.5;
+// Where the darkening starts, as a fraction of the way up, and the stops
+// from there to the top: each is how far along that span it sits, the
+// colour it lays over, and how much of it.
+const RAMP_START = 0;
+const RAMP_STOPS: [number, string, number][] = [
+  [0, "52, 6, 26", 0],
+  [0.22, "50, 6, 26", 0.06],
+  [0.48, "46, 5, 26", 0.26],
+  [0.76, "34, 4, 24", 0.58],
+  [1, "24, 3, 20", 0.78],
+];
+
+function heightRamp(start: number, depth: number) {
+  const stops = RAMP_STOPS.map(
+    ([at, colour, alpha]) =>
+      `rgba(${colour}, ${Math.min(alpha * depth, 1)}) ${Math.round((start + at * (1 - start)) * 100)}%`,
+  );
+  return `linear-gradient(to top, ${stops.join(", ")})`;
+}
 // The lamp itself, below the glass: a hot pool at the base and the cone it
 // throws up through the vessel.
 // Carries the glow the filter used to spread around each blob: a halo in
 // there cost a colour matrix and a merge on every frame, and this is a
 // static paint that costs one.
-const GLOW = "radial-gradient(74% 48% at 50% 103%, rgba(255, 104, 104, 0.5) 0%, rgba(255, 66, 118, 0.16) 44%, rgba(220, 40, 140, 0) 78%)";
-const LAMP = "radial-gradient(44% 17% at 50% 100%, rgba(255, 244, 214, 0.92) 0%, rgba(255, 170, 90, 0.55) 36%, rgba(255, 70, 120, 0) 100%)";
+// How far below the bottom edge the bulb's centre sits, in percent of the
+// height: at zero it straddles the edge and reads as a light lying on the
+// floor of the screen, and a few percent under puts the source off-screen
+// where a lamp's own bulb would be.
+const LIGHT_DROP = 5;
+
+function glow(drop: number) {
+  return `radial-gradient(74% 48% at 50% ${100 + drop}%, rgba(255, 104, 104, 0.5) 0%, rgba(255, 66, 118, 0.16) 44%, rgba(220, 40, 140, 0) 78%)`;
+}
+
+function lamp(drop: number) {
+  return `radial-gradient(44% 17% at 50% ${100 + drop}%, rgba(255, 244, 214, 0.92) 0%, rgba(255, 170, 90, 0.55) 36%, rgba(255, 70, 120, 0) 100%)`;
+}
 // Laid over everything, so whatever sits low in the vessel — wax most of
 // all — is lit hotter than what has risen away from the light. Plain alpha
 // again, for the same reason as the ramp: over a dark vessel it lands close
@@ -285,6 +323,14 @@ export const LAVA_TUNING = {
   haloStrength: HALO_STRENGTH,
   // A multiplier on every drift's duration: above 1 is slower.
   speed: 1,
+  waxHue: WAX_HUE,
+  waxSaturation: WAX_SATURATION,
+  waxLightness: WAX_LIGHTNESS,
+  // How deep the vessel goes towards its own dark at the top, and how far
+  // up the screen that darkening starts.
+  rampDepth: 1,
+  rampStart: RAMP_START,
+  lightDrop: LIGHT_DROP,
 };
 
 export type LavaTuning = typeof LAVA_TUNING;
@@ -327,6 +373,7 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
   // edge as well as sharpening it: this keeps the cut at the same quarter
   // of the field, which is what the merging depends on.
   const alphaBias = (ALPHA_BIAS / ALPHA_GAIN) * t.alphaGain;
+  const wax = `hsl(${t.waxHue} ${t.waxSaturation}% ${t.waxLightness}%)`;
 
   return (
     <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
@@ -455,7 +502,7 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
                   // covering it (see BLOB_ALPHA): two blobs crossing make a
                   // field twice as high, which is what lets the merged mass
                   // come out bigger than the union of the two.
-                  background: WAX,
+                  background: wax,
                   opacity: t.blobAlpha,
                   mixBlendMode: "plus-lighter",
                   ...(composited
@@ -481,16 +528,16 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
           full strength by the bulb and sinks into the vessel's dark as it
           rises. Over the ground, which is nearly black already, it barely
           registers. */}
-      <div className="pointer-events-none absolute inset-0" style={{ background: HEIGHT_RAMP }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: heightRamp(t.rampStart, t.rampDepth) }} />
 
       {/* The light itself, and what it does to everything above it. All of
           these sit outside the filtered layer, so none of them is dragged
           through the alpha push, and all are static: one paint each and
           nothing after that. The ramp above cannot touch them — they are
           the lamp, not the wax. */}
-      <div className="pointer-events-none absolute inset-0" style={{ background: GLOW }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: glow(t.lightDrop) }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: LIGHT_FALLOFF }} />
-      <div className="pointer-events-none absolute inset-0" style={{ background: LAMP }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: lamp(t.lightDrop) }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: VIGNETTE }} />
     </div>
   );
