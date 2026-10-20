@@ -47,7 +47,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 // the edges look: nearly all of that was the alpha cut spreading an edge
 // over several of this layer's own pixels, which ALPHA_GAIN now fixes at
 // about one. What the upscale adds on top is a pixel or two.
-const STAGE = 1 / 4;
+const STAGE = 1 / 5;
 // How far apart two blobs still reach for each other, as a fraction of the
 // filtered layer's short side — a fixed pixel blur would swallow the whole
 // lamp whole at library-thumbnail size and barely show on a 4K screen.
@@ -105,9 +105,20 @@ const RIM_FOCUS = 1.5;
 // underside give the top edge with the operands the other way round, so
 // this costs two sums and nothing else.
 const TOP_LIGHT = 0.5;
-// The glow beyond the wax's edge, off the same pooled field. The filter
-// region has to leave it room to spread into.
-const HALO_STRENGTH = 0.95;
+// Translucence: the light that gets into the wax near its edge, where there
+// is least of it to cross, and the glow it throws just beyond. Both come
+// off one band read across the pooled field, straddling the cut — strongest
+// just inside the edge, falling away outside it, and nearly nothing by the
+// middle of a blob, where the wax is too thick to pass light at all.
+//
+// Read from no wax (0) to deep inside (1); the cut where the edge lands
+// sits at a quarter. Screened over the finished wax rather than merged
+// under it, which is what lets one band do both sides: outside the shape it
+// falls on the background as a halo, inside it lights the body.
+const HALO_BAND = [0, 0.1, 0.46, 0.9, 0.26, 0.04, 0, 0, 0, 0, 0];
+const HALO_COLOUR = [1, 0.45, 0.2] as const;
+const HALO_STRENGTH = 0.34;
+
 
 // The lamp's own vessel. Deliberately not the screen's black/white
 // background setting: a lava lamp is a dark vessel, and a white one isn't
@@ -116,24 +127,39 @@ const GROUND = "#17031a";
 // Every blob is this one colour, flat — which is also what lets two of them
 // become one, since the merging blur mixes colour as well as alpha and
 // there is nothing left to mix. What varies is not the wax but the light
-// reaching it: the ramp below multiplies over the whole vessel, so a blob
-// is at full strength down by the bulb and sinks towards the vessel's own
-// dark as it climbs away from it. One blob crossing the screen passes
-// through the entire range on its own.
+// reaching it: the ramp below lies over the whole vessel, so a blob is at
+// full strength down by the bulb and sinks into the vessel's own dark as it
+// climbs away from it. One blob crossing the screen passes through the
+// entire range on its own.
+//
+// Plain alpha, not a multiply. A blend mode is the most expensive thing
+// that can be put on a screen-sized layer: the compositor has to read back
+// everything beneath it at full resolution and write it again, where an
+// ordinary layer is just drawn over the top.
+//
+// A deep maroon, which took two tries to arrive at. A violet one pulled the
+// hue towards itself and turned the neon to pastel halfway up the vessel.
+// Black was honest but flat: it scales every channel alike, where the
+// multiply this replaces cut green and blue harder than red, so the wax
+// grew *more* saturated as it darkened. Laying a dark red over it does the
+// same thing — red survives the blend, green and blue give way — which is
+// where the glow in the deep end of the vessel comes from.
 const WAX = "#ff6a12";
 const HEIGHT_RAMP =
-  "linear-gradient(to top, rgba(255, 255, 255, 1) 0%, rgba(255, 216, 190, 1) 18%, rgba(216, 134, 124, 1) 44%, rgba(148, 66, 94, 1) 72%, rgba(104, 40, 78, 1) 100%)";
+  "linear-gradient(to top, rgba(52, 6, 26, 0) 0%, rgba(50, 6, 26, 0.06) 22%, rgba(46, 5, 26, 0.26) 48%, rgba(34, 4, 24, 0.58) 76%, rgba(24, 3, 20, 0.78) 100%)";
 // The lamp itself, below the glass: a hot pool at the base and the cone it
 // throws up through the vessel.
 // Carries the glow the filter used to spread around each blob: a halo in
 // there cost a colour matrix and a merge on every frame, and this is a
 // static paint that costs one.
-const GLOW = "radial-gradient(70% 44% at 50% 104%, rgba(255, 94, 120, 0.4) 0%, rgba(255, 60, 120, 0.12) 46%, rgba(220, 40, 140, 0) 78%)";
+const GLOW = "radial-gradient(74% 48% at 50% 103%, rgba(255, 104, 104, 0.5) 0%, rgba(255, 66, 118, 0.16) 44%, rgba(220, 40, 140, 0) 78%)";
 const LAMP = "radial-gradient(44% 17% at 50% 100%, rgba(255, 244, 214, 0.92) 0%, rgba(255, 170, 90, 0.55) 36%, rgba(255, 70, 120, 0) 100%)";
-// Screened over everything, so whatever sits low in the vessel — wax most
-// of all — is lit hotter than what has risen away from the light.
+// Laid over everything, so whatever sits low in the vessel — wax most of
+// all — is lit hotter than what has risen away from the light. Plain alpha
+// again, for the same reason as the ramp: over a dark vessel it lands close
+// enough to the screen blend it replaces.
 const LIGHT_FALLOFF =
-  "linear-gradient(to top, rgba(255, 170, 90, 0.34) 0%, rgba(255, 110, 90, 0.14) 24%, rgba(230, 70, 140, 0.04) 50%, rgba(200, 60, 160, 0) 72%)";
+  "linear-gradient(to top, rgba(255, 186, 120, 0.4) 0%, rgba(255, 126, 96, 0.17) 24%, rgba(230, 80, 140, 0.05) 50%, rgba(200, 60, 160, 0) 72%)";
 const VIGNETTE = "radial-gradient(118% 86% at 50% 48%, rgba(0, 0, 0, 0) 52%, rgba(6, 0, 10, 0.74) 100%)";
 
 type Blob = {
@@ -240,7 +266,31 @@ function compositesFilteredChildren() {
   return /Chrome\/|Chromium\//.test(navigator.userAgent);
 }
 
-export function LavaLamp() {
+// Everything worth turning a dial on, with the constants above as its
+// defaults — the lamp renders identically with no tuning passed. The tuner
+// page (/screen/lava-tuner, development only) drives these live, so the
+// numbers are found against the real thing rather than a copy of it.
+export const LAVA_TUNING = {
+  stage: STAGE,
+  blur: BLUR_RATIO,
+  blobAlpha: BLOB_ALPHA,
+  alphaGain: ALPHA_GAIN,
+  lift: LIFT_RATIO,
+  // One dial over the three channels, keeping their ratio: blue falls
+  // fastest, which is what keeps a thick blob's middle warm.
+  density: 1,
+  rimStrength: RIM_STRENGTH,
+  rimFocus: RIM_FOCUS,
+  topLight: TOP_LIGHT,
+  haloStrength: HALO_STRENGTH,
+  // A multiplier on every drift's duration: above 1 is slower.
+  speed: 1,
+};
+
+export type LavaTuning = typeof LAVA_TUNING;
+
+export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<LavaTuning> } = {}) {
+  const t = { ...LAVA_TUNING, ...tuning };
   const rootRef = useRef<HTMLDivElement>(null);
   // Scoped to this lamp: a library page draws several at once, and an SVG
   // filter is referenced by id.
@@ -268,11 +318,15 @@ export function LavaLamp() {
   }, []);
 
   // Everything inside the filtered layer is in its own smaller pixels.
-  const stageWidth = size.width * STAGE;
-  const stageHeight = size.height * STAGE;
+  const stageWidth = size.width * t.stage;
+  const stageHeight = size.height * t.stage;
   const short = Math.min(stageWidth, stageHeight);
-  const blur = short * BLUR_RATIO;
-  const lift = short * LIFT_RATIO;
+  const blur = short * t.blur;
+  const lift = short * t.lift;
+  // The cut has to follow the gain, or turning one of them up moves the
+  // edge as well as sharpening it: this keeps the cut at the same quarter
+  // of the field, which is what the merging depends on.
+  const alphaBias = (ALPHA_BIAS / ALPHA_GAIN) * t.alphaGain;
 
   return (
     <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
@@ -286,15 +340,15 @@ export function LavaLamp() {
           fraction of what another blur would. */}
       <svg aria-hidden className="pointer-events-none absolute h-0 w-0">
         <defs>
-          {/* Opened up just enough for the glow to spread into: the region
-              is filtered in full, so every percent of it is work on every
-              frame. */}
-          <filter id={gooId} x="-11%" y="-11%" width="122%" height="122%">
+          {/* Opened up for the halo to spread into, and no further: the
+              region is filtered in full, so every percent of it is work on
+              every frame. */}
+          <filter id={gooId} x="-9%" y="-9%" width="118%" height="118%">
             <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="pooled" />
             <feColorMatrix
               in="pooled"
               type="matrix"
-              values={`1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${ALPHA_GAIN} ${ALPHA_BIAS}`}
+              values={`1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${t.alphaGain} ${alphaBias}`}
               result="wax"
             />
             {/* Deep wax, darker. The matrix turns the pooled field into a
@@ -304,7 +358,7 @@ export function LavaLamp() {
             <feColorMatrix
               in="pooled"
               type="matrix"
-              values={`0 0 0 ${-DENSITY[0]} 1  0 0 0 ${-DENSITY[1]} 1  0 0 0 ${-DENSITY[2]} 1  0 0 0 0 1`}
+              values={DENSITY.map((d) => `0 0 0 ${-Math.min(d * t.density, 1)} 1`).join("  ") + "  0 0 0 0 1"}
               result="density"
             />
             <feComposite in="density" in2="wax" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="dense" />
@@ -331,7 +385,7 @@ export function LavaLamp() {
               operator="arithmetic"
               k1="0"
               k2="1"
-              k3={TOP_LIGHT}
+              k3={t.topLight}
               k4="0"
               result="lights"
             />
@@ -343,7 +397,7 @@ export function LavaLamp() {
               <feFuncR type="linear" slope="0" intercept={RIM_COLOUR[0]} />
               <feFuncG type="linear" slope="0" intercept={RIM_COLOUR[1]} />
               <feFuncB type="linear" slope="0" intercept={RIM_COLOUR[2]} />
-              <feFuncA type="gamma" amplitude={RIM_STRENGTH} exponent={RIM_FOCUS} offset="0" />
+              <feFuncA type="gamma" amplitude={t.rimStrength} exponent={t.rimFocus} offset="0" />
             </feComponentTransfer>
             {/* The pooled field reaches past the wax, so the difference
                 does too; without this the light spills off every blob as a
@@ -351,20 +405,18 @@ export function LavaLamp() {
             <feComposite in="rim" in2="wax" operator="in" result="litEdge" />
             <feComposite in="litEdge" in2="dense" operator="arithmetic" k1="-1" k2="1" k3="1" k4="0" result="shaded" />
 
-            {/* The glow around each mass, laid back underneath it. The
-                pooled field already reaches past the wax — that is what
-                merging uses — so this is a tint and a merge, with no blur
-                of its own. It used to cost one, which is why it went. */}
-            <feColorMatrix
-              in="pooled"
-              type="matrix"
-              values={`1.5 0.2 0 0 0  0.4 0.42 0 0 0  0.3 0.1 0.4 0 0  0 0 0 ${HALO_STRENGTH} 0`}
-              result="glow"
-            />
-            <feMerge>
-              <feMergeNode in="glow" />
-              <feMergeNode in="shaded" />
-            </feMerge>
+            {/* Light through the thin wax at the edge, and past it. One
+                band, screened over the lot: where there is no wax under it
+                the screen leaves it as it is, so the same pass that lights
+                the inside of an edge throws the halo outside it. */}
+            <feComponentTransfer in="pooled" result="translucence">
+              <feFuncR type="linear" slope="0" intercept={HALO_COLOUR[0]} />
+              <feFuncG type="linear" slope="0" intercept={HALO_COLOUR[1]} />
+              <feFuncB type="linear" slope="0" intercept={HALO_COLOUR[2]} />
+              <feFuncA type="table" tableValues={HALO_BAND.map((v) => v * t.haloStrength).join(" ")} />
+            </feComponentTransfer>
+            <feComposite in="translucence" in2="shaded" operator="arithmetic" k1="-1" k2="1" k3="1" k4="0" />
+
 
           </filter>
         </defs>
@@ -379,7 +431,7 @@ export function LavaLamp() {
             width: stageWidth,
             height: stageHeight,
             filter: `url(#${gooId})`,
-            transform: `scale(${1 / STAGE})`,
+            transform: `scale(${1 / t.stage})`,
             transformOrigin: "0 0",
             // Keeps the scaled-up result a compositor job rather than a
             // re-render of the filter at full size — where the browser can
@@ -404,15 +456,15 @@ export function LavaLamp() {
                   // field twice as high, which is what lets the merged mass
                   // come out bigger than the union of the two.
                   background: WAX,
-                  opacity: BLOB_ALPHA,
+                  opacity: t.blobAlpha,
                   mixBlendMode: "plus-lighter",
                   ...(composited
                     ? {
-                        animation: `colo-lava-${blob.motion} ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
+                        animation: `colo-lava-${blob.motion} ${blob.duration * t.speed}s ease-in-out ${blob.delay}s infinite`,
                         willChange: "transform",
                       }
                     : {
-                        animation: `colo-lava-${blob.motion}-painted ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
+                        animation: `colo-lava-${blob.motion}-painted ${blob.duration * t.speed}s ease-in-out ${blob.delay}s infinite`,
                         transform: "translate(var(--lava-x), var(--lava-y)) scale(var(--lava-sx), var(--lava-sy))",
                       }),
                   ["--lava-travel" as string]: `${stageHeight * blob.travel * 0.5}px`,
@@ -429,10 +481,7 @@ export function LavaLamp() {
           full strength by the bulb and sinks into the vessel's dark as it
           rises. Over the ground, which is nearly black already, it barely
           registers. */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: HEIGHT_RAMP, mixBlendMode: "multiply" }}
-      />
+      <div className="pointer-events-none absolute inset-0" style={{ background: HEIGHT_RAMP }} />
 
       {/* The light itself, and what it does to everything above it. All of
           these sit outside the filtered layer, so none of them is dragged
@@ -440,10 +489,7 @@ export function LavaLamp() {
           nothing after that. The ramp above cannot touch them — they are
           the lamp, not the wax. */}
       <div className="pointer-events-none absolute inset-0" style={{ background: GLOW }} />
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: LIGHT_FALLOFF, mixBlendMode: "screen" }}
-      />
+      <div className="pointer-events-none absolute inset-0" style={{ background: LIGHT_FALLOFF }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: LAMP }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: VIGNETTE }} />
     </div>
