@@ -82,7 +82,9 @@ const ALPHA_BIAS = -8.5;
 // difference between the field and a copy of it shifted down: positive
 // where a surface faces down, negative where it faces up, so clamping at
 // zero leaves light on the undersides alone — which is where the bulb is.
-const LIFT_RATIO = 0.03;
+// Narrow, now that the light on it is strong: a wide band at this strength
+// is a blob dipped in wax, where a narrow one is a sheen on it.
+const LIFT_RATIO = 0.02;
 // Thick wax swallows light, so the middle of a mass goes deeper than its
 // flat fill — and deeper again where two blobs have run together, which is
 // where the field stands highest. Blue falls fastest, keeping it warm.
@@ -90,8 +92,14 @@ const DENSITY = [0.62, 0.74, 0.88] as const;
 // The lit underside, as a colour and how hard it is carried. Taking it off
 // the merged shape rather than off each blob is what carries the bevel
 // unbroken across a join.
-const RIM_COLOUR = [1, 0.86, 0.55] as const;
-const RIM_STRENGTH = 1.7;
+const RIM_COLOUR = [1, 0.93, 0.78] as const;
+const RIM_STRENGTH = 6;
+// Gloss is light concentrated, not merely more of it. Curving the band
+// rather than scaling it flat pushes the weak tail — the part that spreads
+// a highlight into a wash — down towards nothing, while the peak right at
+// the edge keeps the lot. Above 1 it sharpens; at 1 it is the plain slope
+// this used to be.
+const RIM_FOCUS = 1.5;
 // A second light, over the vessel, at half the strength of the bulb under
 // it. It needs no shift of its own: the same two images that give the
 // underside give the top edge with the operands the other way round, so
@@ -99,7 +107,7 @@ const RIM_STRENGTH = 1.7;
 const TOP_LIGHT = 0.5;
 // The glow beyond the wax's edge, off the same pooled field. The filter
 // region has to leave it room to spread into.
-const HALO_STRENGTH = 0.55;
+const HALO_STRENGTH = 0.95;
 
 // The lamp's own vessel. Deliberately not the screen's black/white
 // background setting: a lava lamp is a dark vessel, and a white one isn't
@@ -281,7 +289,7 @@ export function LavaLamp() {
           {/* Opened up just enough for the glow to spread into: the region
               is filtered in full, so every percent of it is work on every
               frame. */}
-          <filter id={gooId} x="-9%" y="-9%" width="118%" height="118%">
+          <filter id={gooId} x="-11%" y="-11%" width="122%" height="122%">
             <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="pooled" />
             <feColorMatrix
               in="pooled"
@@ -335,7 +343,7 @@ export function LavaLamp() {
               <feFuncR type="linear" slope="0" intercept={RIM_COLOUR[0]} />
               <feFuncG type="linear" slope="0" intercept={RIM_COLOUR[1]} />
               <feFuncB type="linear" slope="0" intercept={RIM_COLOUR[2]} />
-              <feFuncA type="linear" slope={RIM_STRENGTH} intercept="0" />
+              <feFuncA type="gamma" amplitude={RIM_STRENGTH} exponent={RIM_FOCUS} offset="0" />
             </feComponentTransfer>
             {/* The pooled field reaches past the wax, so the difference
                 does too; without this the light spills off every blob as a
