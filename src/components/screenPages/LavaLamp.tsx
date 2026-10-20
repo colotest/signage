@@ -43,16 +43,25 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 
 // How much smaller the filtered layer is than the screen. A third keeps the
 // goo smooth while cutting the filter's cost to a ninth.
-const STAGE = 1 / 3;
+const STAGE = 1 / 4;
 // How far apart two blobs still reach for each other, as a fraction of the
 // filtered layer's short side — a fixed pixel blur would swallow the whole
 // lamp whole at library-thumbnail size and barely show on a 4K screen.
 // ALPHA_GAIN is how hard the pooled alpha is pushed back to solid, and
 // ALPHA_BIAS where the cut falls: together they decide whether a meeting
 // reads as a neck of wax or as two blobs merely touching.
-const BLUR_RATIO = 0.046;
-const ALPHA_GAIN = 19;
-const ALPHA_BIAS = -8;
+const BLUR_RATIO = 0.055;
+// Each blob is drawn at BLOB_ALPHA and added to the ones under it rather
+// than covering them, so the pooled field is a sum: one blob stands at
+// BLOB_ALPHA, two on top of each other at twice that. Cutting that sum at
+// a level below a single blob's own height is what makes a merge grow —
+// where two have run together the field is far above the cut, so the edge
+// is pushed out well past the union of the two outlines, and the mass that
+// results is nearer the sum of them. Opaque blobs can only ever make a
+// union, which is always less wax than went into it.
+const BLOB_ALPHA = 0.5;
+const ALPHA_GAIN = 13;
+const ALPHA_BIAS = -3.4;
 // One soft copy of the merged silhouette, read three ways: as the wax's own
 // thickness, as the band of thin wax around its edge, and as the halo
 // beyond it. Blurring the merged alpha gives a field that stands at full
@@ -65,23 +74,24 @@ const ALPHA_BIAS = -8;
 // is what the previous version did: it cost a second blur and much the
 // most expensive primitive in the filter, dropped the frame rate on the
 // sticks, and looked no more like wax for it.
-// How wide the depth field's gradient is, and so how broad the lit rim
+// How wide the depth field's gradient is, and so how broad the shading
 // reads: too wide and a blob is all rim, a pale ring round a dark middle.
 const RELIEF_RATIO = 0.05;
+// How far the depth field is lifted to find the underside. The rim light is
+// the difference between the field and a copy of it shifted up: that is
+// positive where the surface faces down and negative where it faces up, so
+// clamping it at zero leaves light on the undersides alone — which is where
+// the bulb is. An even band all the way round reads as a ring, not as a
+// lit object.
+const LIFT_RATIO = 0.035;
 // Thick wax swallows light, so the middle of a mass goes deeper than its
 // flat fill. Blue falls fastest, which keeps the shadow warm.
 const DENSITY = [0.3, 0.36, 0.44] as const;
-// Thin wax at the rim lets it through. The table is read across the depth
-// field: nothing outside the shape, a peak where the wax is thin, and down
-// to nothing again deep inside. This is the bevel, and taking it off the
-// merged shape rather than off each blob is what carries it unbroken
-// across a join.
-// Read across the depth field from outside the shape (0) to deep within
-// it (1): nothing beyond the edge, a peak just inside it where the wax is
-// thin, and gone again before the middle.
-const RIM_BAND = "0 0 0.3 0.85 1 0.35 0";
-const RIM_COLOUR = "#ffbb6e";
-const RIM_STRENGTH = 0.5;
+// The lit underside, as a colour and how hard it is carried. Taking it off
+// the merged shape rather than off each blob is what carries the bevel
+// unbroken across a join.
+const RIM_COLOUR = [0.99, 0.73, 0.42] as const;
+const RIM_STRENGTH = 0.6;
 // The halo beyond the edge, tinted hot and laid back underneath the wax, so
 // light appears to carry past a blob instead of stopping at it. The filter
 // region has to be opened up or it would be clipped at the layer's edge.
@@ -244,6 +254,7 @@ export function LavaLamp() {
   const short = Math.min(stageWidth, stageHeight);
   const blur = short * BLUR_RATIO;
   const relief = short * RELIEF_RATIO;
+  const lift = short * LIFT_RATIO;
 
   return (
     <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
@@ -281,17 +292,33 @@ export function LavaLamp() {
             />
             <feComposite in="density" in2="wax" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="dense" />
 
-            {/* Thin wax at the rim, lit. The band is a slice of the same
-                depth field, flooded amber and screened back over the
-                body — the bevel, running unbroken around whatever shape
-                the blobs have made between them. */}
-            <feComponentTransfer in="depth" result="band">
-              <feFuncA type="table" tableValues={RIM_BAND} />
+            {/* The lit underside. Lifting the depth field and subtracting
+                the original leaves a positive difference only where the
+                surface faces down — the far side gives a negative one,
+                which clamps away to nothing — so the light lands on the
+                undersides of the wax and nowhere else, which is where the
+                bulb is. One shift and one subtraction, both cheap, and no
+                lighting primitive. */}
+            {/* Shifted down, so what was interior now sits over the lower
+                edge: the difference comes out positive along the bottom of
+                the wax and negative along the top, where it clamps away. */}
+            <feOffset in="depth" dx="0" dy={lift} result="lowered" />
+            <feComposite in="lowered" in2="depth" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0" result="underside" />
+            {/* Flat amber at the strength of that difference: constant
+                colour out of a slope of nought, alpha straight off the
+                difference, screened onto the body in premultiplied space,
+                which is one pass rather than a blend. */}
+            <feComponentTransfer in="underside" result="rim">
+              <feFuncR type="linear" slope="0" intercept={RIM_COLOUR[0]} />
+              <feFuncG type="linear" slope="0" intercept={RIM_COLOUR[1]} />
+              <feFuncB type="linear" slope="0" intercept={RIM_COLOUR[2]} />
+              <feFuncA type="linear" slope={RIM_STRENGTH} intercept="0" />
             </feComponentTransfer>
-            <feFlood floodColor={RIM_COLOUR} floodOpacity={RIM_STRENGTH} result="rimColour" />
-            <feComposite in="rimColour" in2="band" operator="in" result="rim" />
-            <feBlend in="rim" in2="dense" mode="screen" result="lifted" />
-            <feComposite in="lifted" in2="wax" operator="in" result="shaded" />
+            {/* The depth field reaches past the wax, so the difference
+                does too; without this the light spills off every blob as a
+                bright band of its own, outside the shape. */}
+            <feComposite in="rim" in2="wax" operator="in" result="litEdge" />
+            <feComposite in="litEdge" in2="dense" operator="arithmetic" k1="-1" k2="1" k3="1" k4="0" result="shaded" />
 
             <feColorMatrix
               in="depth"
@@ -339,11 +366,13 @@ export function LavaLamp() {
                   width: diameter,
                   height: diameter,
                   borderRadius: "50%",
-                  // Flat, and opaque to its own rim: the blur is what
-                  // softens an edge here, the alpha push is what hardens it
-                  // again where two have pooled together, and the lighting
-                  // pass is what gives the result its roundness.
+                  // Flat, and added to whatever is under it rather than
+                  // covering it (see BLOB_ALPHA): two blobs crossing make a
+                  // field twice as high, which is what lets the merged mass
+                  // come out bigger than the union of the two.
                   background: blob.colour,
+                  opacity: BLOB_ALPHA,
+                  mixBlendMode: "plus-lighter",
                   ...(composited
                     ? {
                         animation: `colo-lava-${blob.motion} ${blob.duration}s ease-in-out ${blob.delay}s infinite`,
