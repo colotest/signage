@@ -41,14 +41,16 @@ export function EventTypeTile({
         {current ? (
           <>
             <EventTypeIcon type={current.key} className="h-8 w-8 text-foreground" />
-            <span className="text-center text-[12px] font-semibold leading-tight">{current.label}</span>
+            <span className="whitespace-pre-line text-center text-[12px] font-semibold leading-tight">
+              {stacked(current.label)}
+            </span>
           </>
         ) : (
           <span className="unset-breathe text-[17px] font-semibold">Typ</span>
         )}
       </button>
 
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} align="start" dragSelect={false} className="p-2">
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} align="center" dragSelect={false} className="p-2">
         <div role="radiogroup" aria-label="Type" className="grid w-[264px] grid-cols-3 gap-2">
           {EVENT_TYPES.map((type) => {
             const selected = type.key === current?.key;
@@ -72,7 +74,9 @@ export function EventTypeTile({
                 )}
               >
                 <EventTypeIcon type={type.key} className={cn("h-7 w-7", !selected && "text-accent")} />
-                <span className="text-center text-[11px] font-semibold leading-tight">{type.label}</span>
+                <span className="whitespace-pre-line text-center text-[11px] font-semibold leading-tight">
+                  {stacked(type.label)}
+                </span>
               </button>
             );
           })}
@@ -103,6 +107,12 @@ export function doubleClickToEdit(label: string, onEdit: () => void) {
       }
     },
   };
+}
+
+// A two-part name ("Kongress/Tagung") broken after its slash, so it stacks
+// in its square rather than running over the edges.
+function stacked(label: string) {
+  return label.replace("/", "/\n");
 }
 
 const MAX_PAX = 9999;

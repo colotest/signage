@@ -66,8 +66,9 @@ export function Menu({
   onClose: () => void;
   anchorRef: RefObject<HTMLElement | null>;
   // Which edge lines up with the button's: "end" hangs left from its right
-  // edge (for buttons at the end of a row), "start" right from its left.
-  align?: "start" | "end";
+  // edge (for buttons at the end of a row), "start" right from its left,
+  // "center" centred under (or over) it.
+  align?: "start" | "end" | "center";
   dragSelect?: boolean;
   className?: string;
   children: ReactNode;
@@ -271,7 +272,7 @@ export function Menu({
 // Where the menu goes, in its container's coordinates (absolute positioning:
 // the page itself never scrolls, and a popup is its own positioned box), and
 // the point it grows from — its button's centre.
-function placeMenu(menu: HTMLElement, anchor: HTMLElement, align: "start" | "end") {
+function placeMenu(menu: HTMLElement, anchor: HTMLElement, align: "start" | "end" | "center") {
   const container = menu.offsetParent instanceof HTMLElement ? menu.offsetParent : document.documentElement;
   const inBody = container === document.documentElement || container === document.body;
   const box = inBody
@@ -298,7 +299,7 @@ function placeMenu(menu: HTMLElement, anchor: HTMLElement, align: "start" | "end
   let top = side === "below" ? below : above;
   top = Math.max(bounds.top, Math.min(top, bounds.bottom - height));
 
-  let left = align === "end" ? a.right - width : a.left;
+  let left = align === "end" ? a.right - width : align === "center" ? a.left + (a.width - width) / 2 : a.left;
   left = Math.max(bounds.left, Math.min(left, bounds.right - width));
 
   menu.style.left = `${left - originX}px`;
