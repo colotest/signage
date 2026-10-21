@@ -8,6 +8,8 @@ import { POPUP_WHITE_BUTTON } from "@/components/ui/Popup";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
 import { archiveEvent, deleteEvent, unarchiveEvent, updateEvent, type EventPatch } from "@/lib/actions/events";
 import type { EventPerson, EventSummary } from "@/lib/events";
+import { RoleDots } from "@/components/RoleDot";
+import { useOwnRoles } from "@/lib/auth/ViewerContext";
 import { cn } from "@/lib/utils/cn";
 import { MENU_ITEM_CLASS, ThreeDotIcon } from "../../library/_components/FileTree";
 import { EventDatesSection } from "./EventCalendar";
@@ -106,14 +108,25 @@ export function EventOverview({
     >
       {archived && <ArchivedBar event={event} onGone={onGone} isClient={isClient} />}
 
+      {/* Right under the title: who's leading it. */}
+      <div className="-mt-1 mb-4 px-1">
+        <LeadPicker people={people} event={event} onPick={(leadId) => save({ leadId })} />
+      </div>
+
       <EventDatesSection key={event.id} event={event} />
 
       {/* On the page itself, like a subtitle under the title, without labels
           — lined up with the "Setup" heading below. */}
       <section className="flex flex-col gap-3 px-1 text-[16px] leading-snug">
-        <LeadPicker people={people} event={event} onPick={(leadId) => save({ leadId })} />
         <div className="flex flex-col">
-          <EditableText value={event.customer} placeholder="Customer" label="Customer" onSave={(customer) => save({ customer })} />
+          <EditableText
+            value={event.customer}
+            placeholder="Customer"
+            label="Customer"
+            onSave={(customer) => save({ customer })}
+            // The month's name's size, heading the contact under it.
+            className="text-[17px] font-semibold"
+          />
           <EditableText
             value={event.contactName}
             placeholder="Contact Name"
@@ -253,8 +266,9 @@ function EditableText({
   );
 }
 
-// The lead's name; tapping it opens everyone who can lead (the Events
-// Management role, and whoever's looking) to pick from.
+// The lead, as a pill: their name, then the dots of their roles — only the
+// roles the viewer holds too, as everywhere. Tapping it opens everyone who
+// can lead (the Events Management role, and whoever's looking) to pick from.
 function LeadPicker({
   people,
   event,
@@ -267,7 +281,7 @@ function LeadPicker({
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   // As with the text fields, shown before the save comes back.
-  const [picked, setPicked] = useState<{ id: string | null; name: string | null } | null>(null);
+  const [picked, setPicked] = useState<{ id: string | null; name: string | null; roleIds: string[] } | null>(null);
   const [synced, setSynced] = useState(event.leadId);
   if (event.leadId !== synced) {
     setSynced(event.leadId);
@@ -275,11 +289,12 @@ function LeadPicker({
   }
   const leadId = picked ? picked.id : event.leadId;
   const leadName = picked ? picked.name : event.leadName;
+  const leadRoles = useOwnRoles(picked ? picked.roleIds : event.leadRoleIds);
 
   function pick(person: EventPerson | null) {
     setOpen(false);
     if ((person?.id ?? null) === leadId) return;
-    setPicked({ id: person?.id ?? null, name: person?.name ?? null });
+    setPicked({ id: person?.id ?? null, name: person?.name ?? null, roleIds: person?.roleIds ?? [] });
     onPick(person?.id ?? null);
   }
 
@@ -291,9 +306,13 @@ function LeadPicker({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         title="Change lead"
-        className={cn("no-press max-w-full truncate text-left", !leadName && "text-muted")}
+        className={cn(
+          "no-press inline-flex max-w-full items-center gap-2 rounded-full bg-black/[.05] px-3 py-1 text-[15px] font-medium shadow-[var(--shadow-well)] dark:bg-white/[.08]",
+          !leadName && "text-muted",
+        )}
       >
-        {leadName || "Lead"}
+        <span className="truncate">{leadName || "Lead"}</span>
+        <RoleDots roles={leadRoles} />
       </button>
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} align="start" className="w-56 p-1">
         <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Lead</div>
@@ -304,7 +323,10 @@ function LeadPicker({
             onClick={() => pick(person)}
             className={cn(MENU_ITEM_CLASS, "flex items-center justify-between gap-2")}
           >
-            <span className="truncate">{person.name}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{person.name}</span>
+              <PersonRoleDots roleIds={person.roleIds} />
+            </span>
             {person.id === leadId && <CheckIcon className="h-4 w-4 shrink-0 text-accent" />}
           </button>
         ))}
@@ -316,6 +338,10 @@ function LeadPicker({
       </Menu>
     </div>
   );
+}
+
+function PersonRoleDots({ roleIds }: { roleIds: string[] }) {
+  return <RoleDots roles={useOwnRoles(roleIds)} />;
 }
 
 function PhoneIcon() {

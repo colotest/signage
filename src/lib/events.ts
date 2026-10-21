@@ -9,7 +9,7 @@ type Admin = ReturnType<typeof createAdminClient>;
 // are made and named by hand on the Users page.
 export const EVENTS_MANAGEMENT_ROLE = "Events Management";
 
-export type EventPerson = { id: string; name: string };
+export type EventPerson = { id: string; name: string; roleIds: string[] };
 
 // An event as the Forms page shows it.
 export type EventSummary = {
@@ -28,7 +28,19 @@ export type EventSummary = {
   endsTimeSet: boolean;
   // When it was archived, or null while it's current.
   archivedAt: string | null;
+  // The lead's roles — the page shows only those the viewer holds too.
+  leadRoleIds: string[];
 };
+
+// Each user's roles, by id.
+async function fetchRoleIds(admin: Admin, userIds: string[]) {
+  const byUser = new Map<string, string[]>();
+  if (userIds.length === 0) return byUser;
+  const { data, error } = await admin.from("user_roles").select("user_id, role_id").in("user_id", userIds);
+  if (error) throw new Error(error.message);
+  for (const row of data ?? []) byUser.set(row.user_id, [...(byUser.get(row.user_id) ?? []), row.role_id]);
+  return byUser;
+}
 
 // Who can be made an event's lead: everyone in the Events Management role,
 // and the person asking (who's the default, whether or not they're in it).
@@ -39,10 +51,10 @@ export async function fetchLeadCandidates(admin: Admin, viewer: { id: string }):
     .ilike("name", EVENTS_MANAGEMENT_ROLE);
   if (roleError) throw new Error(roleError.message);
 
-  const roleIds = (roles ?? []).map((r) => r.id);
+  const managementIds = (roles ?? []).map((r) => r.id);
   const memberIds = new Set<string>([viewer.id]);
-  if (roleIds.length > 0) {
-    const { data: members, error } = await admin.from("user_roles").select("user_id").in("role_id", roleIds);
+  if (managementIds.length > 0) {
+    const { data: members, error } = await admin.from("user_roles").select("user_id").in("role_id", managementIds);
     if (error) throw new Error(error.message);
     for (const m of members ?? []) memberIds.add(m.user_id);
   }
@@ -52,8 +64,9 @@ export async function fetchLeadCandidates(admin: Admin, viewer: { id: string }):
     .select("id, email, nickname")
     .in("id", [...memberIds]);
   if (error) throw new Error(error.message);
+  const roleIds = await fetchRoleIds(admin, (users ?? []).map((u) => u.id));
   return (users ?? [])
-    .map((u) => ({ id: u.id, name: displayNameOf(u) }))
+    .map((u) => ({ id: u.id, name: displayNameOf(u), roleIds: roleIds.get(u.id) ?? [] }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -75,6 +88,7 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     if (leadError) throw new Error(leadError.message);
     for (const lead of leads ?? []) leadNames.set(lead.id, displayNameOf(lead));
   }
+  const leadRoles = await fetchRoleIds(admin, leadIds);
 
   return events.map((e) => ({
     id: e.id,
@@ -92,5 +106,6 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     endsTimeSet: e.ends_time_set ?? true,
     // ?? null: reads as current before 0034 has added the column.
     archivedAt: e.archived_at ?? null,
+    leadRoleIds: e.lead_id ? (leadRoles.get(e.lead_id) ?? []) : [],
   }));
 }
