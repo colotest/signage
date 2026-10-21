@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { updateChecklist } from "@/lib/actions/events";
 import {
   CHECKLISTE,
+  exclusiveWith,
   MAX_CHECKLIST_TEXT,
   type ChecklistField,
   type ChecklistSection,
@@ -32,7 +33,11 @@ export function Checklist({ event }: { event: EventSummary }) {
   const answer = (key: string): Answer => (key in edits ? edits[key] : (event.checklist[key] ?? null));
 
   function save(key: string, value: Answer) {
-    setEdits((all) => ({ ...all, [key]: value }));
+    // In a Ja / Nein section a tick takes the others' away (the server does
+    // the same; this shows it at once).
+    const patch: Record<string, Answer> = { [key]: value };
+    if (value === true) for (const other of exclusiveWith(key)) patch[other] = null;
+    setEdits((all) => ({ ...all, ...patch }));
     saveChain.current = saveChain.current
       .then(async () => setError(await updateChecklist(event.id, { [key]: value })))
       .catch(() => setError("Konnte nicht gespeichert werden"));
@@ -70,11 +75,20 @@ function Section({
     <div>
       <h3 className="mb-1.5 px-1 text-[15px] font-semibold">{section.title}</h3>
       {section.note && <Note text={section.note} />}
-      <ul className="divide-y divide-border overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface">
+      <ul
+        role={section.single ? "radiogroup" : undefined}
+        aria-label={section.single ? section.title : undefined}
+        className="divide-y divide-border overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface"
+      >
         {section.fields.map((field) => (
           <li key={field.key}>
             {field.kind === "check" ? (
-              <CheckRow field={field} checked={answer(field.key) === true} onChange={(on) => onSave(field.key, on || null)} />
+              <CheckRow
+                field={field}
+                single={section.single}
+                checked={answer(field.key) === true}
+                onChange={(on) => onSave(field.key, on || null)}
+              />
             ) : (
               <TextRow field={field} value={(answer(field.key) as string | null) ?? ""} onSave={(text) => onSave(field.key, text || null)} />
             )}
@@ -103,11 +117,23 @@ function Note({ text }: { text: string }) {
   );
 }
 
-function CheckRow({ field, checked, onChange }: { field: ChecklistField; checked: boolean; onChange: (on: boolean) => void }) {
+// A box to tick — or, in a one-answer section, a round option (tapping the
+// picked one again clears it, as everything here is optional).
+function CheckRow({
+  field,
+  single,
+  checked,
+  onChange,
+}: {
+  field: ChecklistField;
+  single: boolean;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+}) {
   return (
     <button
       type="button"
-      role="checkbox"
+      role={single ? "radio" : "checkbox"}
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className="press-ghost-fit flex w-full items-center gap-3 px-3 py-2.5 text-left text-[15px] hover:bg-black/[.02] dark:hover:bg-white/[.03]"
@@ -115,7 +141,8 @@ function CheckRow({ field, checked, onChange }: { field: ChecklistField; checked
       <span
         aria-hidden
         className={cn(
-          "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px] border-2 transition-colors",
+          "flex h-[22px] w-[22px] shrink-0 items-center justify-center border-2 transition-colors",
+          single ? "rounded-full" : "rounded-[7px]",
           checked ? "border-accent bg-accent text-accent-contrast" : "border-border",
         )}
       >

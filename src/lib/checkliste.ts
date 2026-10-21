@@ -11,6 +11,9 @@
 //   _Datum                   → a date
 //   _Text                    → a free-text box
 //
+// A section whose options include Ja and Nein takes only one answer: ticking
+// one unticks the rest.
+//
 // Each field's key (what an event stores, 0039) is made from its section's
 // title and its own label, so renaming either starts that field afresh;
 // reordering or adding fields doesn't touch what's been filled in.
@@ -166,7 +169,14 @@ _Text
 `;
 
 export type ChecklistField = { key: string; kind: "check" | "text" | "date" | "textarea"; label: string };
-export type ChecklistSection = { key: string; title: string; note: string | null; fields: ChecklistField[] };
+export type ChecklistSection = {
+  key: string;
+  title: string;
+  note: string | null;
+  // Only one of its options can be ticked (a Ja / Nein question).
+  single: boolean;
+  fields: ChecklistField[];
+};
 export type ChecklistCategory = { key: string; title: string; sections: ChecklistSection[] };
 // What an event has filled in, by field key: true for a ticked box, the
 // text (or "YYYY-MM-DD") otherwise. Blank fields aren't in it.
@@ -206,7 +216,7 @@ function parse(source: string): ChecklistCategory[] {
       section = null;
     } else if (line.startsWith("#")) {
       const title = line.slice(1).trim();
-      section = { key: slug(title), title, note: null, fields: [] };
+      section = { key: slug(title), title, note: null, single: false, fields: [] };
       categories[categories.length - 1].sections.push(section);
     } else if (!section) {
       throw new Error(`Checkliste: "${line}" comes before any section`);
@@ -222,10 +232,24 @@ function parse(source: string): ChecklistCategory[] {
       section.fields.push({ key: `${section.key}/${slug(line)}`, kind: "check", label: line });
     }
   }
+  for (const s of categories.flatMap((c) => c.sections)) {
+    const labels = s.fields.map((f) => f.label);
+    s.single = labels.includes("Ja") && labels.includes("Nein");
+  }
   return categories;
 }
 
 export const CHECKLISTE = parse(SOURCE);
+
+const SECTION_OF = new Map(CHECKLISTE.flatMap((c) => c.sections.flatMap((s) => s.fields.map((f) => [f.key, s] as const))));
+
+// The options a tick on this one unticks: the rest of its section, if it's
+// a one-answer section.
+export function exclusiveWith(key: string): string[] {
+  const section = SECTION_OF.get(key);
+  if (!section?.single) return [];
+  return section.fields.filter((f) => f.key !== key && f.kind === "check").map((f) => f.key);
+}
 
 const FIELDS = new Map(CHECKLISTE.flatMap((c) => c.sections.flatMap((s) => s.fields)).map((f) => [f.key, f]));
 

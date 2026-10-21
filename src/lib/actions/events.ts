@@ -6,7 +6,7 @@ import { requirePage } from "@/lib/auth/session";
 import { EVENT_TYPES } from "@/lib/eventTypes";
 import { fetchLeadCandidates } from "@/lib/events";
 import { parsePins, type MapPin } from "@/lib/eventPins";
-import { cleanAnswer, parseChecklist } from "@/lib/checkliste";
+import { cleanAnswer, exclusiveWith, parseChecklist } from "@/lib/checkliste";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database.types";
 
@@ -180,6 +180,8 @@ export async function updateChecklist(id: string, patch: Record<string, true | s
       const clean = value === null ? null : cleanAnswer(key, value);
       if (clean === null) delete checklist[key];
       else checklist[key] = clean;
+      // One answer only, in a Ja / Nein section.
+      if (clean === true) for (const other of exclusiveWith(key)) delete checklist[other];
     }
     const { error } = await admin.from("events").update({ checklist }).eq("id", id);
     if (error) throw new Error(error.message);
