@@ -264,8 +264,9 @@ export function VenueMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan.width, plan.height]);
 
-  // Wheel and trackpad: scrolling zooms about the pointer (a trackpad
-  // pinch arrives as a wheel with ctrlKey, in finer steps). Desktop
+  // Wheel and trackpad: a two-finger swipe (or a mouse wheel) slides the
+  // map, like scrolling a page; a trackpad pinch arrives as a wheel with
+  // ctrlKey, and ⌘ or ctrl with a wheel zooms too, about the pointer. Desktop
   // Safari's trackpad pinch-and-turn comes as its own gesture events, which
   // also turn the map; iOS sends those too, alongside the touches already
   // handled below, so they're ignored while fingers are down.
@@ -279,8 +280,12 @@ export function VenueMap({
       touchedRef.current = true;
       const rect = el.getBoundingClientRect();
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.height : 1;
-      const k = Math.exp(-e.deltaY * unit * (e.ctrlKey ? 0.01 : 0.0025));
-      commit(zoomAbout(v, e.clientX - rect.left, e.clientY - rect.top, k));
+      if (e.ctrlKey || e.metaKey) {
+        const k = Math.exp(-e.deltaY * unit * (e.ctrlKey ? 0.01 : 0.0025));
+        commit(zoomAbout(v, e.clientX - rect.left, e.clientY - rect.top, k));
+      } else {
+        commit({ ...v, x: v.x - e.deltaX * unit, y: v.y - e.deltaY * unit });
+      }
     };
     let last: { scale: number; rotation: number } | null = null;
     type GestureEvent = UIEvent & { scale: number; rotation: number; clientX: number; clientY: number };
@@ -388,7 +393,9 @@ export function VenueMap({
         const a1 = Math.atan2(p.y - h / 2, p.x - w / 2);
         stopFollowing();
         commit(rotateAbout(v, w / 2, h / 2, a1 - a0));
-      } else {
+      } else if (e.pointerType !== "mouse") {
+        // A mouse or trackpad click-and-drag doesn't move the map — on a Mac
+        // that's the two-finger swipe's job (the wheel handler above).
         commit({ ...v, x: v.x + p.x - prev.x, y: v.y + p.y - prev.y });
         g.samples.push(p);
         if (g.samples.length > 6) g.samples.shift();
