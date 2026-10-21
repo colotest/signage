@@ -1,10 +1,11 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { setEventPins } from "@/lib/actions/events";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
 import type { EventPerson, EventSummary } from "@/lib/events";
-import { EventsPane, type EventsRoute } from "./EventsPane";
+import { EventsPane } from "./EventsPane";
 import { SegmentedSlider } from "./SegmentedSlider";
 import { ENTRY_MODES, useVeranstaltung } from "./veranstaltung";
 import { MapCard, VenueMap, type FloorPlan, type MapSpot } from "./VenueMap";
@@ -37,8 +38,9 @@ type Placing = { kind: "new" } | { kind: "move"; id: string };
 export function FormsView({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
   const [form, update] = useVeranstaltung();
   const [openSpot, setOpenSpot] = useState<string | null>(null);
-  const [route, setRoute] = useState<EventsRoute>({ eventId: null, view: null });
-  const event = route.eventId ? events.find((e) => e.id === route.eventId) : undefined;
+  // The open event, from the URL (where EventsPane keeps it).
+  const eventId = useSearchParams().get("event");
+  const event = eventId ? events.find((e) => e.id === eventId) : undefined;
 
   // Pins as changed here, ahead of the server (which catches up on the
   // next render of the page), by event.
@@ -58,12 +60,13 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
 
   const entry = ENTRY_MODES.find((m) => m.value === form.eingang);
 
-  function changeRoute(next: EventsRoute) {
-    if (next.eventId !== route.eventId) {
-      setPlacing(null);
-      setOpenSpot(null);
-    }
-    setRoute(next);
+  // Another event opened (or none): nothing of the last one's stays open
+  // or half-placed.
+  const [shownEventId, setShownEventId] = useState(eventId);
+  if (shownEventId !== eventId) {
+    setShownEventId(eventId);
+    setPlacing(null);
+    setOpenSpot(null);
   }
 
   function savePins(next: MapPin[]) {
@@ -171,7 +174,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
     // half scrolls or pans on its own instead.
     <div className="-mx-5 -my-6 flex h-[calc(100%+3rem)] flex-col md:flex-row">
       <div className="min-h-0 flex-1 border-b border-border md:w-[420px] md:flex-none md:border-b-0 md:border-r lg:w-[460px]">
-        <EventsPane events={events} people={people} route={route} onRoute={changeRoute} />
+        <EventsPane events={events} people={people} />
       </div>
 
       <div className="relative flex min-h-0 flex-1 flex-col">
