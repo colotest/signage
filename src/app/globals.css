@@ -799,6 +799,15 @@ body {
   --shell-h: 109lvh;
 }
 
+/* With a mouse (desktop) there's no floating toolbar to reach behind, and
+   the extra 9% just ran the bottom of every page off the window — the Forms
+   map's "+ Pin" along with it. */
+@media (pointer: fine) {
+  :root {
+    --shell-h: 100lvh;
+  }
+}
+
 .app-shell-height {
   height: var(--shell-h);
 }
