@@ -7,12 +7,22 @@ import { EventsList } from "./EventsList";
 import { PageStack, type StackPage } from "./PageStack";
 import { eventTitle } from "./eventFormat";
 
-type Route = { eventId: string | null; view: EventViewKey | null };
+export type EventsRoute = { eventId: string | null; view: EventViewKey | null };
 
 // The list side of the Forms page: Events, then an event's own page, then
-// one of its setup views — each sliding in over the last.
-export function EventsPane({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
-  const [route, setRoute] = useState<Route>({ eventId: null, view: null });
+// one of its setup views — each sliding in over the last. Which is open is
+// the page's (route), as the map shows the open event's own pins.
+export function EventsPane({
+  events,
+  people,
+  route,
+  onRoute: setRoute,
+}: {
+  events: EventSummary[];
+  people: EventPerson[];
+  route: EventsRoute;
+  onRoute: (route: EventsRoute) => void;
+}) {
   // Showing the Archive rather than current events.
   const [archived, setArchived] = useState(false);
   // An event that's gone (deleted elsewhere) takes its pages with it.

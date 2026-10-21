@@ -5,6 +5,7 @@ import { quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
 import { EVENT_TYPES } from "@/lib/eventTypes";
 import { fetchLeadCandidates } from "@/lib/events";
+import { parsePins, type MapPin } from "@/lib/eventPins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database.types";
 
@@ -138,6 +139,28 @@ async function applyUpdate(id: string, patch: EventPatch) {
     summary: title ? `Edited the event ${quote(title)}` : "Edited an untitled event",
   });
   revalidatePath("/forms");
+}
+
+// Replaces an event's pins on the venue map with these. Like updateEvent,
+// resolves to an error message to show, or null once saved.
+export async function setEventPins(id: string, pins: MapPin[]): Promise<string | null> {
+  try {
+    const user = await requirePage("forms");
+    const admin = createAdminClient();
+    const { title } = await eventTitleFor(admin, id);
+    const clean = parsePins(pins).map((p) => ({ ...p, title: p.title.trim() }));
+    const { error } = await admin.from("events").update({ map_pins: clean }).eq("id", id);
+    if (error) throw new Error(error.message);
+    recordActivity(user, {
+      action: "event.edit",
+      target: `event:${id}`,
+      summary: title ? `Edited the event ${quote(title)}` : "Edited an untitled event",
+    });
+    revalidatePath("/forms");
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : "Couldn't save the pins";
+  }
 }
 
 async function eventTitleFor(admin: ReturnType<typeof createAdminClient>, id: string) {

@@ -62,7 +62,10 @@ export function VenueMap({
   spots: MapSpot[];
   // Bump the nonce to bring a spot into view (and the id to pick which).
   focus: { id: string; nonce: number } | null;
-  onBackgroundTap?: () => void;
+  // A tap on the map itself (not on a spot or a control), and where on the
+  // plan it landed — as a fraction of its width and height, like a spot's
+  // u and v (outside 0–1 when it's off the plan).
+  onBackgroundTap?: (at: { u: number; v: number } | null) => void;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,6 +116,13 @@ export function VenueMap({
     return { x: v.x + (px * c - py * s) * v.s, y: v.y + (px * s + py * c) * v.s };
   };
 
+  function placeSpot(el: HTMLElement, spot: MapSpot) {
+    const v = viewRef.current;
+    if (!v) return;
+    const p = toScreen(v, spot.u * plan.width, spot.v * plan.height);
+    el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+  }
+
   // Places the plan, the spots and the compass needle for the current view.
   function draw() {
     const v = viewRef.current;
@@ -121,9 +131,7 @@ export function VenueMap({
     planEl.style.transform = `translate(${v.x}px, ${v.y}px) rotate(${v.r}rad) scale(${v.s / rasterRef.current})`;
     for (const spot of spotsRef.current) {
       const el = spotRefs.current.get(spot.id);
-      if (!el) continue;
-      const p = toScreen(v, spot.u * plan.width, spot.v * plan.height);
-      el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+      if (el) placeSpot(el, spot);
     }
     if (needleRef.current) {
       needleRef.current.style.transform = `rotate(${v.r + (plan.northDeg * Math.PI) / 180}rad)`;
@@ -516,7 +524,18 @@ export function VenueMap({
         if (v) animateTo(clampView(zoomAbout(v, p.x, p.y, 2.2)), 320);
       } else {
         lastTapRef.current = p;
-        onBackgroundTapRef.current?.();
+        const v = viewRef.current;
+        let at: { u: number; v: number } | null = null;
+        if (v) {
+          // Back from the screen to the plan: the inverse of toScreen.
+          const dx = p.x - v.x, dy = p.y - v.y;
+          const c = Math.cos(v.r), s = Math.sin(v.r);
+          at = {
+            u: (dx * c + dy * s) / v.s / plan.width,
+            v: (-dx * s + dy * c) / v.s / plan.height,
+          };
+        }
+        onBackgroundTapRef.current?.(at);
       }
       return;
     }
@@ -672,10 +691,16 @@ export function VenueMap({
         spots.map((spot) => (
           <div
             key={spot.id}
+            // Placed from this render's spot, not spotsRef (only updated
+            // after the commit): one just added or moved (an event's pins)
+            // is where it belongs from its first frame.
             ref={(el) => {
-              if (el) spotRefs.current.set(spot.id, el);
-              else spotRefs.current.delete(spot.id);
-              draw();
+              if (el) {
+                spotRefs.current.set(spot.id, el);
+                placeSpot(el, spot);
+              } else {
+                spotRefs.current.delete(spot.id);
+              }
             }}
             onPointerDown={(e) => e.stopPropagation()}
             className="absolute left-0 top-0 z-10"
@@ -755,7 +780,8 @@ export function MapCard({
   children,
 }: {
   title: string;
-  summary: string | null;
+  // Shown after the title while closed: null reads "offen"; left out, nothing.
+  summary?: string | null;
   open: boolean;
   onToggle: () => void;
   children: ReactNode;
@@ -783,7 +809,7 @@ export function MapCard({
             )}
           >
             <span className={cn("font-semibold", open ? "text-[17px]" : "text-[14px]")}>{title}</span>
-            {!open && <span className="text-[14px] text-muted">{summary ?? "offen"}</span>}
+            {!open && summary !== undefined && <span className="text-[14px] text-muted">{summary ?? "offen"}</span>}
             <svg
               viewBox="0 0 24 24"
               aria-hidden

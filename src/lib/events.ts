@@ -2,6 +2,7 @@ import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { displayNameOf } from "@/lib/uploads/uploaders";
 import type { EventRecord } from "@/types/domain";
+import { parsePins, type MapPin } from "@/lib/eventPins";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -34,6 +35,8 @@ export type EventSummary = {
   archivedAt: string | null;
   // The lead's roles — the page shows only those the viewer holds too.
   leadRoleIds: string[];
+  // Its own pins on the venue map (0038).
+  mapPins: MapPin[];
 };
 
 // Each user's roles, by id.
@@ -115,5 +118,7 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     // ?? null: reads as current before 0034 has added the column.
     archivedAt: e.archived_at ?? null,
     leadRoleIds: e.lead_id ? (leadRoles.get(e.lead_id) ?? []) : [],
+    // Read as none before 0038 has added the column.
+    mapPins: parsePins(e.map_pins),
   }));
 }

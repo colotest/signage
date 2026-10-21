@@ -445,6 +445,7 @@ export type Database = {
           archived_at: string | null;
           starts_time_set: boolean;
           ends_time_set: boolean;
+          map_pins: Json;
         };
         Insert: {
           id?: string;
@@ -464,6 +465,7 @@ export type Database = {
           archived_at?: string | null;
           starts_time_set?: boolean;
           ends_time_set?: boolean;
+          map_pins?: Json;
         };
         Update: {
           id?: string;
@@ -483,6 +485,7 @@ export type Database = {
           archived_at?: string | null;
           starts_time_set?: boolean;
           ends_time_set?: boolean;
+          map_pins?: Json;
         };
         Relationships: [];
       };
