@@ -26,7 +26,8 @@ export function dayKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-// iOS/macOS-style month grid — weekday columns, week rows, past days greyed
+// iOS/macOS-style month grid — weekday columns, week rows, days before
+// `minDate` (today, unless given another day, or null for no limit) greyed
 // out and unselectable, today in the accent colour, the selected day in a
 // tinted circle. Shared by the date/time picker and the Playback Menu's
 // Calendar. `markedDays` (dayKey()s) get a small dot under the date, which
@@ -37,15 +38,18 @@ export function MonthCalendar({
   value,
   onSelect,
   markedDays,
+  minDate,
 }: {
   value: Date;
   onSelect: (day: Date) => void;
   markedDays?: Set<string>;
+  minDate?: Date | null;
 }) {
   const [viewMonth, setViewMonth] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1));
   const firstDay = useMemo(() => weekStartsOn(), []);
   const today = useMemo(() => new Date(), []);
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const min = minDate === undefined ? today : minDate;
+  const firstAllowed = min ? new Date(min.getFullYear(), min.getMonth(), min.getDate()) : null;
 
   const weekdays = useMemo(() => {
     const fmt = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -65,7 +69,7 @@ export function MonthCalendar({
   }, [viewMonth, firstDay]);
 
   const monthLabel = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(viewMonth);
-  const canGoBack = viewMonth > new Date(today.getFullYear(), today.getMonth(), 1);
+  const canGoBack = !firstAllowed || viewMonth > new Date(firstAllowed.getFullYear(), firstAllowed.getMonth(), 1);
 
   function shiftMonth(delta: number) {
     setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1));
@@ -99,7 +103,7 @@ export function MonthCalendar({
         ))}
         {cells.map((day, i) => {
           if (!day) return <span key={`blank-${i}`} />;
-          const isPast = day < startOfToday;
+          const isPast = firstAllowed !== null && day < firstAllowed;
           const isSelected = sameDay(day, value);
           const isToday = sameDay(day, today);
           const isMarked = markedDays?.has(dayKey(day)) ?? false;

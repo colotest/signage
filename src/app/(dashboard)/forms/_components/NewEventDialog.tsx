@@ -305,7 +305,9 @@ const DEFAULT_LENGTH_MS = 4 * 3_600_000;
 // Starts and Ends, each either unset ("Add") or a date and time that opens
 // into the calendar below it — one at a time, like iOS Calendar's. Moving
 // the start keeps the event's length, so the end moves along with it; an
-// end can't be set before the start.
+// end can't be set before the start. The start can be in the past, since
+// events are sometimes entered (or corrected) after the fact; the end's
+// calendar starts at the start's day.
 function DateRange({
   startsAt,
   endsAt,
@@ -347,6 +349,7 @@ function DateRange({
           setEditing(null);
         }}
         onChange={setStart}
+        minDate={null}
       />
       <div className="border-t border-border" />
       <DateRow
@@ -362,6 +365,7 @@ function DateRange({
           setEditing(null);
         }}
         onChange={setEnd}
+        minDate={startsAt}
       />
     </div>
   );
@@ -374,6 +378,7 @@ function DateRow({
   onToggle,
   onClear,
   onChange,
+  minDate,
 }: {
   label: string;
   value: Date | null;
@@ -381,6 +386,7 @@ function DateRow({
   onToggle: () => void;
   onClear: () => void;
   onChange: (next: Date) => void;
+  minDate: Date | null;
 }) {
   return (
     <div>
@@ -419,7 +425,7 @@ function DateRow({
       </div>
       {open && value && (
         <div className="menu-pop origin-top border-t border-border px-2 pb-3 pt-3">
-          <DateTimePicker value={value} onChange={onChange} />
+          <DateTimePicker value={value} onChange={onChange} minDate={minDate} />
         </div>
       )}
     </div>

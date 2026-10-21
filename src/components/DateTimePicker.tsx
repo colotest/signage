@@ -6,14 +6,24 @@ import { MonthCalendar } from "./MonthCalendar";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-// Modelled on iOS's inline date picker: a month grid with past days greyed
-// out, then a time pill that opens hour/minute wheels. Used on every
+// Modelled on iOS's inline date picker: a month grid with past days (or
+// days before minDate) greyed out, then a time pill that opens hour/minute wheels. Used on every
 // platform, Apple's included — the native iOS picker ignores `min`, so it
 // can't grey out past dates, and one picker everywhere behaves the same.
 // Every button in here opts out of the app-wide press glow (no-press, see
 // globals.css) — across a whole grid of dates and wheel rows it was more
 // distracting than helpful.
-export function DateTimePicker({ value, onChange }: { value: Date; onChange: (next: Date) => void }) {
+// minDate: the first day that can be picked — today unless given (null for
+// none). See MonthCalendar.
+export function DateTimePicker({
+  value,
+  onChange,
+  minDate,
+}: {
+  value: Date;
+  onChange: (next: Date) => void;
+  minDate?: Date | null;
+}) {
   const [timeOpen, setTimeOpen] = useState(false);
 
   function pickDay(day: Date) {
@@ -28,7 +38,7 @@ export function DateTimePicker({ value, onChange }: { value: Date; onChange: (ne
 
   return (
     <div className="select-none">
-      <MonthCalendar value={value} onSelect={pickDay} />
+      <MonthCalendar value={value} onSelect={pickDay} minDate={minDate} />
 
       <div className="mt-3 flex items-center justify-between border-t border-border px-1 pt-3">
         <span className="text-[17px]">Time</span>
