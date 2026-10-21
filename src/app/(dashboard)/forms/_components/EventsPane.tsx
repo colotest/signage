@@ -6,6 +6,7 @@ import { EVENT_VIEWS, EventOverview, SubPage, type EventViewKey } from "./EventO
 import { EventsList } from "./EventsList";
 import { PageStack, type StackPage } from "./PageStack";
 import { eventTitle } from "./eventFormat";
+import { Checklist } from "./Checklist";
 
 type Route = { eventId: string | null; view: EventViewKey | null; archived: boolean };
 
@@ -75,10 +76,16 @@ export function EventsPane({ events, people }: { events: EventSummary[]; people:
             backLabel={`Back to ${eventTitle(event)}`}
             onBack={() => setRoute({ eventId: event.id, view: null })}
           >
-            <div className="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border px-6 py-16 text-center">
-              <p className="text-[17px] font-medium">Nothing here yet</p>
-              <p className="text-sm text-muted">The checklist for {eventTitle(event)} will be set up here.</p>
-            </div>
+            {view.key === "checkliste" ? (
+              <Checklist event={event} />
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border px-6 py-16 text-center">
+                <p className="text-[17px] font-medium">Nothing here yet</p>
+                <p className="text-sm text-muted">
+                  The {view.label} for {eventTitle(event)} will be set up here.
+                </p>
+              </div>
+            )}
           </SubPage>
         ),
       });

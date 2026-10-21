@@ -446,6 +446,7 @@ export type Database = {
           starts_time_set: boolean;
           ends_time_set: boolean;
           map_pins: Json;
+          checklist: Json;
         };
         Insert: {
           id?: string;
@@ -466,6 +467,7 @@ export type Database = {
           starts_time_set?: boolean;
           ends_time_set?: boolean;
           map_pins?: Json;
+          checklist?: Json;
         };
         Update: {
           id?: string;
@@ -486,6 +488,7 @@ export type Database = {
           starts_time_set?: boolean;
           ends_time_set?: boolean;
           map_pins?: Json;
+          checklist?: Json;
         };
         Relationships: [];
       };

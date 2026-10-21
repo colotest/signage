@@ -6,6 +6,7 @@ import { requirePage } from "@/lib/auth/session";
 import { EVENT_TYPES } from "@/lib/eventTypes";
 import { fetchLeadCandidates } from "@/lib/events";
 import { parsePins, type MapPin } from "@/lib/eventPins";
+import { cleanAnswer, parseChecklist } from "@/lib/checkliste";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database.types";
 
@@ -160,6 +161,37 @@ export async function setEventPins(id: string, pins: MapPin[]): Promise<string |
     return null;
   } catch (err) {
     return err instanceof Error ? err.message : "Couldn't save the pins";
+  }
+}
+
+// Fills in (or, with null, clears) some of an event's Checkliste — just
+// these fields, merged into what's stored, so two people working through
+// different parts of it don't overwrite each other. Like updateEvent,
+// resolves to an error message to show, or null once saved.
+export async function updateChecklist(id: string, patch: Record<string, true | string | null>): Promise<string | null> {
+  try {
+    const user = await requirePage("forms");
+    const admin = createAdminClient();
+    const { data, error: readError } = await admin.from("events").select("title, checklist").eq("id", id).maybeSingle();
+    if (readError) throw new Error(readError.message);
+    if (!data) throw new Error("That event no longer exists.");
+    const checklist = parseChecklist(data.checklist);
+    for (const [key, value] of Object.entries(patch)) {
+      const clean = value === null ? null : cleanAnswer(key, value);
+      if (clean === null) delete checklist[key];
+      else checklist[key] = clean;
+    }
+    const { error } = await admin.from("events").update({ checklist }).eq("id", id);
+    if (error) throw new Error(error.message);
+    recordActivity(user, {
+      action: "event.edit",
+      target: `event:${id}`,
+      summary: data.title ? `Edited the event ${quote(data.title)}` : "Edited an untitled event",
+    });
+    revalidatePath("/forms");
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : "Couldn't save the Checkliste";
   }
 }
 

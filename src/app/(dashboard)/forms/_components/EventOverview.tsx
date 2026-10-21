@@ -18,7 +18,11 @@ import { ArchiveIcon } from "./EventsList";
 import { eventTitle, formatEventDate, useIsClient } from "./eventFormat";
 
 // The setup views an event has, each its own page.
-export const EVENT_VIEWS = [{ key: "checkliste", label: "Checkliste" }] as const;
+export const EVENT_VIEWS = [
+  { key: "checkliste", label: "Checkliste" },
+  { key: "uebergabeprotokoll", label: "Übergabeprotokoll" },
+  { key: "mobiliar", label: "Mobiliar" },
+] as const;
 export type EventViewKey = (typeof EVENT_VIEWS)[number]["key"];
 
 // A page pushed onto the list side: a round ‹ back to where it came from,
