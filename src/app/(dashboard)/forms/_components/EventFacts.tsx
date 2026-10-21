@@ -36,12 +36,13 @@ export function EventTypeTile({
         aria-label={current ? `Type: ${current.label}` : "Pick a type"}
         // Just an outline, the icon in the text's own colour (white in dark
         // mode).
-        className="no-press flex aspect-square w-full max-w-[104px] flex-col items-center justify-center gap-1.5 rounded-[var(--radius-md)] border-[1.5px] border-foreground/25 p-2 transition-colors hover:border-foreground/40"
+        className="no-press flex aspect-square w-[112px] flex-col items-center justify-center gap-1.5 rounded-[var(--radius-md)] border-[3px] border-foreground/25 p-2 transition-colors hover:border-foreground/40"
       >
         {current ? (
           <>
             <EventTypeIcon type={current.key} className="h-8 w-8 text-foreground" />
-            <span className="whitespace-pre-line text-center text-[12px] font-semibold leading-tight">
+            {/* The contact's size, in PAX's colour. */}
+            <span className="whitespace-pre-line text-center text-[16px] font-semibold leading-tight text-muted">
               {stacked(current.label)}
             </span>
           </>
@@ -181,7 +182,8 @@ export function PaxField({ value, onSave }: { value: number | null; onSave: (pax
           {shown === null ? "000" : shown}
         </span>
       )}
-      <span className="text-[11px] font-semibold tracking-wide text-muted">PAX</span>
+      {/* The contact's size, like the type tile's name. */}
+      <span className="text-[16px] font-semibold tracking-wide text-muted">PAX</span>
     </div>
   );
 }

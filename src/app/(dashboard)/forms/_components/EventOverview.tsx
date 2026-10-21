@@ -115,10 +115,11 @@ export function EventOverview({
           heading below. relative z-10: it rides up over the calendar's
           blurred bottom edge (see EventCalendar), so it has to sit above it. */}
       <section className="relative z-10 px-1 text-[16px] leading-snug">
-        {/* The customer and contact are always short, so they take the left
-            third — wrapping onto another line in the rare case they don't
-            fit — and the event's type and its PAX the other two. */}
-        <div className="grid grid-cols-3 items-start gap-3">
+        {/* The customer and contact are always short, so they take what's
+            left of the row — wrapping onto another line in the rare case they
+            don't fit — beside the event's type and its PAX, which sit
+            together at the right. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
           <div className="flex min-w-0 flex-col">
           <EditableText
             value={event.customer}
@@ -156,12 +157,15 @@ export function EventOverview({
             link={event.contactEmail ? { href: `mailto:${event.contactEmail}`, label: "Write an email", icon: <MailIcon /> } : undefined}
           />
           </div>
-          <div className="flex justify-center pt-1">
-            <EventTypeTile value={event.eventType} onPick={(eventType) => save({ eventType })} />
-          </div>
-          {/* Centred on the block's height, however tall the contact runs. */}
-          <div className="flex justify-center self-center">
-            <PaxField value={event.pax} onSave={(pax) => save({ pax })} />
+          {/* The type at the top; the PAX centred on the block's height,
+              however tall the contact runs. */}
+          <div className="flex self-stretch">
+            <div className="self-start pt-1">
+              <EventTypeTile value={event.eventType} onPick={(eventType) => save({ eventType })} />
+            </div>
+            <div className="flex min-w-[72px] justify-center self-center pl-2">
+              <PaxField value={event.pax} onSave={(pax) => save({ pax })} />
+            </div>
           </div>
         </div>
 
