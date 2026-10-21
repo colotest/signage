@@ -80,11 +80,34 @@ export function EventTypeTile({
   );
 }
 
+// What a value waiting to be edited takes: a double-click (or double-tap)
+// to start editing — a single one is left to the text, so it can be
+// selected and copied like any other — or, from the keyboard, Return.
+// Plain text rather than a button, which wouldn't let its text be
+// selected at all.
+export function doubleClickToEdit(label: string, onEdit: () => void) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    title: `Double-click to edit ${label.toLowerCase()}`,
+    onDoubleClick: (e: React.MouseEvent) => {
+      e.preventDefault();
+      onEdit();
+    },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onEdit();
+      }
+    },
+  };
+}
+
 const MAX_PAX = 9999;
 
 // How many guests are expected: a large number over a small "PAX". Unset,
-// it reads 000, breathing like the other fields still to fill in. Tapped,
-// it's typed over — digits only, up to four of them.
+// it reads 000, breathing like the other fields still to fill in.
+// Double-clicked, it's typed over — digits only, up to four of them.
 export function PaxField({ value, onSave }: { value: number | null; onSave: (pax: number | null) => void }) {
   const [editing, setEditing] = useState(false);
   const [shown, setShown] = useState(value);
@@ -138,15 +161,13 @@ export function PaxField({ value, onSave }: { value: number | null; onSave: (pax
           )}
         />
       ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          title="Edit PAX"
+        <span
+          {...doubleClickToEdit("PAX", () => setEditing(true))}
           aria-label={shown === null ? "Enter PAX" : `PAX: ${shown}`}
-          className={cn("no-press", number, shown === null && "unset-breathe")}
+          className={cn("cursor-text select-text outline-none focus-visible:ring-2 focus-visible:ring-accent", number, shown === null && "unset-breathe")}
         >
           {shown === null ? "000" : shown}
-        </button>
+        </span>
       )}
       <span className="text-[11px] font-semibold tracking-wide text-muted">PAX</span>
     </div>

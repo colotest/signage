@@ -13,7 +13,7 @@ import { useOwnRoles } from "@/lib/auth/ViewerContext";
 import { cn } from "@/lib/utils/cn";
 import { MENU_ITEM_CLASS, ThreeDotIcon } from "../../library/_components/FileTree";
 import { EventDatesSection } from "./EventCalendar";
-import { EventTypeTile, PaxField } from "./EventFacts";
+import { EventTypeTile, PaxField, doubleClickToEdit } from "./EventFacts";
 import { ArchiveIcon } from "./EventsList";
 import { eventTitle, formatEventDate, useIsClient } from "./eventFormat";
 
@@ -200,7 +200,8 @@ export function EventOverview({
   );
 }
 
-// A value that turns into a field when tapped, and saves when left (or on
+// A value that turns into a field when double-clicked (so a single click
+// can still select its text), and saves when left (or on
 // Return; Escape puts it back). Unset — empty, or still the field's own
 // name that a new event starts with — it shows that name, faded and
 // breathing back up to full, so it's clear it's waiting to be filled in.
@@ -304,28 +305,32 @@ function EditableText({
 
   if (multiline) {
     return (
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        title={`Edit ${label.toLowerCase()}`}
-        className={cn("no-press w-full whitespace-pre-wrap text-left", unset && "unset-breathe", className)}
+      <span
+        {...doubleClickToEdit(label, () => setEditing(true))}
+        className={cn(
+          "block w-full cursor-text select-text whitespace-pre-wrap rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-accent",
+          unset && "unset-breathe",
+          className,
+        )}
       >
         {unset ? placeholder : shown}
-      </button>
+      </span>
     );
   }
 
   return (
     <span className={cn("flex min-w-0 items-center gap-2", Tag === "h1" && "flex-1")}>
       <Tag className={cn("min-w-0", wrap ? "[overflow-wrap:anywhere]" : "truncate", className)}>
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          title={`Edit ${label.toLowerCase()}`}
-          className={cn("no-press max-w-full text-left", !wrap && "truncate", unset && "unset-breathe")}
+        <span
+          {...doubleClickToEdit(label, () => setEditing(true))}
+          className={cn(
+            "block max-w-full cursor-text select-text rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-accent",
+            !wrap && "truncate",
+            unset && "unset-breathe",
+          )}
         >
           {unset ? placeholder : shown}
-        </button>
+        </span>
       </Tag>
       {link && !unset && (
         <a
