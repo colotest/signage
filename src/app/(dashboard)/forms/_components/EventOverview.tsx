@@ -160,7 +160,7 @@ export function EventOverview({
           </div>
           {/* The type at the top; the PAX centred on the block's height,
               however tall the contact runs. */}
-          <div className="flex gap-[5px] self-stretch pr-[10px]">
+          <div className="flex gap-[15px] self-stretch pr-[10px]">
             <div className="self-start pt-1">
               <EventTypeTile value={event.eventType} onPick={(eventType) => save({ eventType })} />
             </div>
