@@ -1,10 +1,10 @@
 // Flattens the Affinity floor-plan export: bakes every <g transform> into
 // absolute coordinates, rounds them, and merges all strokes of one look into
-// a few <path>s with hairline (non-scaling) strokes — one for each cell of
-// a coarse grid over the plan (see GRID below).
+// a few <path>s — one for each cell of a coarse grid over the plan (see
+// GRID below).
 // Usage: node scripts/flatten-floorplan.mjs in.svg out.svg [precision]
-// (SW=0.8 sets the stroke width in screen px). Prints the viewBox to put in
-// the FloorPlan (width/height) on the Forms page.
+// (SW=5 sets the line width, in the plan's own units; see WIDTHS). Prints
+// the viewBox to put in the FloorPlan (width/height) on the Forms page.
 import fs from "node:fs";
 
 const [, , inPath, outPath, precArg] = process.argv;
@@ -138,6 +138,15 @@ const cellOf = ({ x, y }) => {
   const r = Math.floor(((y - vb[1]) / vb[3]) * GRID.rows);
   return Math.min(Math.max(r, 0), GRID.rows - 1) * GRID.cols + Math.min(Math.max(c, 0), GRID.cols - 1);
 };
+// Line widths are in the plan's own units, so lines grow and shrink with
+// the map like a drawing on paper. (Hairlines that stayed the same width on
+// screen at any zoom looked finer, but the map is slid and scaled as a
+// picture while it moves, so every redraw at rest snapped them back from
+// the width they'd been scaled to — a flicker after every zoom.) The grey
+// hatching is drawn finer than the walls: its lines are only ~6 units
+// apart, and wider they'd run together into a solid tone once zoomed in.
+const SW = Number(process.env.SW ?? 5);
+const WIDTHS = { "#8e8e93": SW * 0.4 };
 let body = "";
 const order = [...buckets.keys()].sort((a, b) => (a.startsWith("black") ? 1 : 0) - (b.startsWith("black") ? 1 : 0));
 for (const key of order) {
@@ -150,14 +159,12 @@ for (const key of order) {
     if (!cells.has(cell)) cells.set(cell, []);
     cells.get(cell).push(part.d);
   }
-  // vector-effect isn't inherited, so it goes on every path; the colours
-  // are, and sit on the group.
-  body += `<g fill="${fillCol}" stroke="${col}">\n`;
+  body += `<g fill="${fillCol}" stroke="${col}" stroke-width="${WIDTHS[col] ?? SW}">\n`;
   for (const cell of [...cells.keys()].sort((a, b) => a - b)) {
-    body += `<path vector-effect="non-scaling-stroke" d="${cells.get(cell).join("")}"/>\n`;
+    body += `<path d="${cells.get(cell).join("")}"/>\n`;
   }
   body += `</g>\n`;
 }
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.join(" ")}" width="${vb[2]}" height="${vb[3]}" stroke-width="${process.env.SW ?? 0.8}" stroke-linecap="round" stroke-linejoin="round">\n${body}</svg>\n`;
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.join(" ")}" width="${vb[2]}" height="${vb[3]}" stroke-linecap="round" stroke-linejoin="round">\n${body}</svg>\n`;
 fs.writeFileSync(outPath, svg);
 console.error("wrote", outPath, (svg.length / 1024).toFixed(0) + "KB", "viewBox", vb.join(" "));

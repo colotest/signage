@@ -27,19 +27,21 @@ type View = { x: number; y: number; s: number; r: number };
 
 // The plan is drawn by the browser from the SVG. While the map moves it's
 // a picture being slid and scaled (smooth, but soft once zoomed in); once
-// it comes to rest it's redrawn sharp at the new zoom, up to this wide —
+// it comes to rest it's redrawn sharp at the new zoom — its lines scale
+// with the plan, so they keep the width the picture had and only sharpen, up to this wide —
 // past that a redraw would cost more memory than an iPad likes to give.
 // Drawing it means going over every line of the plan's hatching, so it's
 // only redrawn when that would show: when the zoom has changed by more
 // than RERASTER_ZOOM since the last time, when it's zoomed in past that
 // width and the picture is being blown up, or when the map's turned and
-// the picture's hairlines would be smudged by turning it. Sliding the
+// the picture's fine lines would be smudged by turning it. Sliding the
 // upright map otherwise reuses the picture as it is.
 const MAX_RASTER_PX = 5000;
 const RERASTER_ZOOM = 0.05;
 const SETTLE_MS = 180;
 const ZOOM_OUT_LIMIT = 0.6; // × the zoom that fits the whole plan
-const ZOOM_IN_LIMIT = 14;
+// Past this the plan's lines, which grow with the zoom, get heavy.
+const ZOOM_IN_LIMIT = 6;
 // Two fingers have to turn this far before a pinch starts turning the map
 // too, so a plain pinch-to-zoom doesn't wobble it.
 const ROTATE_THRESHOLD = (10 * Math.PI) / 180;
