@@ -9,7 +9,8 @@ import { LAVA_TUNING, LavaLamp, type LavaTuning } from "@/components/screenPages
 const DIALS: { key: keyof LavaTuning; label: string; min: number; max: number; step: number; note: string }[] = [
   { key: "stage", label: "Stage", min: 0.1, max: 0.5, step: 0.01, note: "Filter resolution, as a fraction of the screen. The biggest lever on cost." },
   { key: "blur", label: "Merge reach", min: 0.01, max: 0.12, step: 0.002, note: "How far apart two blobs reach for each other, and how much a merge swells." },
-  { key: "blobAlpha", label: "Blob height", min: 0.2, max: 1, step: 0.02, note: "How high one blob stands in the field. Lower makes merges grow more." },
+  { key: "blobAlpha", label: "Blob height", min: 0.25, max: 1, step: 0.01, note: "How high one blob stands in the field. Only the headroom under 1 can be added to, so this is how far a merge can swell: at 1 none, at 0.5 two blobs can sum, at 0.33 three. Lower it and blobs shrink too, unless you take Edge level down with it." },
+  { key: "cut", label: "Edge level", min: 0.08, max: 0.6, step: 0.01, note: "Where the edge is cut, up the field. Half of Blob height puts it exactly where blobs are drawn; lower leaves them larger than drawn and reaching further for each other." },
   { key: "alphaGain", label: "Edge hardness", min: 4, max: 60, step: 1, note: "How few pixels an edge takes to go from nothing to solid." },
   { key: "lift", label: "Light band", min: 0.005, max: 0.08, step: 0.002, note: "How wide the lit edge is. Narrow reads as gloss, wide as a dipped blob." },
   { key: "rimStrength", label: "Light strength", min: 0, max: 14, step: 0.2, note: "How bright the lit edges are, top and bottom together." },

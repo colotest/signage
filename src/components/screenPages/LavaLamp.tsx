@@ -313,6 +313,11 @@ export const LAVA_TUNING = {
   blur: BLUR_RATIO,
   blobAlpha: BLOB_ALPHA,
   alphaGain: ALPHA_GAIN,
+  // Where in the field the edge is cut, as a fraction of the way up it.
+  // Half of a blob's own height puts the edge exactly where the blob was
+  // drawn; lower leaves it outside, so blobs read bigger than drawn and
+  // two of them reach each other from further apart.
+  cut: -ALPHA_BIAS / ALPHA_GAIN,
   lift: LIFT_RATIO,
   // One dial over the three channels, keeping their ratio: blue falls
   // fastest, which is what keeps a thick blob's middle warm.
@@ -369,10 +374,10 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
   const short = Math.min(stageWidth, stageHeight);
   const blur = short * t.blur;
   const lift = short * t.lift;
-  // The cut has to follow the gain, or turning one of them up moves the
-  // edge as well as sharpening it: this keeps the cut at the same quarter
-  // of the field, which is what the merging depends on.
-  const alphaBias = (ALPHA_BIAS / ALPHA_GAIN) * t.alphaGain;
+  // The gain only decides how many pixels the edge takes; the cut decides
+  // where it falls. Multiplying them keeps the two independent, so
+  // sharpening an edge never moves it.
+  const alphaBias = -t.cut * t.alphaGain;
   const wax = `hsl(${t.waxHue} ${t.waxSaturation}% ${t.waxLightness}%)`;
 
   return (
