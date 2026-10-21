@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
-function weekStartsOn(): number {
+export function weekStartsOn(): number {
   // 0 = Sunday … 6 = Saturday. Intl's weekInfo reports Sunday as 7.
   try {
     const locale = new Intl.Locale(navigator.language) as Intl.Locale & {

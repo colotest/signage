@@ -5,8 +5,20 @@ import { quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
 import { fetchLeadCandidates } from "@/lib/events";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/types/database.types";
 
-export type NewEventInput = {
+// What the Events list's "+ Create" starts an event with: the fields' own
+// names, for overwriting on its page, and the person who made it as lead.
+const PRESET = {
+  title: "Title",
+  customer: "Customer",
+  contact_name: "Contact Name",
+  contact_phone: "Phone",
+  contact_email: "Email",
+};
+
+// The fields an event's page can change, any number at a time.
+export type EventPatch = Partial<{
   title: string;
   customer: string;
   contactName: string;
@@ -19,7 +31,7 @@ export type NewEventInput = {
   endsAt: string | null;
   startsTimeSet: boolean;
   endsTimeSet: boolean;
-};
+}>;
 
 const MAX_TEXT = 200;
 
@@ -36,46 +48,63 @@ function timestamp(value: string | null) {
   return date.toISOString();
 }
 
-export async function createEvent(input: NewEventInput) {
+export async function createPresetEvent() {
   const user = await requirePage("forms");
   const admin = createAdminClient();
-
-  let leadId = input.leadId;
-  if (leadId) {
-    const candidates = await fetchLeadCandidates(admin, user);
-    if (!candidates.some((c) => c.id === leadId)) leadId = null;
-  }
-
-  const startsAt = timestamp(input.startsAt);
-  const endsAt = timestamp(input.endsAt);
-  if (startsAt && endsAt && endsAt < startsAt) throw new Error("The event can't end before it starts.");
-
-  const title = text(input.title);
   const { data, error } = await admin
     .from("events")
-    .insert({
-      title,
-      customer: text(input.customer),
-      contact_name: text(input.contactName),
-      contact_phone: text(input.contactPhone),
-      contact_email: text(input.contactEmail),
-      lead_id: leadId,
-      starts_at: startsAt,
-      ends_at: endsAt,
-      starts_time_set: startsAt ? input.startsTimeSet : true,
-      ends_time_set: endsAt ? input.endsTimeSet : true,
-      created_by: user.id,
-    })
+    .insert({ ...PRESET, lead_id: user.id, created_by: user.id })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
-
-  recordActivity(user, {
-    action: "event.create",
-    summary: title ? `Added the event ${quote(title)}` : "Added an untitled event",
-  });
+  recordActivity(user, { action: "event.create", summary: "Added a new event" });
   revalidatePath("/forms");
   return data.id;
+}
+
+export async function updateEvent(id: string, patch: EventPatch) {
+  const user = await requirePage("forms");
+  const admin = createAdminClient();
+  const { data: current, error: readError } = await admin
+    .from("events")
+    .select("title, starts_at, ends_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!current) throw new Error("That event no longer exists.");
+
+  const row: Database["public"]["Tables"]["events"]["Update"] = {};
+  if (patch.title !== undefined) row.title = text(patch.title);
+  if (patch.customer !== undefined) row.customer = text(patch.customer);
+  if (patch.contactName !== undefined) row.contact_name = text(patch.contactName);
+  if (patch.contactPhone !== undefined) row.contact_phone = text(patch.contactPhone);
+  if (patch.contactEmail !== undefined) row.contact_email = text(patch.contactEmail);
+  if (patch.leadId !== undefined) {
+    // Only someone who could be picked as lead (or nobody).
+    const candidates = patch.leadId ? await fetchLeadCandidates(admin, user) : [];
+    row.lead_id = patch.leadId && candidates.some((c) => c.id === patch.leadId) ? patch.leadId : null;
+  }
+  if (patch.startsAt !== undefined) row.starts_at = timestamp(patch.startsAt);
+  if (patch.endsAt !== undefined) row.ends_at = timestamp(patch.endsAt);
+  if (patch.startsTimeSet !== undefined) row.starts_time_set = patch.startsTimeSet;
+  if (patch.endsTimeSet !== undefined) row.ends_time_set = patch.endsTimeSet;
+
+  const startsAt = "starts_at" in row ? row.starts_at : current.starts_at;
+  const endsAt = "ends_at" in row ? row.ends_at : current.ends_at;
+  if (typeof startsAt === "string" && typeof endsAt === "string" && endsAt < startsAt) {
+    throw new Error("The event can't end before it starts.");
+  }
+
+  const { error } = await admin.from("events").update(row).eq("id", id);
+  if (error) throw new Error(error.message);
+  const title = row.title !== undefined ? row.title : current.title;
+  recordActivity(user, {
+    action: "event.edit",
+    // Repeated edits to one event within a minute fold into one entry.
+    target: `event:${id}`,
+    summary: title ? `Edited the event ${quote(title)}` : "Edited an untitled event",
+  });
+  revalidatePath("/forms");
 }
 
 async function eventTitleFor(admin: ReturnType<typeof createAdminClient>, id: string) {

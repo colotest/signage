@@ -24,7 +24,6 @@ export function EventsPane({ events, people }: { events: EventSummary[]; people:
       node: (
         <EventsList
           events={events}
-          people={people}
           archived={archived}
           onToggleArchived={() => setArchived((a) => !a)}
           onOpen={(eventId) => setRoute({ eventId, view: null })}
@@ -38,6 +37,7 @@ export function EventsPane({ events, people }: { events: EventSummary[]; people:
       node: (
         <EventOverview
           event={event}
+          people={people}
           onBack={() => setRoute({ eventId: null, view: null })}
           onOpenView={(view) => setRoute({ eventId: event.id, view })}
           onGone={() => setRoute({ eventId: null, view: null })}

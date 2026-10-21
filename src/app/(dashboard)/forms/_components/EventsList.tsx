@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import type { EventPerson, EventSummary } from "@/lib/events";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { createPresetEvent } from "@/lib/actions/events";
+import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
 import { SearchField } from "../../library/_components/SearchField";
 import { eventTitle, formatEventDate, formatRuntime, useIsClient } from "./eventFormat";
-import { NewEventButton } from "./NewEventDialog";
 
 // Lower-case and without accents, so "prämiere" finds "Premiere" and
 // "Prämiere" alike.
@@ -26,24 +27,35 @@ function matches(event: EventSummary, query: string) {
 
 // The Forms page's first page: every event, as cards in the Playlists
 // list's style. The arrowhead opens a card in place to show who's on it;
-// anywhere else on the card goes on to the event's own page. The archive
-// glyph beside the + switches the list over to archived events (and back);
-// the search, as in the Media list, narrows whichever list is showing.
+// anywhere else on the card goes on to the event's own page. "+ Create" at
+// the top, as in the Playlists list, adds an event filled in with its
+// fields' names and opens it to be written over. The archive glyph
+// switches the list over to archived events (and back); the search, as in
+// the Media list, narrows whichever list is showing.
 export function EventsList({
   events,
-  people,
   archived,
   onToggleArchived,
   onOpen,
 }: {
   events: EventSummary[];
-  people: EventPerson[];
   archived: boolean;
   onToggleArchived: () => void;
   onOpen: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
+  const router = useRouter();
+  const [creating, startCreating] = useTransition();
+
+  function create() {
+    startCreating(async () => {
+      const id = await createPresetEvent();
+      // Its page slides in as soon as the refreshed list has it.
+      onOpen(id);
+      router.refresh();
+    });
+  }
 
   function toggle(id: string) {
     setExpanded((current) => {
@@ -62,12 +74,14 @@ export function EventsList({
       {/* search-row: the search opens from just after the title into the
           row's spare width, the buttons staying against the right edge —
           and on a phone the archive button dissolves to make room, as
-          Upload does in the Media list (see SearchField, globals.css). */}
+          Upload does in the Media list (see SearchField, globals.css). The
+          right offset there allows for one round button after it; here
+          it's the last, so it's set back to the edge. */}
       <div className="search-row relative mb-4 flex min-h-[var(--title-action)] items-center gap-3">
         <h1 className="shrink-0 text-[28px] font-semibold tracking-tight">{archived ? "Archive" : "Events"}</h1>
         <SearchField onQueryChange={setQuery} label="Search events" />
         <div className="relative ml-auto flex shrink-0 items-center gap-3">
-          <span className="search-yields shrink-0">
+          <span className="search-yields shrink-0" style={{ right: 0 }}>
             <button
               type="button"
               onClick={onToggleArchived}
@@ -84,38 +98,46 @@ export function EventsList({
               <ArchiveIcon className="title-action-glyph" />
             </button>
           </span>
-          <NewEventButton people={people} />
         </div>
       </div>
 
-      {shown.length === 0 ? (
+      <ul className="flex flex-col gap-3">
+        {/* Only among current events — nothing's made straight into the
+            Archive. */}
+        {!archived && !query.trim() && (
+          <li>
+            <button
+              type="button"
+              onClick={create}
+              disabled={creating}
+              className="press-ghost-fit flex w-full items-center justify-center rounded-[var(--radius-md)] border border-dashed border-border p-3 text-[15px] font-medium text-accent hover:bg-black/[.02] disabled:opacity-40 dark:hover:bg-white/[.03]"
+            >
+              + Create
+            </button>
+          </li>
+        )}
+        {shown.map((event) => (
+          <EventRow
+            key={event.id}
+            event={event}
+            isExpanded={expanded.has(event.id)}
+            onToggle={() => toggle(event.id)}
+            onOpen={() => onOpen(event.id)}
+          />
+        ))}
+      </ul>
+
+      {shown.length === 0 && (archived || query.trim()) && (
         <div className="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border px-6 py-16 text-center">
           {inList.length > 0 ? (
             <p className="text-[17px] font-medium">No events match “{query.trim()}”</p>
-          ) : archived ? (
+          ) : (
             <>
               <p className="text-[17px] font-medium">Nothing archived</p>
               <p className="text-sm text-muted">Events you archive from their ⋯ menu end up here.</p>
             </>
-          ) : (
-            <>
-              <p className="text-[17px] font-medium">No events yet</p>
-              <p className="text-sm text-muted">Press + to add one.</p>
-            </>
           )}
         </div>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {shown.map((event) => (
-            <EventRow
-              key={event.id}
-              event={event}
-              isExpanded={expanded.has(event.id)}
-              onToggle={() => toggle(event.id)}
-              onOpen={() => onOpen(event.id)}
-            />
-          ))}
-        </ul>
       )}
     </div>
   );
