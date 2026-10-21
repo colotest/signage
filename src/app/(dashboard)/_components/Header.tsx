@@ -36,7 +36,11 @@ export function Header() {
     const observer = new ResizeObserver(() => {
       document.documentElement.style.setProperty("--header-h", `${node.offsetHeight}px`);
     });
-    observer.observe(node);
+    // border-box: rotating the phone changes the top inset, which is this
+    // header's padding — its content box stays the same size, so watching
+    // that alone (the default) missed every rotation and left the page
+    // padded for the previous orientation.
+    observer.observe(node, { box: "border-box" });
     return () => observer.disconnect();
   }, []);
 
