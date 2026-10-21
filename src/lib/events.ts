@@ -16,6 +16,9 @@ export type EventSummary = {
   id: string;
   title: string | null;
   description: string | null;
+  // One of EVENT_TYPES' keys, and the guests expected (0037).
+  eventType: string | null;
+  pax: number | null;
   customer: string | null;
   contactName: string | null;
   contactPhone: string | null;
@@ -96,6 +99,8 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     title: e.title,
     // ?? null: there's no description before 0036 has added the column.
     description: e.description ?? null,
+    eventType: e.event_type ?? null,
+    pax: e.pax ?? null,
     customer: e.customer,
     contactName: e.contact_name,
     contactPhone: e.contact_phone,

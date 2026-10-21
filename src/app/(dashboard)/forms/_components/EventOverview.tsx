@@ -13,6 +13,7 @@ import { useOwnRoles } from "@/lib/auth/ViewerContext";
 import { cn } from "@/lib/utils/cn";
 import { MENU_ITEM_CLASS, ThreeDotIcon } from "../../library/_components/FileTree";
 import { EventDatesSection } from "./EventCalendar";
+import { EventTypeTile, PaxField } from "./EventFacts";
 import { ArchiveIcon } from "./EventsList";
 import { eventTitle, formatEventDate, useIsClient } from "./eventFormat";
 
@@ -108,31 +109,22 @@ export function EventOverview({
     >
       {archived && <ArchivedBar event={event} onGone={onGone} isClient={isClient} />}
 
-      {/* Under the title, a few lines about it, then who's leading it. */}
-      <div className="-mt-1 mb-4 flex flex-col items-start gap-3 px-1">
-        <EditableText
-          value={event.description}
-          placeholder="Description"
-          label="Description"
-          multiline
-          onSave={(description) => save({ description })}
-          className="text-[15px] leading-snug text-foreground/85"
-        />
-        <LeadPicker people={people} event={event} onPick={(leadId) => save({ leadId })} />
-      </div>
-
       <EventDatesSection key={event.id} event={event} />
 
-      {/* On the page itself, like a subtitle under the title, without labels
-          — lined up with the "Setup" heading below. */}
-      {/* relative z-10: it rides up over the calendar's blurred bottom edge
-          (see EventCalendar), so it has to sit above it. */}
-      <section className="relative z-10 flex flex-col gap-3 px-1 text-[16px] leading-snug">
-        <div className="flex flex-col">
+      {/* On the page itself, without labels — lined up with the "Setup"
+          heading below. relative z-10: it rides up over the calendar's
+          blurred bottom edge (see EventCalendar), so it has to sit above it. */}
+      <section className="relative z-10 px-1 text-[16px] leading-snug">
+        {/* The customer and contact are always short, so they take the left
+            third — wrapping onto another line in the rare case they don't
+            fit — and the event's type and its PAX the other two. */}
+        <div className="grid grid-cols-3 items-start gap-3">
+          <div className="flex min-w-0 flex-col">
           <EditableText
             value={event.customer}
             placeholder="Customer"
             label="Customer"
+            wrap
             onSave={(customer) => save({ customer })}
             // The month's name's size, heading the contact under it — with a
             // paragraph's gap before it.
@@ -142,6 +134,7 @@ export function EventOverview({
             value={event.contactName}
             placeholder="Contact Name"
             label="Contact name"
+            wrap
             onSave={(contactName) => save({ contactName })}
           />
           <EditableText
@@ -149,6 +142,7 @@ export function EventOverview({
             placeholder="Phone"
             label="Phone"
             inputType="tel"
+            wrap
             onSave={(contactPhone) => save({ contactPhone })}
             link={event.contactPhone ? { href: `tel:${event.contactPhone.replace(/[^\d+]/g, "")}`, label: "Call", icon: <PhoneIcon /> } : undefined}
           />
@@ -157,11 +151,32 @@ export function EventOverview({
             placeholder="Email"
             label="Email"
             inputType="email"
+            wrap
             onSave={(contactEmail) => save({ contactEmail })}
             link={event.contactEmail ? { href: `mailto:${event.contactEmail}`, label: "Write an email", icon: <MailIcon /> } : undefined}
           />
+          </div>
+          <div className="flex justify-center pt-1">
+            <EventTypeTile value={event.eventType} onPick={(eventType) => save({ eventType })} />
+          </div>
+          <div className="flex justify-center pt-3">
+            <PaxField value={event.pax} onSave={(pax) => save({ pax })} />
+          </div>
         </div>
-        {error && <p className="text-[13px] text-danger">{error}</p>}
+
+        {/* A paragraph on: a few lines about it, then who's leading it. */}
+        <div className="mt-5 flex flex-col items-start gap-3">
+          <EditableText
+            value={event.description}
+            placeholder="Description"
+            label="Description"
+            multiline
+            onSave={(description) => save({ description })}
+            className="text-[15px] leading-snug text-foreground/85"
+          />
+          <LeadPicker people={people} event={event} onPick={(leadId) => save({ leadId })} />
+        </div>
+        {error && <p className="mt-3 text-[13px] text-danger">{error}</p>}
       </section>
 
       <h2 className="mb-2 mt-6 px-1 text-[12px] font-medium uppercase tracking-wide text-muted">Setup</h2>
@@ -201,6 +216,7 @@ function EditableText({
   inputType = "text",
   link,
   multiline = false,
+  wrap = false,
   className,
   as: Tag = "span",
 }: {
@@ -211,6 +227,8 @@ function EditableText({
   inputType?: "text" | "tel" | "email";
   link?: { href: string; label: string; icon: ReactNode };
   multiline?: boolean;
+  // Onto another line when it doesn't fit, rather than cut short.
+  wrap?: boolean;
   className?: string;
   as?: "span" | "h1";
 }) {
@@ -299,12 +317,12 @@ function EditableText({
 
   return (
     <span className={cn("flex min-w-0 items-center gap-2", Tag === "h1" && "flex-1")}>
-      <Tag className={cn("min-w-0 truncate", className)}>
+      <Tag className={cn("min-w-0", wrap ? "[overflow-wrap:anywhere]" : "truncate", className)}>
         <button
           type="button"
           onClick={() => setEditing(true)}
           title={`Edit ${label.toLowerCase()}`}
-          className={cn("no-press max-w-full truncate text-left", unset && "unset-breathe")}
+          className={cn("no-press max-w-full text-left", !wrap && "truncate", unset && "unset-breathe")}
         >
           {unset ? placeholder : shown}
         </button>

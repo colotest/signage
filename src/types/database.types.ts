@@ -431,6 +431,8 @@ export type Database = {
           id: string;
           title: string | null;
           description: string | null;
+          event_type: string | null;
+          pax: number | null;
           customer: string | null;
           contact_name: string | null;
           contact_phone: string | null;
@@ -448,6 +450,8 @@ export type Database = {
           id?: string;
           title?: string | null;
           description?: string | null;
+          event_type?: string | null;
+          pax?: number | null;
           customer?: string | null;
           contact_name?: string | null;
           contact_phone?: string | null;
@@ -465,6 +469,8 @@ export type Database = {
           id?: string;
           title?: string | null;
           description?: string | null;
+          event_type?: string | null;
+          pax?: number | null;
           customer?: string | null;
           contact_name?: string | null;
           contact_phone?: string | null;

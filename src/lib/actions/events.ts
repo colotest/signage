@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
+import { EVENT_TYPES } from "@/lib/eventTypes";
 import { fetchLeadCandidates } from "@/lib/events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/database.types";
@@ -21,6 +22,8 @@ const PRESET = {
 export type EventPatch = Partial<{
   title: string;
   description: string;
+  eventType: string | null;
+  pax: number | null;
   customer: string;
   contactName: string;
   contactPhone: string;
@@ -91,6 +94,18 @@ async function applyUpdate(id: string, patch: EventPatch) {
   const row: Database["public"]["Tables"]["events"]["Update"] = {};
   if (patch.title !== undefined) row.title = text(patch.title);
   if (patch.description !== undefined) row.description = text(patch.description, MAX_DESCRIPTION);
+  if (patch.eventType !== undefined) {
+    if (patch.eventType !== null && !EVENT_TYPES.some((t) => t.key === patch.eventType)) {
+      throw new Error("That isn't one of the event types.");
+    }
+    row.event_type = patch.eventType;
+  }
+  if (patch.pax !== undefined) {
+    if (patch.pax !== null && (!Number.isInteger(patch.pax) || patch.pax < 0 || patch.pax > 9999)) {
+      throw new Error("PAX is a whole number up to 9999.");
+    }
+    row.pax = patch.pax;
+  }
   if (patch.customer !== undefined) row.customer = text(patch.customer);
   if (patch.contactName !== undefined) row.contact_name = text(patch.contactName);
   if (patch.contactPhone !== undefined) row.contact_phone = text(patch.contactPhone);
