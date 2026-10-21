@@ -5,19 +5,33 @@ export function eventTitle(event: Pick<EventSummary, "title">) {
   return event.title?.trim() || "Untitled Event";
 }
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
+// "03/11/2026".
 export function formatEventDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const d = new Date(iso);
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+function sameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// "03/11/2026, 18:00 Tu" — day first, 24-hour time, the weekday last.
 export function formatEventDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const d = new Date(iso);
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())} ${WEEKDAYS[d.getDay()]}`;
+}
+
+// The end, when there is one, after a dash — just its time if it's on the
+// same day as the start.
+export function formatEventRange(startsAt: string, endsAt: string | null) {
+  const start = formatEventDateTime(startsAt);
+  if (!endsAt) return start;
+  const end = new Date(endsAt);
+  const endText = sameDay(new Date(startsAt), end) ? `${pad(end.getHours())}:${pad(end.getMinutes())}` : formatEventDateTime(endsAt);
+  return `${start} – ${endText}`;
 }
 
 // How long an event runs, to the nearest hour and never under one: "5h",

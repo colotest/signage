@@ -72,3 +72,52 @@ export async function createEvent(input: NewEventInput) {
   revalidatePath("/forms");
   return data.id;
 }
+
+async function eventTitleFor(admin: ReturnType<typeof createAdminClient>, id: string) {
+  const { data, error } = await admin.from("events").select("title, archived_at").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("That event no longer exists.");
+  return data;
+}
+
+export async function archiveEvent(id: string) {
+  const user = await requirePage("forms");
+  const admin = createAdminClient();
+  const { title } = await eventTitleFor(admin, id);
+  const { error } = await admin.from("events").update({ archived_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "event.archive",
+    summary: title ? `Archived the event ${quote(title)}` : "Archived an untitled event",
+  });
+  revalidatePath("/forms");
+}
+
+export async function unarchiveEvent(id: string) {
+  const user = await requirePage("forms");
+  const admin = createAdminClient();
+  const { title } = await eventTitleFor(admin, id);
+  const { error } = await admin.from("events").update({ archived_at: null }).eq("id", id);
+  if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "event.unarchive",
+    summary: title ? `Brought back the event ${quote(title)}` : "Brought back an untitled event",
+  });
+  revalidatePath("/forms");
+}
+
+// Only an archived event can be deleted — archiving first is the
+// confirmation that it's really done with.
+export async function deleteEvent(id: string) {
+  const user = await requirePage("forms");
+  const admin = createAdminClient();
+  const { title, archived_at } = await eventTitleFor(admin, id);
+  if (!archived_at) throw new Error("Archive the event before deleting it.");
+  const { error } = await admin.from("events").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "event.delete",
+    summary: title ? `Deleted the event ${quote(title)}` : "Deleted an untitled event",
+  });
+  revalidatePath("/forms");
+}

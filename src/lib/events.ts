@@ -23,6 +23,8 @@ export type EventSummary = {
   leadName: string | null;
   startsAt: string | null;
   endsAt: string | null;
+  // When it was archived, or null while it's current.
+  archivedAt: string | null;
 };
 
 // Who can be made an event's lead: everyone in the Events Management role,
@@ -52,8 +54,8 @@ export async function fetchLeadCandidates(admin: Admin, viewer: { id: string }):
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// Every event, soonest first; ones without a start date at the end, newest
-// of those first.
+// Every event, archived ones too (the list sorts them out), soonest first;
+// ones without a start date at the end, newest of those first.
 export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
   const { data, error } = await admin
     .from("events")
@@ -82,5 +84,7 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     leadName: e.lead_id ? (leadNames.get(e.lead_id) ?? null) : null,
     startsAt: e.starts_at,
     endsAt: e.ends_at,
+    // ?? null: reads as current before 0034 has added the column.
+    archivedAt: e.archived_at ?? null,
   }));
 }

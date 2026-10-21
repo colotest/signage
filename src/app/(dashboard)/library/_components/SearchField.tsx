@@ -32,9 +32,12 @@ const CLOSE_EASE = "cubic-bezier(0.4, 0, 1, 1)";
 // never ahead of the keystroke showing up in the field.
 export function SearchField({
   onQueryChange,
+  label = "Search files",
   className,
 }: {
   onQueryChange: (query: string) => void;
+  // The placeholder, and what the button and field are called.
+  label?: string;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -143,8 +146,8 @@ export function SearchField({
             onBlur={() => {
               if (query === "" && window.matchMedia("(pointer: coarse)").matches) close();
             }}
-            placeholder="Search files"
-            aria-label="Search files"
+            placeholder={label}
+            aria-label={label}
             // The same size as the file names it's matching against.
             className="min-w-0 flex-1 bg-transparent text-[length:var(--title-action-text)] text-foreground outline-none placeholder:text-muted"
           />
@@ -162,8 +165,8 @@ export function SearchField({
         <button
           type="button"
           onClick={show}
-          title="Search files"
-          aria-label="Search files"
+          title={label}
+          aria-label={label}
           className="press-ghost-fit flex h-full w-full items-center justify-center rounded-full"
         >
           <MagnifierIcon className="title-action-glyph" />
