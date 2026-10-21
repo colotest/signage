@@ -21,7 +21,7 @@ const CIRCLE = 34;
 const PEEK_TOP = 36;
 const PEEK_BOTTOM = 22;
 // How far what follows the slit reaches up over its bottom edge.
-const SLIT_OVERLAP = 28;
+const SLIT_OVERLAP = 20;
 // Open: the month's name and its controls, the weekdays' names, then a
 // window of three weeks that scrolls on through the months.
 const HEADER = 44;
