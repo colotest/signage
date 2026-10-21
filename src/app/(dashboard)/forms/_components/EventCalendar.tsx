@@ -106,15 +106,14 @@ function settle(next: DateValue): DateValue {
 // whose single day is both — whichever side of it the new day falls on.
 type Mode = "start" | "end" | "either" | null;
 
-// The time prompt hanging off a just-picked day: where its sharp corner
-// points (the day's circle, in the calendar's own coordinates) and which
-// way it opens from there.
+// The time prompt hanging under a just-picked day: the middle of the day's
+// circle and where under it the prompt starts (in the calendar's own
+// coordinates), and how wide the calendar is, to keep it inside.
 type TimePrompt = {
   which: "start" | "end";
   x: number;
   y: number;
-  below: boolean;
-  rightward: boolean;
+  frameWidth: number;
   expanded: boolean;
 };
 
@@ -132,7 +131,7 @@ type TimePrompt = {
 // once, and a little "Pick Start Time" hangs off it — pressed, it opens
 // into hour and minute wheels, ✕ to leave the time as it was, ✓ to set it.
 // The end works the same way, from the start on. Every change is saved as
-// it's made; Done closes the calendar again.
+// it's made; the ✓ closes the calendar again.
 export function EventDatesSection({ event }: { event: EventSummary }) {
   const router = useRouter();
   const isClient = useIsClient();
@@ -205,7 +204,7 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
     return mode === "either";
   }
 
-  function tapDay(day: Date, circle: DOMRect, frame: DOMRect, windowBottom: number) {
+  function tapDay(day: Date, circle: DOMRect, frame: DOMRect) {
     if (!mode) {
       // Tapping the event's own days lets go of them to be picked again.
       if (startDay && sameDay(day, startDay) && oneDay) setMode("either");
@@ -239,16 +238,13 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
     // A start with no end yet goes straight on to picking the end.
     setMode(which === "start" && !next.endsAt ? "end" : null);
 
-    // The prompt hangs off the day's circle: below it, unless that would
-    // leave the window, and opening away from the nearer side.
-    const x = circle.left + circle.width / 2 - frame.left;
-    const below = circle.bottom + 60 < windowBottom;
+    // The prompt hangs centred under the day's circle (clear of the time
+    // written there), over whatever's below if it reaches that far.
     setPrompt({
       which,
-      x,
-      y: below ? circle.bottom - frame.top + 2 : circle.top - frame.top - 2,
-      below,
-      rightward: x < frame.width / 2,
+      x: circle.left + circle.width / 2 - frame.left,
+      y: circle.bottom - frame.top + 18,
+      frameWidth: frame.width,
       expanded: false,
     });
   }
@@ -390,7 +386,7 @@ function CalendarBody({
   available: (day: Date) => boolean;
   onOpen: () => void;
   onClose: () => void;
-  onTapDay: (day: Date, circle: DOMRect, frame: DOMRect, windowBottom: number) => void;
+  onTapDay: (day: Date, circle: DOMRect, frame: DOMRect) => void;
   onViewMonth: (month: Date) => void;
   onScrolled: () => void;
   onOpenMonthPicker: () => void;
@@ -468,10 +464,15 @@ function CalendarBody({
 
   // Scrolling on through the weeks: the month's name follows the middle
   // week, and a time prompt (pinned to where its day was) goes.
+  // Only an actual move counts: a resize (Safari's toolbar coming and
+  // going, say) re-snaps the window and fires scroll events without going
+  // anywhere, and shouldn't fold a prompt away.
+  const lastScrollTop = useRef(0);
   function handleScroll() {
     const el = scrollerRef.current;
     if (!el || !editing) return;
-    onScrolled();
+    if (Math.abs(el.scrollTop - lastScrollTop.current) > 4) onScrolled();
+    lastScrollTop.current = el.scrollTop;
     const row = Math.min(weeks.length - 1, Math.max(0, Math.round(el.scrollTop / ROW + (WINDOW_WEEKS - 1) / 2)));
     const middle = addDays(weeks[row], 3);
     if (middle.getMonth() !== viewMonth.getMonth() || middle.getFullYear() !== viewMonth.getFullYear()) {
@@ -491,9 +492,7 @@ function CalendarBody({
       onOpen();
       return;
     }
-    const frame = frameRef.current!.getBoundingClientRect();
-    const scroller = scrollerRef.current!.getBoundingClientRect();
-    onTapDay(day, button.getBoundingClientRect(), frame, scroller.bottom);
+    onTapDay(day, button.getBoundingClientRect(), frameRef.current!.getBoundingClientRect());
   }
 
   return (
@@ -555,6 +554,9 @@ function CalendarBody({
                       day={day}
                       kind={isFirst || isLast ? "edge" : inRange ? "inside" : "outside"}
                       dim={editing && (day.getMonth() !== viewMonth.getMonth() || day.getFullYear() !== viewMonth.getFullYear())}
+                      // Open with nothing being picked yet, the start and end
+                      // take turns fading, to show they're what to tap.
+                      breathe={editing && !mode ? (isFirst ? "a" : isLast ? "b" : undefined) : undefined}
                     />
                     {canPick && <span aria-hidden className="day-available absolute inset-0 rounded-full" />}
                   </button>
@@ -601,7 +603,7 @@ function CalendarBody({
 
       {/* The month's name — on the slit's blurred top edge, or heading the
           open calendar, where it opens month and year wheels — and, open,
-          Done. */}
+          the ✓ that closes it. */}
       <div
         className={cn("absolute inset-x-0 top-0 z-10 flex items-center gap-3 px-1", !editing && "pointer-events-none")}
         style={{ height: editing ? HEADER : CIRCLE }}
@@ -657,9 +659,11 @@ function CalendarBody({
           <button
             type="button"
             onClick={onClose}
-            className="no-press pop-in ml-auto origin-right rounded-full px-2 py-1 text-[15px] font-semibold text-accent"
+            title="Done"
+            aria-label="Done"
+            className="no-press pop-in ml-auto flex h-9 w-9 origin-right items-center justify-center rounded-full bg-accent text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90"
           >
-            Done
+            <CheckIcon className="h-[18px] w-[18px]" />
           </button>
         )}
       </div>
@@ -706,24 +710,41 @@ function TimePromptPopover({
     return () => document.removeEventListener("pointerdown", handle, true);
   }, []);
 
-  const { x, y, below, rightward } = prompt;
-  // The sharp corner: the one facing the day.
-  const corner = below ? (rightward ? "rounded-tl-[3px]" : "rounded-tr-[3px]") : rightward ? "rounded-bl-[3px]" : "rounded-br-[3px]";
+  const { x, y, frameWidth } = prompt;
   const label = prompt.which === "start" ? "Start" : "End";
+
+  // Centred on the day, but kept inside the calendar: measured, then
+  // shifted in from an edge it would cross — the tip stays on the day.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (panelRef.current) setWidth(panelRef.current.offsetWidth);
+  }, [prompt.expanded]);
+  const left = width === null ? 0 : Math.min(Math.max(x - width / 2, 0), frameWidth - width);
 
   return (
     <div
       ref={ref}
-      className={cn(
-        "menu-pop absolute z-30 overflow-hidden rounded-[18px] border border-border glass-material shadow-[var(--shadow-float)]",
-        corner,
-        below ? (rightward ? "origin-top-left" : "origin-top-right") : rightward ? "origin-bottom-left" : "origin-bottom-right",
-      )}
+      className="menu-pop absolute z-30"
       style={{
-        ...(rightward ? { left: x } : { right: `calc(100% - ${x}px)` }),
-        ...(below ? { top: y } : { bottom: `calc(100% - ${y}px)` }),
+        left,
+        top: y,
+        // Grows out of the tip. Not shown for the one frame before it's
+        // been measured and placed.
+        transformOrigin: `${x - left}px 0`,
+        visibility: width === null ? "hidden" : undefined,
       }}
     >
+      {/* The tip, pointing at the day. */}
+      <span
+        aria-hidden
+        className="absolute -top-1.5 z-10 h-3 w-3 rotate-45 border-l border-t border-border glass-material"
+        style={{ left: x - left - 6 }}
+      />
+      <div
+        ref={panelRef}
+        className="relative overflow-hidden rounded-[18px] border border-border glass-material shadow-[var(--shadow-float)]"
+      >
       {prompt.expanded ? (
         <WheelSquare
           width={POPOVER}
@@ -760,6 +781,7 @@ function TimePromptPopover({
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -828,12 +850,24 @@ function WheelSquare({
   );
 }
 
-function DayCircle({ day, kind, dim = false }: { day: Date; kind: "edge" | "inside" | "outside"; dim?: boolean }) {
+function DayCircle({
+  day,
+  kind,
+  dim = false,
+  breathe,
+}: {
+  day: Date;
+  kind: "edge" | "inside" | "outside";
+  dim?: boolean;
+  breathe?: "a" | "b";
+}) {
   const weekend = isWeekend(day);
   return (
     <span
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full text-[16px] tabular-nums transition-colors duration-300",
+        breathe === "a" && "edge-breathe",
+        breathe === "b" && "edge-breathe edge-breathe-late",
         kind === "edge" && cn("bg-accent text-accent-contrast", weekend ? "font-bold" : "font-semibold"),
         kind === "inside" && cn("text-accent", weekend ? "font-bold" : "font-medium"),
         kind === "outside" && cn(dim ? "text-muted/60" : "text-foreground", weekend && "font-semibold"),

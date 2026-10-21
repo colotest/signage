@@ -1322,6 +1322,33 @@ button[data-landing]::after {
   backdrop-filter: blur(24px) saturate(180%);
 }
 
+/* An event's start and end on its open calendar, before either's been
+   tapped: they take turns fading out and back, to show they're what to tap
+   (EventCalendar). */
+@keyframes edge-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.edge-breathe {
+  animation: edge-breathe 2s ease-in-out infinite;
+}
+
+.edge-breathe-late {
+  animation-delay: -1s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge-breathe {
+    animation: none;
+  }
+}
+
 /* A day that can be picked, while an event's start or end is being picked
    again on its calendar (EventCalendar): a soft ring, its edge feathered,
    breathing in and out. */
