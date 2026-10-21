@@ -120,7 +120,8 @@ export function EventOverview({
             don't fit — beside the event's type and its PAX, which sit
             together at the right. */}
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-          <div className="flex min-w-0 flex-col">
+          {/* Centred on the block's height, against the type tile beside it. */}
+          <div className="flex min-w-0 flex-col self-center">
           <EditableText
             value={event.customer}
             placeholder="Customer"

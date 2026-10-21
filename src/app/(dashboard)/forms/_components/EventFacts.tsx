@@ -36,15 +36,13 @@ export function EventTypeTile({
         aria-label={current ? `Type: ${current.label}` : "Pick a type"}
         // Just an outline, the icon in the text's own colour (white in dark
         // mode).
-        className="no-press relative flex aspect-square w-[112px] items-center justify-center rounded-[var(--radius-md)] border-[3px] border-foreground/25 p-2 transition-colors hover:border-foreground/40"
+        className="no-press flex aspect-square w-[112px] flex-col items-center justify-center gap-1.5 rounded-[var(--radius-md)] border-[3px] border-foreground/25 p-2 transition-colors hover:border-foreground/40"
       >
         {current ? (
           <>
-            {/* The icon always dead centre, whatever the name under it —
-                one line or two. */}
             <EventTypeIcon type={current.key} className="h-8 w-8 text-foreground" />
             {/* The contact's size, in PAX's colour. */}
-            <span className="absolute inset-x-1 top-[calc(50%+17px)] whitespace-pre-line text-center text-[16px] font-semibold leading-[1.1] text-muted">
+            <span className="whitespace-pre-line text-center text-[16px] font-semibold leading-tight text-muted">
               {stacked(current)}
             </span>
           </>
