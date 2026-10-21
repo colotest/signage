@@ -425,6 +425,49 @@ export type Database = {
           },
         ];
       };
+      // The Forms page's events (0033).
+      events: {
+        Row: {
+          id: string;
+          title: string | null;
+          customer: string | null;
+          contact_name: string | null;
+          contact_phone: string | null;
+          contact_email: string | null;
+          lead_id: string | null;
+          starts_at: string | null;
+          ends_at: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          title?: string | null;
+          customer?: string | null;
+          contact_name?: string | null;
+          contact_phone?: string | null;
+          contact_email?: string | null;
+          lead_id?: string | null;
+          starts_at?: string | null;
+          ends_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string | null;
+          customer?: string | null;
+          contact_name?: string | null;
+          contact_phone?: string | null;
+          contact_email?: string | null;
+          lead_id?: string | null;
+          starts_at?: string | null;
+          ends_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       users: {
         Row: {
           id: string;

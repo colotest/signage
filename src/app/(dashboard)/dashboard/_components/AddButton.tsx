@@ -18,8 +18,8 @@ function PlusIcon({ className }: { className?: string }) {
 }
 
 // The Screens page's one "+": a little menu with New Screen and New Group.
-// Grey and solid (--control-fill), like the Button "grey" variant: the
-// group picker launches out of it and, closing, fades back into its colour.
+// Blue, like every page's "+" (the Events list's too): the group picker
+// launches out of it and, closing, fades back into its colour.
 export function AddButton({ screens }: { screens: { id: number; name: string }[] }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -37,7 +37,7 @@ export function AddButton({ screens }: { screens: { id: number; name: string }[]
         title="Add"
         aria-label="Add a screen or group"
         aria-expanded={menuOpen}
-        className="title-action-round shrink-0 bg-[var(--control-fill)] text-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-[var(--control-fill-hover)] disabled:opacity-40"
+        className="title-action-round shrink-0 bg-accent text-accent-contrast shadow-[var(--shadow-control)] transition-opacity hover:opacity-90 disabled:opacity-40"
       >
         <PlusIcon className="title-action-glyph" />
       </button>

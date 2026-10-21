@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import type { EventPerson, EventSummary } from "@/lib/events";
+import { EventsPane } from "./EventsPane";
 import { SegmentedSlider } from "./SegmentedSlider";
 import { ENTRY_MODES, useVeranstaltung } from "./veranstaltung";
-import { VeranstaltungForm } from "./VeranstaltungForm";
 import { MapCard, VenueMap, type FloorPlan } from "./VenueMap";
 
 // Colosseum Berlin, ground floor. Slimmed down from the architects' 15 MB
@@ -25,20 +26,12 @@ const SPOTS = {
   eingang: { u: 0.815, v: 0.885 },
 };
 
-// The Forms page: the checklist on one side (top on a phone, left on an
-// iPad or desktop) and the venue map on the other. They're two ways into
-// the same answers — a question with a place on the map has a card there,
-// tapping its title in the list opens that card, and picking an answer on
-// either side shows on both.
-export function FormsView() {
+// The Forms page: the events on one side (top on a phone, left on an iPad
+// or desktop), each opening into its own setup pages, and the venue map on
+// the other.
+export function FormsView({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
   const [form, update] = useVeranstaltung();
   const [openSpot, setOpenSpot] = useState<string | null>(null);
-  const [focus, setFocus] = useState<{ id: string; nonce: number } | null>(null);
-
-  function showSpot(id: string) {
-    setOpenSpot(id);
-    setFocus((f) => ({ id, nonce: (f?.nonce ?? 0) + 1 }));
-  }
 
   const entry = ENTRY_MODES.find((m) => m.value === form.eingang);
 
@@ -46,14 +39,14 @@ export function FormsView() {
     // Fills the page's scroll area edge to edge (undoing its padding): each
     // half scrolls or pans on its own instead.
     <div className="-mx-5 -my-6 flex h-[calc(100%+3rem)] flex-col md:flex-row">
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-b border-border px-4 py-5 md:w-[420px] md:flex-none md:border-b-0 md:border-r md:px-5 md:py-6 lg:w-[460px]">
-        <VeranstaltungForm value={form} onChange={update} openSpot={openSpot} onShowSpot={showSpot} />
+      <div className="min-h-0 flex-1 border-b border-border md:w-[420px] md:flex-none md:border-b-0 md:border-r lg:w-[460px]">
+        <EventsPane events={events} people={people} />
       </div>
 
       <VenueMap
         className="min-h-0 flex-1"
         plan={COLOSSEUM_EG}
-        focus={focus}
+        focus={null}
         onBackgroundTap={() => setOpenSpot(null)}
         spots={[
           {

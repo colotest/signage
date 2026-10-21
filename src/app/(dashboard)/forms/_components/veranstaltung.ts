@@ -1,41 +1,21 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-// The 'Veranstaltung' form: what it asks, and where its answers are kept.
-// For now that's this browser's localStorage — nothing is saved to the
-// database yet, so notes stay on the device they were taken on.
+// What the venue map's cards record (so far, how the entrance is run), and
+// where it's kept: this browser's localStorage for now — nothing is saved
+// to the database yet, so it stays on the device it was set on.
 
-export type EventType = "tagung" | "premiere" | "markt";
-export type Duration = "frueh" | "spaet" | "ganztags" | "plus";
 export type EntryMode = "frei" | "ticketing";
 
 export type Veranstaltung = {
-  typ: EventType | null;
-  gaeste: number;
-  dauer: Duration | null;
   eingang: EntryMode | null;
 };
-
-export const EVENT_TYPES: { value: EventType; label: string }[] = [
-  { value: "tagung", label: "Tagung" },
-  { value: "premiere", label: "Prämiere" },
-  { value: "markt", label: "Markt" },
-];
-
-export const DURATIONS: { value: Duration; label: string }[] = [
-  { value: "frueh", label: "Früh" },
-  { value: "spaet", label: "Spät" },
-  { value: "ganztags", label: "Ganztags" },
-  { value: "plus", label: "+" },
-];
 
 export const ENTRY_MODES: { value: EntryMode; label: string; hint: string }[] = [
   { value: "frei", label: "Frei", hint: "Offener Einlass, keine Kontrolle" },
   { value: "ticketing", label: "Ticketing", hint: "Einlass mit Ticketkontrolle" },
 ];
 
-export const GUESTS_MAX = 5000;
-
-const EMPTY: Veranstaltung = { typ: null, gaeste: 0, dauer: null, eingang: null };
+const EMPTY: Veranstaltung = { eingang: null };
 
 const STORAGE_KEY = "forms:veranstaltung:v1";
 
