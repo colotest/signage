@@ -34,11 +34,13 @@ export function EventTypeTile({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label={current ? `Type: ${current.label}` : "Pick a type"}
-        className="no-press flex aspect-square w-full max-w-[104px] flex-col items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface p-2 shadow-[var(--shadow-card)]"
+        // Just an outline, the icon in the text's own colour (white in dark
+        // mode).
+        className="no-press flex aspect-square w-full max-w-[104px] flex-col items-center justify-center gap-1.5 rounded-[var(--radius-md)] border-[1.5px] border-foreground/25 p-2 transition-colors hover:border-foreground/40"
       >
         {current ? (
           <>
-            <EventTypeIcon type={current.key} className="h-8 w-8 text-accent" />
+            <EventTypeIcon type={current.key} className="h-8 w-8 text-foreground" />
             <span className="text-center text-[12px] font-semibold leading-tight">{current.label}</span>
           </>
         ) : (

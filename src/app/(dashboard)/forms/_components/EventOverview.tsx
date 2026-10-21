@@ -159,7 +159,8 @@ export function EventOverview({
           <div className="flex justify-center pt-1">
             <EventTypeTile value={event.eventType} onPick={(eventType) => save({ eventType })} />
           </div>
-          <div className="flex justify-center pt-3">
+          {/* Centred on the block's height, however tall the contact runs. */}
+          <div className="flex justify-center self-center">
             <PaxField value={event.pax} onSave={(pax) => save({ pax })} />
           </div>
         </div>
