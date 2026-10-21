@@ -6,8 +6,6 @@ import { setEventPins } from "@/lib/actions/events";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { EventsPane } from "./EventsPane";
-import { SegmentedSlider } from "./SegmentedSlider";
-import { ENTRY_MODES, useVeranstaltung } from "./veranstaltung";
 import { MapCard, VenueMap, type FloorPlan, type MapSpot } from "./VenueMap";
 
 // Colosseum Berlin, ground floor. Slimmed down from the architects' 15 MB
@@ -22,12 +20,10 @@ const COLOSSEUM_EG: FloorPlan = {
   northDeg: 0,
 };
 
-// Where each of the form's places sits on the plan, as a fraction of its
-// width and height. The main entrance is the bank of doors at the bottom
-// right.
-const SPOTS = {
-  eingang: { title: "Eingang", u: 0.815, v: 0.885 },
-};
+// The map's standing pins, shown whatever event is open (or none): where
+// each sits on the plan, as a fraction of its width and height. None yet —
+// to be filled in from pins placed on an event (see copyPins).
+const DEFAULT_PINS: { id: string; title: string; u: number; v: number }[] = [];
 
 // What the next tap on the map does: drop a new pin, or move one there.
 type Placing = { kind: "new" } | { kind: "move"; id: string };
@@ -36,7 +32,6 @@ type Placing = { kind: "new" } | { kind: "move"; id: string };
 // or desktop), each opening into its own setup pages, and the venue map on
 // the other — with the open event's own pins on it.
 export function FormsView({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
-  const [form, update] = useVeranstaltung();
   const [openSpot, setOpenSpot] = useState<string | null>(null);
   // The open event, from the URL (where EventsPane keeps it).
   const eventId = useSearchParams().get("event");
@@ -58,7 +53,6 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
     return () => clearTimeout(timer);
   }, [message]);
 
-  const entry = ENTRY_MODES.find((m) => m.value === form.eingang);
 
   // Another event opened (or none): nothing of the last one's stays open
   // or half-placed.
@@ -101,10 +95,10 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   }
 
   // TEMPORARY: copies the map's pins (the standing ones and the open
-  // event's) as code, to take pins placed here into SPOTS by hand.
+  // event's) as code, to take pins placed here into DEFAULT_PINS by hand.
   async function copyPins() {
     const lines = [
-      ...Object.entries(SPOTS).map(([id, s]) => `  { id: ${JSON.stringify(id)}, title: ${JSON.stringify(s.title)}, u: ${s.u}, v: ${s.v} },`),
+      ...DEFAULT_PINS.map((p) => `  { id: ${JSON.stringify(p.id)}, title: ${JSON.stringify(p.title)}, u: ${p.u}, v: ${p.v} },`),
       ...pins.map((p) => `  { title: ${JSON.stringify(p.title)}, u: ${p.u}, v: ${p.v} },`),
     ];
     const text = `[\n${lines.join("\n")}\n]`;
@@ -117,27 +111,20 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   }
 
   const spots: MapSpot[] = [
-    {
-      id: "eingang",
-      u: SPOTS.eingang.u,
-      v: SPOTS.eingang.v,
+    ...DEFAULT_PINS.map((pin) => ({
+      id: pin.id,
+      u: pin.u,
+      v: pin.v,
       node: (
         <MapCard
-          title={SPOTS.eingang.title}
-          summary={entry?.label ?? null}
-          open={openSpot === "eingang"}
-          onToggle={() => setOpenSpot((s) => (s === "eingang" ? null : "eingang"))}
+          title={pin.title}
+          open={openSpot === pin.id}
+          onToggle={() => setOpenSpot((s) => (s === pin.id ? null : pin.id))}
         >
-          <SegmentedSlider
-            label="Eingang"
-            options={ENTRY_MODES}
-            value={form.eingang}
-            onChange={(eingang) => update({ eingang })}
-          />
-          <p className="mt-2.5 text-[13px] text-muted">{entry?.hint ?? "Noch nicht festgelegt"}</p>
+          <p className="text-[13px] text-muted">Standard-Pin, für jedes Event</p>
         </MapCard>
       ),
-    },
+    })),
     ...pins.map((pin) => {
       const spotId = `pin:${pin.id}`;
       return {
