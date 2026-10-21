@@ -63,14 +63,14 @@ const BLUR_RATIO = 0.062;
 // is pushed out well past the union of the two outlines, and the mass that
 // results is nearer the sum of them. Opaque blobs can only ever make a
 // union, which is always less wax than went into it.
-const BLOB_ALPHA = 1;
+const BLOB_ALPHA = 0.69;
 // The cut is ALPHA_BIAS / ALPHA_GAIN of the way up the field — a quarter,
 // which is half of one blob's own height, and what makes a merge grow.
 // The gain itself only decides how many pixels the edge takes to go from
 // nothing to solid: the higher it is, the harder the edge. Soft edges were
 // reading as fog rather than as wax.
 const ALPHA_GAIN = 60;
-const ALPHA_BIAS = -15;
+const ALPHA_BIAS = -14.4;
 // All of the shading reads off the pooled field — the blurred sum of the
 // blobs, before it is cut into a silhouette. It already stands high where
 // the wax is thick, passes through the cut at the edge and falls away
@@ -93,7 +93,7 @@ const DENSITY = [0.81, 0.96, 1] as const;
 // the merged shape rather than off each blob is what carries the bevel
 // unbroken across a join.
 const RIM_COLOUR = [1, 0.93, 0.78] as const;
-const RIM_STRENGTH = 0.2;
+const RIM_STRENGTH = 0.4;
 // Gloss is light concentrated, not merely more of it. Curving the band
 // rather than scaling it flat pushes the weak tail — the part that spreads
 // a highlight into a wash — down towards nothing, while the peak right at
