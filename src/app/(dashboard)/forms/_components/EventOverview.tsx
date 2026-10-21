@@ -107,7 +107,7 @@ export function EventOverview({
 
       {/* On the page itself, like a subtitle under the title, without labels
           — lined up with the "Setup" heading below. */}
-      <section className="mt-5 flex flex-col gap-3 px-1 text-[16px] leading-snug">
+      <section className="flex flex-col gap-3 px-1 text-[16px] leading-snug">
         <LeadPicker people={people} event={event} onPick={(leadId) => save({ leadId })} />
         <div className="flex flex-col">
           <EditableText value={event.customer} placeholder="Customer" label="Customer" onSave={(customer) => save({ customer })} />

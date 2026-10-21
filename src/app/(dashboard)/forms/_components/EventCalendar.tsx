@@ -20,9 +20,12 @@ const PEEK_BOTTOM = 22;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-// "18", or "18:30" — minutes only when it isn't on the hour.
-function formatTime(d: Date) {
-  return d.getMinutes() === 0 ? String(d.getHours()) : `${d.getHours()}:${pad(d.getMinutes())}`;
+// "18h", or "18:30" — minutes only when it isn't on the hour, and an "h"
+// on a whole hour so the number reads as a time. An end at midnight is
+// "24h", the end of its evening, not "0h" of the next day.
+function formatTime(d: Date, isEnd = false) {
+  if (d.getMinutes() !== 0) return `${d.getHours()}:${pad(d.getMinutes())}`;
+  return isEnd && d.getHours() === 0 ? "24h" : `${d.getHours()}h`;
 }
 
 function startOfDay(d: Date) {
@@ -142,9 +145,14 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
 
 function CalendarSlit({ value }: { value: DateValue }) {
   const start = value.startsAt!;
-  const end = value.endsAt;
   const startTime = value.startsTimeSet ? formatTime(start) : null;
-  const endTime = end && value.endsTimeSet ? formatTime(end) : null;
+  const endTime = value.endsAt && value.endsTimeSet ? formatTime(value.endsAt, true) : null;
+  // Ending at midnight is ending on the day before, at 24h.
+  let end = value.endsAt;
+  if (end && value.endsTimeSet && end.getHours() === 0 && end.getMinutes() === 0) {
+    const dayBefore = addDays(end, -1);
+    if (dayBefore >= startOfDay(start)) end = dayBefore;
+  }
 
   if (!end || sameDay(start, end)) {
     return (
