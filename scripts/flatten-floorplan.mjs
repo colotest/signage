@@ -1,6 +1,7 @@
 // Flattens the Affinity floor-plan export: bakes every <g transform> into
 // absolute coordinates, rounds them, and merges all strokes of one look into
-// a single <path> with hairline (non-scaling) strokes.
+// a few <path>s with hairline (non-scaling) strokes — one for each cell of
+// a coarse grid over the plan (see GRID below).
 // Usage: node scripts/flatten-floorplan.mjs in.svg out.svg [precision]
 // (SW=0.8 sets the stroke width in screen px). Prints the viewBox to put in
 // the FloorPlan (width/height) on the Forms page.
@@ -22,7 +23,7 @@ const ID = [1, 0, 0, 1, 0, 0];
 const f = 10 ** PREC;
 
 const stack = [ID];
-const buckets = new Map(); // key -> {style, parts[]}
+const buckets = new Map(); // key -> [{ d, x, y }], x/y where the part starts
 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
 function styleKey(style) {
@@ -83,7 +84,8 @@ function addPath(d, style, m) {
   if (out.length < 2) return;
   const key = styleKey(style);
   if (!buckets.has(key)) buckets.set(key, []);
-  buckets.get(key).push(out.join(""));
+  const [x0, y0] = out[0].slice(1).match(/-?\d*\.?\d+/g).map(Number);
+  buckets.get(key).push({ d: out.join(""), x: x0, y: y0 });
 }
 
 const tagRe = /<(\/?)(g|path|rect|text)\b([^>]*?)(\/?)>/g;
@@ -124,13 +126,37 @@ const COLORS = {
   "rgb(0,191,255)": "#0a84ff",
   "rgb(0,255,255)": "#0a84ff",
 };
+// A browser draws the plan a tile at a time, and has to go over every
+// segment of a path for each tile the path's bounds touch. As one path per
+// colour that was all ~68k segments for every tile; split by where each
+// part starts, a tile only goes over the cells around it. Same drawing, a
+// fraction of the work (zooming in and out of the venue map got several
+// times smoother).
+const GRID = { cols: 12, rows: 7 };
+const cellOf = ({ x, y }) => {
+  const c = Math.floor(((x - vb[0]) / vb[2]) * GRID.cols);
+  const r = Math.floor(((y - vb[1]) / vb[3]) * GRID.rows);
+  return Math.min(Math.max(r, 0), GRID.rows - 1) * GRID.cols + Math.min(Math.max(c, 0), GRID.cols - 1);
+};
 let body = "";
 const order = [...buckets.keys()].sort((a, b) => (a.startsWith("black") ? 1 : 0) - (b.startsWith("black") ? 1 : 0));
 for (const key of order) {
   const [stroke, fill] = key.split("|");
   const col = COLORS[stroke] ?? "#1c1c1e";
   const fillCol = fill === "none" ? "none" : col;
-  body += `<path vector-effect="non-scaling-stroke" fill="${fillCol}" stroke="${col}" d="${buckets.get(key).join("")}"/>\n`;
+  const cells = new Map();
+  for (const part of buckets.get(key)) {
+    const cell = cellOf(part);
+    if (!cells.has(cell)) cells.set(cell, []);
+    cells.get(cell).push(part.d);
+  }
+  // vector-effect isn't inherited, so it goes on every path; the colours
+  // are, and sit on the group.
+  body += `<g fill="${fillCol}" stroke="${col}">\n`;
+  for (const cell of [...cells.keys()].sort((a, b) => a - b)) {
+    body += `<path vector-effect="non-scaling-stroke" d="${cells.get(cell).join("")}"/>\n`;
+  }
+  body += `</g>\n`;
 }
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.join(" ")}" width="${vb[2]}" height="${vb[3]}" stroke-width="${process.env.SW ?? 0.8}" stroke-linecap="round" stroke-linejoin="round">\n${body}</svg>\n`;
 fs.writeFileSync(outPath, svg);

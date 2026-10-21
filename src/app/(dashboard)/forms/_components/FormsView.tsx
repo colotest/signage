@@ -8,8 +8,8 @@ import { ENTRY_MODES, useVeranstaltung } from "./veranstaltung";
 import { MapCard, VenueMap, type FloorPlan } from "./VenueMap";
 
 // Colosseum Berlin, ground floor. Slimmed down from the architects' 15 MB
-// export (every transform baked in, strokes merged per colour) — see
-// public/venues/.
+// export (every transform baked in, strokes merged per colour and patch
+// of the plan) — see scripts/flatten-floorplan.mjs.
 const COLOSSEUM_EG: FloorPlan = {
   src: "/venues/colosseum-eg.svg",
   width: 9519,

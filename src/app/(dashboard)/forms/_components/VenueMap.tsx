@@ -29,7 +29,14 @@ type View = { x: number; y: number; s: number; r: number };
 // a picture being slid and scaled (smooth, but soft once zoomed in); once
 // it comes to rest it's redrawn sharp at the new zoom, up to this wide —
 // past that a redraw would cost more memory than an iPad likes to give.
+// Drawing it means going over every line of the plan's hatching, so it's
+// only redrawn when that would show: when the zoom has changed by more
+// than RERASTER_ZOOM since the last time, when it's zoomed in past that
+// width and the picture is being blown up, or when the map's turned and
+// the picture's hairlines would be smudged by turning it. Sliding the
+// upright map otherwise reuses the picture as it is.
 const MAX_RASTER_PX = 5000;
+const RERASTER_ZOOM = 0.05;
 const SETTLE_MS = 180;
 const ZOOM_OUT_LIMIT = 0.6; // × the zoom that fits the whole plan
 const ZOOM_IN_LIMIT = 14;
@@ -67,6 +74,7 @@ export function VenueMap({
   const rasterRef = useRef(0);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const motionRef = useRef<number | null>(null); // rAF of an animation or a fling
+  const frameRef = useRef<number | null>(null); // rAF of the next draw
   const pointersRef = useRef(new Map<number, Pointer>());
   const gestureRef = useRef<{
     start: Pointer;
@@ -129,7 +137,14 @@ export function VenueMap({
   }
 
   // Once the map's been still for a moment, redraws the plan sharp at the
-  // zoom it's at.
+  // zoom it's at, if that would look any different (see MAX_RASTER_PX).
+  // While it moves the plan is its own layer (will-change), a picture the
+  // browser can slide about without drawing it again. Dropping that layer
+  // at every pause, as this once did, cost a full redraw at the pause and
+  // another as the next move began; now it's only dropped for a redraw that
+  // has to happen anyway, which also hands the next move a fresh layer —
+  // Chrome kept redrawing a layer that had been through a zoom while the
+  // next zoom was still under way.
   function settle() {
     if (pointersRef.current.size > 0 || motionRef.current !== null || followingRef.current) {
       settleTimer.current = setTimeout(settle, SETTLE_MS);
@@ -138,18 +153,44 @@ export function VenueMap({
     const v = viewRef.current;
     const planEl = planRef.current;
     if (!v || !planEl) return;
-    const rs = Math.min(v.s, MAX_RASTER_PX / plan.width);
-    if (Math.abs(rs / rasterRef.current - 1) > 0.05) setRaster(rs);
+    const maxRaster = MAX_RASTER_PX / plan.width;
+    const rs = Math.min(v.s, maxRaster);
+    const rezoomed = Math.abs(rs / rasterRef.current - 1) > RERASTER_ZOOM;
+    const blownUp = v.s > maxRaster * (1 + RERASTER_ZOOM);
+    const turn = ((v.r % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    const turned = Math.min(turn, 2 * Math.PI - turn) > 0.001;
+    if (!rezoomed && !blownUp && !turned) return;
     planEl.style.willChange = "auto";
-    draw();
+    if (rezoomed) setRaster(rs);
+    flush();
   }
 
+  // Moves the map to a new view. A trackpad sends wheels twice as often as
+  // the screen refreshes, and every one of them would otherwise restyle
+  // the plan; so the view itself changes at once (the next event carries
+  // on from it), but it's only drawn once, in the coming frame.
   function commit(next: View) {
     viewRef.current = clampView(next);
-    if (planRef.current) planRef.current.style.willChange = "transform";
-    draw();
+    const planEl = planRef.current;
+    if (planEl && planEl.style.willChange !== "transform") planEl.style.willChange = "transform";
+    if (frameRef.current === null) {
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        draw();
+      });
+    }
     clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(settle, SETTLE_MS);
+  }
+
+  // Draws the view now rather than in the coming frame: for animations,
+  // which already run a frame at a time, and for a change of the plan's
+  // size, which has to land in the same frame as the scale that goes with
+  // it.
+  function flush() {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+    draw();
   }
 
   // Keeps at least part of the plan on screen: its middle can't be pushed
@@ -218,6 +259,7 @@ export function VenueMap({
         y: from.y + (target.y - from.y) * e,
       };
       commit(viewRef.current);
+      flush();
       motionRef.current = t < 1 ? requestAnimationFrame(step) : null;
     };
     motionRef.current = requestAnimationFrame(step);
@@ -234,6 +276,7 @@ export function VenueMap({
       vy *= decay;
       const v = viewRef.current!;
       commit({ ...v, x: v.x + vx * dt, y: v.y + vy * dt });
+      flush();
       motionRef.current = Math.hypot(vx, vy) > 0.02 ? requestAnimationFrame(step) : null;
     };
     motionRef.current = requestAnimationFrame(step);
@@ -259,6 +302,7 @@ export function VenueMap({
         const v = viewRef.current;
         commit({ ...v, x: v.x + (w - prev.w) / 2, y: v.y + (h - prev.h) / 2 });
       }
+      flush();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -339,6 +383,7 @@ export function VenueMap({
   useEffect(
     () => () => {
       stopMotion();
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       clearTimeout(settleTimer.current);
       stopCompassRef.current?.();
     },
@@ -530,6 +575,7 @@ export function VenueMap({
       if (Math.abs(da) > 0.002) {
         const { w, h } = sizeRef.current;
         commit(rotateAbout(v, w / 2, h / 2, da * 0.18));
+        flush();
       }
     }
     requestAnimationFrame(followLoop);
@@ -590,7 +636,11 @@ export function VenueMap({
       // the controls and cards away from the plan beneath them.
       className={cn("relative touch-none select-none overflow-clip bg-surface", className)}
     >
-      <div ref={planRef} className="absolute left-0 top-0 origin-top-left" style={{ width: 0, height: 0 }}>
+      <div
+        ref={planRef}
+        className="absolute left-0 top-0 origin-top-left"
+        style={{ width: 0, height: 0, willChange: "transform" }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element -- an SVG drawn by the browser at whatever size the map needs, not a photo for next/image to resize */}
         <img
           src={plan.src}
