@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+
+// A little past the slide's own length (450ms in globals.css): by then a
+// page has surely finished sliding in or out, even if the browser never said
+// so — animationend doesn't fire for a tab in the background, or with
+// animations off.
+const SETTLE_MS = 700;
 
 export type StackPage = { key: string; node: ReactNode };
 
@@ -27,9 +33,36 @@ export function PageStack({ pages }: { pages: StackPage[] }) {
     const popped = prev.pages.filter((p) => !keys.has(p.key));
     const pushed = pages.filter((p) => !prevKeys.has(p.key)).map((p) => p.key);
     setPrev({ signature, pages });
-    if (popped.length) setLeaving((l) => [...l.filter((p) => keys.has(p.key) === false), ...popped]);
+    // A page opened again before it had finished sliding out is back on the
+    // stack, not leaving — left in the leaving list it would never be
+    // drawn as such, so never told it had finished, and would turn up
+    // again, stuck over the page, the next time it was closed.
+    setLeaving((l) => {
+      const kept = l.filter((p) => !keys.has(p.key));
+      const keptKeys = new Set(kept.map((p) => p.key));
+      return [...kept, ...popped.filter((p) => !keptKeys.has(p.key))];
+    });
     if (pushed.length) setEntering((e) => new Set([...e, ...pushed]));
   }
+
+  // However it ends, a slide is over after SETTLE_MS.
+  const leavingKeys = leaving.map((p) => p.key).join("\n");
+  useEffect(() => {
+    if (!leavingKeys) return;
+    const done = new Set(leavingKeys.split("\n"));
+    const timer = setTimeout(() => setLeaving((l) => l.filter((p) => !done.has(p.key))), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [leavingKeys]);
+  const enteringKeys = [...entering].join("\n");
+  useEffect(() => {
+    if (!enteringKeys) return;
+    const done = new Set(enteringKeys.split("\n"));
+    const timer = setTimeout(
+      () => setEntering((e) => new Set([...e].filter((key) => !done.has(key)))),
+      SETTLE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [enteringKeys]);
 
   const all = [
     ...pages.map((page, i) => ({ page, below: i < pages.length - 1, isLeaving: false })),

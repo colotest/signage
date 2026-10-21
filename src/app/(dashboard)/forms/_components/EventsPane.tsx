@@ -1,20 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { EVENT_VIEWS, EventOverview, SubPage, type EventViewKey } from "./EventOverview";
 import { EventsList } from "./EventsList";
 import { PageStack, type StackPage } from "./PageStack";
 import { eventTitle } from "./eventFormat";
 
-type Route = { eventId: string | null; view: EventViewKey | null };
+type Route = { eventId: string | null; view: EventViewKey | null; archived: boolean };
 
 // The list side of the Forms page: Events, then an event's own page, then
 // one of its setup views — each sliding in over the last.
+//
+// Where it is lives in the URL (?event=…&view=…, and &archive=1 for the
+// Archive), not in component state: a reload — Next.js does a full one when
+// a save's answer comes from a newer deployment than the page — lands back
+// on the same page instead of the Events list, and the browser's back and
+// forward step through the pages too. Changed with history.pushState, which
+// Next picks up in useSearchParams without asking the server for anything.
 export function EventsPane({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
-  const [route, setRoute] = useState<Route>({ eventId: null, view: null });
-  // Showing the Archive rather than current events.
-  const [archived, setArchived] = useState(false);
+  const params = useSearchParams();
+  const route: Route = {
+    eventId: params.get("event"),
+    view: EVENT_VIEWS.find((v) => v.key === params.get("view"))?.key ?? null,
+    archived: params.get("archive") === "1",
+  };
+  const archived = route.archived;
+
+  function setRoute(next: Partial<Route>) {
+    const merged = { ...route, ...next };
+    const url = new URL(window.location.href);
+    for (const key of ["event", "view", "archive"]) url.searchParams.delete(key);
+    if (merged.archived) url.searchParams.set("archive", "1");
+    if (merged.eventId) url.searchParams.set("event", merged.eventId);
+    if (merged.eventId && merged.view) url.searchParams.set("view", merged.view);
+    window.history.pushState(null, "", url);
+  }
   // An event that's gone (deleted elsewhere) takes its pages with it.
   const event = route.eventId ? events.find((e) => e.id === route.eventId) : undefined;
 
@@ -25,7 +46,7 @@ export function EventsPane({ events, people }: { events: EventSummary[]; people:
         <EventsList
           events={events}
           archived={archived}
-          onToggleArchived={() => setArchived((a) => !a)}
+          onToggleArchived={() => setRoute({ archived: !archived })}
           onOpen={(eventId) => setRoute({ eventId, view: null })}
         />
       ),

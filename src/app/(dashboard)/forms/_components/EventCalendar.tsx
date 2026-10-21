@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { EdgeBand } from "@/components/EdgeBand";
 import { Wheel } from "@/components/DateTimePicker";
@@ -135,7 +134,6 @@ type TimePrompt = {
 // The end works the same way, from the start on. Every change is saved as
 // it's made; the ✓ closes the calendar again.
 export function EventDatesSection({ event }: { event: EventSummary }) {
-  const router = useRouter();
   const isClient = useIsClient();
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState<Mode>(null);
@@ -191,10 +189,10 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
     };
     const run = queueRef.current.then(() => updateEvent(event.id, patch));
     queueRef.current = run.catch(() => {});
+    // The action's revalidatePath brings the fresh page back by itself.
     run.then(
       (message) => {
         if (message) setError(message);
-        else router.refresh();
       },
       () => setError("Couldn't save the dates"),
     );

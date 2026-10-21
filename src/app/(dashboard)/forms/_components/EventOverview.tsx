@@ -74,17 +74,18 @@ export function EventOverview({
   onOpenView: (view: EventViewKey) => void;
   onGone: () => void;
 }) {
-  const router = useRouter();
   const isClient = useIsClient();
   const archived = event.archivedAt !== null;
   const [error, setError] = useState<string | null>(null);
 
+  // No router.refresh() after: the action's revalidatePath sends the page's
+  // fresh render back with its answer, and a second fetch on top was just
+  // one more chance to land on a newer deployment mid-edit (see EventsPane).
   function save(patch: EventPatch) {
     setError(null);
     updateEvent(event.id, patch).then(
       (message) => {
         if (message) setError(message);
-        else router.refresh();
       },
       () => setError("Couldn't save that"),
     );
