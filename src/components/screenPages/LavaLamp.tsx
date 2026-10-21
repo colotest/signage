@@ -47,14 +47,14 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 // the edges look: nearly all of that was the alpha cut spreading an edge
 // over several of this layer's own pixels, which ALPHA_GAIN now fixes at
 // about one. What the upscale adds on top is a pixel or two.
-const STAGE = 1 / 5;
+const STAGE = 1 / 10;
 // How far apart two blobs still reach for each other, as a fraction of the
 // filtered layer's short side — a fixed pixel blur would swallow the whole
 // lamp whole at library-thumbnail size and barely show on a 4K screen.
 // ALPHA_GAIN is how hard the pooled alpha is pushed back to solid, and
 // ALPHA_BIAS where the cut falls: together they decide whether a meeting
 // reads as a neck of wax or as two blobs merely touching.
-const BLUR_RATIO = 0.05;
+const BLUR_RATIO = 0.062;
 // Each blob is drawn at BLOB_ALPHA and added to the ones under it rather
 // than covering them, so the pooled field is a sum: one blob stands at
 // BLOB_ALPHA, two on top of each other at twice that. Cutting that sum at
@@ -63,14 +63,14 @@ const BLUR_RATIO = 0.05;
 // is pushed out well past the union of the two outlines, and the mass that
 // results is nearer the sum of them. Opaque blobs can only ever make a
 // union, which is always less wax than went into it.
-const BLOB_ALPHA = 0.5;
+const BLOB_ALPHA = 1;
 // The cut is ALPHA_BIAS / ALPHA_GAIN of the way up the field — a quarter,
 // which is half of one blob's own height, and what makes a merge grow.
 // The gain itself only decides how many pixels the edge takes to go from
 // nothing to solid: the higher it is, the harder the edge. Soft edges were
 // reading as fog rather than as wax.
-const ALPHA_GAIN = 34;
-const ALPHA_BIAS = -8.5;
+const ALPHA_GAIN = 60;
+const ALPHA_BIAS = -15;
 // All of the shading reads off the pooled field — the blurred sum of the
 // blobs, before it is cut into a silhouette. It already stands high where
 // the wax is thick, passes through the cut at the edge and falls away
@@ -84,27 +84,27 @@ const ALPHA_BIAS = -8.5;
 // zero leaves light on the undersides alone — which is where the bulb is.
 // Narrow, now that the light on it is strong: a wide band at this strength
 // is a blob dipped in wax, where a narrow one is a sheen on it.
-const LIFT_RATIO = 0.02;
+const LIFT_RATIO = 0.079;
 // Thick wax swallows light, so the middle of a mass goes deeper than its
 // flat fill — and deeper again where two blobs have run together, which is
 // where the field stands highest. Blue falls fastest, keeping it warm.
-const DENSITY = [0.62, 0.74, 0.88] as const;
+const DENSITY = [0.81, 0.96, 1] as const;
 // The lit underside, as a colour and how hard it is carried. Taking it off
 // the merged shape rather than off each blob is what carries the bevel
 // unbroken across a join.
 const RIM_COLOUR = [1, 0.93, 0.78] as const;
-const RIM_STRENGTH = 6;
+const RIM_STRENGTH = 0.2;
 // Gloss is light concentrated, not merely more of it. Curving the band
 // rather than scaling it flat pushes the weak tail — the part that spreads
 // a highlight into a wash — down towards nothing, while the peak right at
 // the edge keeps the lot. Above 1 it sharpens; at 1 it is the plain slope
 // this used to be.
-const RIM_FOCUS = 1.5;
+const RIM_FOCUS = 1.05;
 // A second light, over the vessel, at half the strength of the bulb under
 // it. It needs no shift of its own: the same two images that give the
 // underside give the top edge with the operands the other way round, so
 // this costs two sums and nothing else.
-const TOP_LIGHT = 0.5;
+const TOP_LIGHT = 0.15;
 // Translucence: the light that gets into the wax near its edge, where there
 // is least of it to cross, and the glow it throws just beyond. Both come
 // off one band read across the pooled field, straddling the cut — strongest
@@ -123,7 +123,7 @@ const TOP_LIGHT = 0.5;
 // merge reads brighter than either blob — which is not what thin wax does.
 const HALO_BAND = [0, 0.14, 0.82, 0.86, 0.1, 0, 0, 0, 0, 0, 0];
 const HALO_COLOUR = [1, 0.45, 0.2] as const;
-const HALO_STRENGTH = 0.34;
+const HALO_STRENGTH = 0.16;
 
 
 // The lamp's own vessel. Deliberately not the screen's black/white
@@ -152,19 +152,19 @@ const GROUND = "#17031a";
 // where the glow in the deep end of the vessel comes from.
 // Held as hue, saturation and lightness so the tuner can move them: this
 // is #ff6a12, the orange it has been since the neon pass.
-const WAX_HUE = 22;
+const WAX_HUE = 348;
 const WAX_SATURATION = 100;
-const WAX_LIGHTNESS = 53.5;
+const WAX_LIGHTNESS = 53;
 // Where the darkening starts, as a fraction of the way up, and the stops
 // from there to the top: each is how far along that span it sits, the
 // colour it lays over, and how much of it.
-const RAMP_START = 0;
+const RAMP_START = 0.2;
 const RAMP_STOPS: [number, string, number][] = [
-  [0, "52, 6, 26", 0],
-  [0.22, "50, 6, 26", 0.06],
-  [0.48, "46, 5, 26", 0.26],
-  [0.76, "34, 4, 24", 0.58],
-  [1, "24, 3, 20", 0.78],
+  [0, "52, 6, 26", 0.0],
+  [0.22, "50, 6, 26", 0.057],
+  [0.48, "46, 5, 26", 0.247],
+  [0.76, "34, 4, 24", 0.551],
+  [1, "24, 3, 20", 0.741],
 ];
 
 function heightRamp(start: number, depth: number) {
@@ -183,7 +183,7 @@ function heightRamp(start: number, depth: number) {
 // height: at zero it straddles the edge and reads as a light lying on the
 // floor of the screen, and a few percent under puts the source off-screen
 // where a lamp's own bulb would be.
-const LIGHT_DROP = 5;
+const LIGHT_DROP = 10;
 
 function glow(drop: number) {
   return `radial-gradient(74% 48% at 50% ${100 + drop}%, rgba(255, 104, 104, 0.5) 0%, rgba(255, 66, 118, 0.16) 44%, rgba(220, 40, 140, 0) 78%)`;
@@ -220,16 +220,16 @@ type Blob = {
 
 
 const BLOBS: Blob[] = [
-  { x: 0.26, y: 0.74, size: 0.3, motion: "rise", duration: 94, delay: -3, travel: 0.74, sway: 0.09 },
-  { x: 0.62, y: 0.8, size: 0.4, motion: "rise", duration: 135, delay: -31, travel: 0.86, sway: -0.12 },
-  { x: 0.46, y: 0.5, size: 0.46, motion: "swell", duration: 110, delay: -17, travel: 0.34, sway: 0.07 },
-  { x: 0.12, y: 0.32, size: 0.22, motion: "fall", duration: 121, delay: -44, travel: 0.66, sway: 0.13 },
-  { x: 0.86, y: 0.28, size: 0.28, motion: "fall", duration: 154, delay: -12, travel: 0.78, sway: -0.08 },
-  { x: 0.4, y: 0.14, size: 0.17, motion: "fall", duration: 80, delay: -27, travel: 0.54, sway: 0.16 },
-  { x: 0.76, y: 0.54, size: 0.2, motion: "rise", duration: 103, delay: -39, travel: 0.62, sway: -0.15 },
-  { x: 0.08, y: 0.62, size: 0.15, motion: "rise", duration: 72, delay: -9, travel: 0.48, sway: 0.11 },
-  { x: 0.94, y: 0.68, size: 0.24, motion: "swell", duration: 126, delay: -52, travel: 0.4, sway: -0.1 },
-  { x: 0.58, y: 0.22, size: 0.13, motion: "fall", duration: 88, delay: -21, travel: 0.44, sway: -0.14 },
+  { x: 0.26, y: 0.74, size: 0.3, motion: "rise", duration: 164, delay: -3, travel: 0.74, sway: 0.09 },
+  { x: 0.62, y: 0.8, size: 0.4, motion: "rise", duration: 236, delay: -31, travel: 0.86, sway: -0.12 },
+  { x: 0.46, y: 0.5, size: 0.46, motion: "swell", duration: 192, delay: -17, travel: 0.34, sway: 0.07 },
+  { x: 0.12, y: 0.32, size: 0.22, motion: "fall", duration: 212, delay: -44, travel: 0.66, sway: 0.13 },
+  { x: 0.86, y: 0.28, size: 0.28, motion: "fall", duration: 270, delay: -12, travel: 0.78, sway: -0.08 },
+  { x: 0.4, y: 0.14, size: 0.17, motion: "fall", duration: 140, delay: -27, travel: 0.54, sway: 0.16 },
+  { x: 0.76, y: 0.54, size: 0.2, motion: "rise", duration: 180, delay: -39, travel: 0.62, sway: -0.15 },
+  { x: 0.08, y: 0.62, size: 0.15, motion: "rise", duration: 126, delay: -9, travel: 0.48, sway: 0.11 },
+  { x: 0.94, y: 0.68, size: 0.24, motion: "swell", duration: 220, delay: -52, travel: 0.4, sway: -0.1 },
+  { x: 0.58, y: 0.22, size: 0.13, motion: "fall", duration: 154, delay: -21, travel: 0.44, sway: -0.14 },
 ];
 
 // Slow. A lava lamp takes minutes to turn itself over, and at a frame rate
