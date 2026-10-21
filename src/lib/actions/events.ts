@@ -62,7 +62,20 @@ export async function createPresetEvent() {
   return data.id;
 }
 
-export async function updateEvent(id: string, patch: EventPatch) {
+// Resolves to an error message to show (null once saved) rather than
+// throwing: a thrown error reaches a production page only as Next's
+// generic "Server Components render" message, which says nothing of what
+// went wrong.
+export async function updateEvent(id: string, patch: EventPatch): Promise<string | null> {
+  try {
+    await applyUpdate(id, patch);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : "Couldn't save the event";
+  }
+}
+
+async function applyUpdate(id: string, patch: EventPatch) {
   const user = await requirePage("forms");
   const admin = createAdminClient();
   const { data: current, error: readError } = await admin
@@ -91,7 +104,9 @@ export async function updateEvent(id: string, patch: EventPatch) {
 
   const startsAt = "starts_at" in row ? row.starts_at : current.starts_at;
   const endsAt = "ends_at" in row ? row.ends_at : current.ends_at;
-  if (typeof startsAt === "string" && typeof endsAt === "string" && endsAt < startsAt) {
+  // Compared as moments: what's stored comes back as "…+00:00", what's
+  // just been written as "…Z", so comparing the strings could misjudge.
+  if (startsAt && endsAt && new Date(endsAt).getTime() < new Date(startsAt).getTime()) {
     throw new Error("The event can't end before it starts.");
   }
 

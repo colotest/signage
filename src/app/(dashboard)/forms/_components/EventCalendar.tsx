@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { EdgeBand } from "@/components/EdgeBand";
 import { Wheel } from "@/components/DateTimePicker";
 import { sameDay, weekStartsOn } from "@/components/MonthCalendar";
@@ -20,22 +20,27 @@ const CIRCLE = 34;
 // The top one is deeper, to hold the month's name.
 const PEEK_TOP = 36;
 const PEEK_BOTTOM = 22;
-// Open: the month's name and its controls, then the weekdays' names.
+// Open: the month's name and its controls, the weekdays' names, then a
+// window of three weeks that scrolls on through the months.
 const HEADER = 44;
 const WEEKDAYS = 22;
+const WINDOW_WEEKS = 3;
+// How far the weeks run either side of the event (or of a month jumped to).
+const RANGE_WEEKS = 40;
 const OPEN_EASE = "450ms var(--ease-spring)";
 const DAY_MS = 86_400_000;
 const YEARS_BACK = 5;
 const YEARS_AHEAD = 10;
+// The time popover, open: a square of wheels.
+const POPOVER = 188;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-// "18h", or "18:30" — minutes only when it isn't on the hour, and an "h"
-// on a whole hour so the number reads as a time. An end at midnight is
-// "24h", the end of its evening, not "0h" of the next day.
+// "18:00", "18:30". An end at midnight is "24:00", the end of its evening,
+// not "00:00" of the next day.
 function formatTime(d: Date, isEnd = false) {
-  if (d.getMinutes() !== 0) return `${d.getHours()}:${pad(d.getMinutes())}`;
-  return isEnd && d.getHours() === 0 ? "24h" : `${d.getHours()}h`;
+  if (isEnd && d.getHours() === 0 && d.getMinutes() === 0) return "24:00";
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function startOfDay(d: Date) {
@@ -49,6 +54,8 @@ function addDays(d: Date, days: number) {
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
+
+const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
 const monthName = (month: number) => new Date(2026, month, 1).toLocaleString("en-GB", { month: "long" });
 
@@ -75,7 +82,7 @@ function toDateValue(event: EventSummary): DateValue {
 }
 
 // The day an end falls on, for drawing: ending at midnight is ending on
-// the day before, at 24h.
+// the day before, at 24:00.
 function endDayOf(value: DateValue) {
   const { startsAt, endsAt } = value;
   if (!endsAt) return null;
@@ -86,10 +93,30 @@ function endDayOf(value: DateValue) {
   return startOfDay(endsAt);
 }
 
+// Never ending before it starts: an end that would is pulled up to the
+// start.
+function settle(next: DateValue): DateValue {
+  if (!next.startsAt || !next.endsAt) return next;
+  const s = effectiveStart(next.startsAt, next.startsTimeSet);
+  if (effectiveEnd(next.endsAt, next.endsTimeSet) >= s) return next;
+  return { ...next, endsAt: new Date(s), endsTimeSet: next.startsTimeSet };
+}
+
 // What's being picked again: the start, the end, or — for a one-day event,
 // whose single day is both — whichever side of it the new day falls on.
 type Mode = "start" | "end" | "either" | null;
-type Pick = { which: "start" | "end"; day: Date; hours: number; minutes: number };
+
+// The time prompt hanging off a just-picked day: where its sharp corner
+// points (the day's circle, in the calendar's own coordinates) and which
+// way it opens from there.
+type TimePrompt = {
+  which: "start" | "end";
+  x: number;
+  y: number;
+  below: boolean;
+  rightward: boolean;
+  expanded: boolean;
+};
 
 // An event's page's dates. Closed, a slit onto an iOS-style month: just
 // the week rows the event covers, a little of the weeks either side fading
@@ -97,23 +124,27 @@ type Pick = { which: "start" | "end"; day: Date; hours: number; minutes: number 
 // picked out with their times under the first and last. A one-day event is
 // just its day, beside the month's name, with its times at the far right.
 //
-// Pressed, that same calendar opens out into its whole month to edit in.
-// Tapping the start lets go of it, and every day it could move to (up to
-// the end) gets a breathing ring; tapping one picks it, and a pair of time
-// wheels pops up from it — ✓ to take the time, ✕ to leave the day without
-// one. The end works the same way, from the start on. The month's name
-// opens month and year wheels to jump about. Every pick is saved as it's
-// made; Done closes it again.
+// Pressing the picked-out days opens the calendar out into a window of
+// three weeks, centred on them, that scrolls on through the months (the
+// month's name following along, or jumping by its own month and year
+// wheels). Tapping the start lets go of it, and every day it could move to
+// (up to the end) gets a breathing ring; tapping one moves it there at
+// once, and a little "Pick Start Time" hangs off it — pressed, it opens
+// into hour and minute wheels, ✕ to leave the time as it was, ✓ to set it.
+// The end works the same way, from the start on. Every change is saved as
+// it's made; Done closes the calendar again.
 export function EventDatesSection({ event }: { event: EventSummary }) {
   const router = useRouter();
   const isClient = useIsClient();
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState<Mode>(null);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
-  const [pick, setPick] = useState<Pick | null>(null);
+  const [prompt, setPrompt] = useState<TimePrompt | null>(null);
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  // A month picked on the month and year wheels, for the calendar to scroll
+  // to (n tells one pick from the next).
+  const [jump, setJump] = useState<{ month: Date; n: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const pickAnchor = useRef<HTMLElement | null>(null);
   const monthAnchor = useRef<HTMLButtonElement>(null);
 
   // What's been picked, shown straight away rather than after the save
@@ -130,14 +161,13 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
   // Saves go one after another, so quick changes land in order.
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
 
-  const start = value.startsAt;
-  const startDay = start ? startOfDay(start) : null;
+  const startDay = value.startsAt ? startOfDay(value.startsAt) : null;
   const endDay = endDayOf(value);
   const oneDay = !!startDay && (!endDay || sameDay(startDay, endDay));
 
   function open() {
-    setViewMonth(startOfMonth(start ?? new Date()));
-    setMode(start ? null : "start");
+    setViewMonth(startOfMonth(value.startsAt ?? new Date()));
+    setMode(value.startsAt ? null : "start");
     setError(null);
     setEditing(true);
   }
@@ -145,7 +175,7 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
   function close() {
     setEditing(false);
     setMode(null);
-    setPick(null);
+    setPrompt(null);
     setMonthPickerOpen(false);
   }
 
@@ -161,8 +191,11 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
     const run = queueRef.current.then(() => updateEvent(event.id, patch));
     queueRef.current = run.catch(() => {});
     run.then(
-      () => router.refresh(),
-      (err) => setError(err instanceof Error ? err.message : "Couldn't save the dates"),
+      (message) => {
+        if (message) setError(message);
+        else router.refresh();
+      },
+      () => setError("Couldn't save the dates"),
     );
   }
 
@@ -172,52 +205,64 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
     return mode === "either";
   }
 
-  function tapDay(day: Date, el: HTMLElement) {
+  function tapDay(day: Date, circle: DOMRect, frame: DOMRect, windowBottom: number) {
     if (!mode) {
       // Tapping the event's own days lets go of them to be picked again.
       if (startDay && sameDay(day, startDay) && oneDay) setMode("either");
       else if (startDay && sameDay(day, startDay)) setMode("start");
       else if (endDay && sameDay(day, endDay)) setMode("end");
+      setPrompt(null);
       return;
     }
     if (!available(day)) return;
-    const which =
-      mode === "start" || mode === "end" ? mode : startDay && day > startDay ? "end" : "start";
-    const current = which === "start" ? value.startsAt : value.endsAt;
-    const timeSet = which === "start" ? value.startsTimeSet : value.endsTimeSet;
-    const fallbackHours =
-      which === "start" ? nextFullHour().getHours() : Math.min(23, (start?.getHours() ?? 18) + 4);
-    pickAnchor.current = el;
-    setPick({
-      which,
-      day,
-      hours: current && timeSet ? current.getHours() : fallbackHours,
-      minutes: current && timeSet ? current.getMinutes() : 0,
-    });
-  }
+    const which = mode === "start" || mode === "end" ? mode : startDay && day > startDay ? "end" : "start";
 
-  function commitPick(withTime: boolean, hours: number, minutes: number) {
-    if (!pick) return;
-    const at = new Date(pick.day.getFullYear(), pick.day.getMonth(), pick.day.getDate(), hours, minutes);
-    let next: DateValue = { ...value };
-    if (pick.which === "start") {
-      next = { ...next, startsAt: at, startsTimeSet: withTime };
+    // Moved to the new day at once, keeping whatever time it had.
+    const old = which === "start" ? value.startsAt : value.endsAt;
+    const hours = old?.getHours() ?? (which === "start" ? nextFullHour().getHours() : Math.min(23, (value.startsAt?.getHours() ?? 18) + 4));
+    const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hours, old?.getMinutes() ?? 0);
+    let next: DateValue;
+    if (which === "start") {
+      next = { ...value, startsAt: at, startsTimeSet: old ? value.startsTimeSet : false };
       // A one-day event given an earlier start keeps its old day as the end.
-      if (!next.endsAt && value.startsAt && pick.day < startOfDay(value.startsAt)) {
+      if (!value.endsAt && value.startsAt && day < startOfDay(value.startsAt)) {
         next = { ...next, endsAt: value.startsAt, endsTimeSet: value.startsTimeSet };
       }
     } else {
-      next = { ...next, endsAt: at, endsTimeSet: withTime };
+      next = { ...value, endsAt: at, endsTimeSet: old ? value.endsTimeSet : false };
     }
-    // Never ending before it starts: an end pulled up to the start.
-    if (next.startsAt && next.endsAt) {
-      const s = effectiveStart(next.startsAt, next.startsTimeSet);
-      if (effectiveEnd(next.endsAt, next.endsTimeSet) < s) next = { ...next, endsAt: new Date(s), endsTimeSet: next.startsTimeSet };
-    }
+    next = settle(next);
     save(next);
-    setPick(null);
+    if (day.getMonth() !== viewMonth.getMonth() || day.getFullYear() !== viewMonth.getFullYear()) {
+      setViewMonth(startOfMonth(day));
+    }
     // A start with no end yet goes straight on to picking the end.
-    setMode(pick.which === "start" && !next.endsAt ? "end" : null);
+    setMode(which === "start" && !next.endsAt ? "end" : null);
+
+    // The prompt hangs off the day's circle: below it, unless that would
+    // leave the window, and opening away from the nearer side.
+    const x = circle.left + circle.width / 2 - frame.left;
+    const below = circle.bottom + 60 < windowBottom;
+    setPrompt({
+      which,
+      x,
+      y: below ? circle.bottom - frame.top + 2 : circle.top - frame.top - 2,
+      below,
+      rightward: x < frame.width / 2,
+      expanded: false,
+    });
+  }
+
+  function setTime(which: "start" | "end", hours: number | null, minutes = 0) {
+    const day = which === "start" ? value.startsAt : value.endsAt;
+    if (!day) return;
+    const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hours ?? day.getHours(), hours === null ? day.getMinutes() : minutes);
+    const next =
+      which === "start"
+        ? { ...value, startsAt: at, startsTimeSet: hours !== null }
+        : { ...value, endsAt: at, endsTimeSet: hours !== null };
+    save(settle(next));
+    setPrompt(null);
   }
 
   // What's drawn: a day let go of isn't shown as picked while its
@@ -230,6 +275,9 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
     // space is held meanwhile.
     return <div style={{ height: CIRCLE }} />;
   }
+
+  const promptTime = prompt ? (prompt.which === "start" ? value.startsAt : value.endsAt) : null;
+  const promptTimeSet = prompt ? (prompt.which === "start" ? value.startsTimeSet : value.endsTimeSet) : false;
 
   return (
     <div>
@@ -247,57 +295,64 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
         onOpen={open}
         onClose={close}
         onTapDay={tapDay}
-        onShiftMonth={(delta) => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1))}
+        onViewMonth={setViewMonth}
+        onScrolled={() => setPrompt(null)}
         onOpenMonthPicker={() => setMonthPickerOpen(true)}
         monthAnchor={monthAnchor}
-      />
+        jump={jump}
+      >
+        {prompt && promptTime && (
+          <TimePromptPopover
+            key={`${prompt.which}:${promptTime.toDateString()}`}
+            prompt={prompt}
+            hours={promptTime.getHours()}
+            minutes={promptTime.getMinutes()}
+            timeSet={promptTimeSet}
+            onExpand={() => setPrompt({ ...prompt, expanded: true })}
+            onDismiss={() => setPrompt(null)}
+            onClearTime={() => setTime(prompt.which, null)}
+            onCommit={(h, m) => setTime(prompt.which, h, m)}
+          />
+        )}
+      </CalendarBody>
       {error && <p className="mt-2 px-1 text-[13px] text-danger">{error}</p>}
 
-      <WheelPopover
-        open={pick !== null}
-        anchorRef={pickAnchor}
-        onClose={() => setPick(null)}
-        onCancel={() => pick && commitPick(false, pick.hours, pick.minutes)}
-        cancelLabel="No time"
-        onCommit={(h, m) => commitPick(true, h, m)}
-        commitLabel="Set time"
-        wheels={
-          pick
-            ? [
-                { label: "Hour", count: 24, value: pick.hours },
-                { label: "Minute", count: 60, value: pick.minutes },
-              ]
-            : []
-        }
-        separator=":"
-      />
-
-      <WheelPopover
+      <Menu
         open={monthPickerOpen}
+        onClose={() => setMonthPickerOpen(false)}
         anchorRef={monthAnchor}
         align="start"
-        onClose={() => setMonthPickerOpen(false)}
-        onCancel={() => setMonthPickerOpen(false)}
-        cancelLabel="Cancel"
-        onCommit={(month, yearIndex) => {
-          setViewMonth(new Date(new Date().getFullYear() - YEARS_BACK + yearIndex, month, 1));
-          setMonthPickerOpen(false);
-        }}
-        commitLabel="Go to month"
-        wheels={[
-          { label: "Month", count: 12, value: viewMonth.getMonth(), format: monthName, className: "w-32" },
-          {
-            label: "Year",
-            count: YEARS_BACK + YEARS_AHEAD + 1,
-            value: Math.min(
-              YEARS_BACK + YEARS_AHEAD,
-              Math.max(0, viewMonth.getFullYear() - new Date().getFullYear() + YEARS_BACK),
-            ),
-            format: (i) => String(new Date().getFullYear() - YEARS_BACK + i),
-            className: "w-20",
-          },
-        ]}
-      />
+        dragSelect={false}
+        className="p-0"
+      >
+        {monthPickerOpen && (
+          <WheelSquare
+            width={260}
+            cancelLabel="Cancel"
+            commitLabel="Go to month"
+            onCancel={() => setMonthPickerOpen(false)}
+            onCommit={([month, yearIndex]) => {
+              const target = new Date(new Date().getFullYear() - YEARS_BACK + yearIndex, month, 1);
+              setViewMonth(target);
+              setJump((j) => ({ month: target, n: (j?.n ?? 0) + 1 }));
+              setMonthPickerOpen(false);
+            }}
+            wheels={[
+              { label: "Month", count: 12, value: viewMonth.getMonth(), format: monthName, className: "w-32" },
+              {
+                label: "Year",
+                count: YEARS_BACK + YEARS_AHEAD + 1,
+                value: Math.min(
+                  YEARS_BACK + YEARS_AHEAD,
+                  Math.max(0, viewMonth.getFullYear() - new Date().getFullYear() + YEARS_BACK),
+                ),
+                format: (i) => String(new Date().getFullYear() - YEARS_BACK + i),
+                className: "w-20",
+              },
+            ]}
+          />
+        )}
+      </Menu>
     </div>
   );
 }
@@ -316,9 +371,12 @@ function CalendarBody({
   onOpen,
   onClose,
   onTapDay,
-  onShiftMonth,
+  onViewMonth,
+  onScrolled,
   onOpenMonthPicker,
   monthAnchor,
+  jump,
+  children,
 }: {
   value: DateValue;
   editing: boolean;
@@ -332,44 +390,93 @@ function CalendarBody({
   available: (day: Date) => boolean;
   onOpen: () => void;
   onClose: () => void;
-  onTapDay: (day: Date, el: HTMLElement) => void;
-  onShiftMonth: (delta: number) => void;
+  onTapDay: (day: Date, circle: DOMRect, frame: DOMRect, windowBottom: number) => void;
+  onViewMonth: (month: Date) => void;
+  onScrolled: () => void;
   onOpenMonthPicker: () => void;
   monthAnchor: RefObject<HTMLButtonElement | null>;
+  // A month to bring into view, when the month and year wheels pick one.
+  jump: { month: Date; n: number } | null;
+  children?: React.ReactNode;
 }) {
   const firstDay = useMemo(() => weekStartsOn(), []);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const weekOf = (d: Date) => addDays(d, -((d.getDay() - firstDay + 7) % 7));
   const lastDay = endDay ?? startDay;
 
-  // One continuous run of weeks holding both the open month and the
-  // event's weeks (and one either side), so opening and closing is the
-  // same rows sliding into a different window rather than a new calendar.
-  const monthFirstWeek = weekOf(viewMonth);
-  const monthLastWeek = weekOf(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0));
-  const eventFirstWeek = startDay ? weekOf(startDay) : null;
-  const eventLastWeek = lastDay ? weekOf(lastDay) : null;
-  const from = eventFirstWeek && addDays(eventFirstWeek, -7) < monthFirstWeek ? addDays(eventFirstWeek, -7) : monthFirstWeek;
-  const to = eventLastWeek && addDays(eventLastWeek, 7) > monthLastWeek ? addDays(eventLastWeek, 7) : monthLastWeek;
-  const weeks: Date[] = [];
-  for (let w = from; w <= to; w = addDays(w, 7)) weeks.push(w);
+  // One continuous run of weeks around the event (or today), recentred
+  // when the month and year wheels jump past either end of it.
+  const [rangeCentre, setRangeCentre] = useState(() => weekOf(startDay ?? new Date()));
+  const from = addDays(rangeCentre, -7 * RANGE_WEEKS);
+  const to = addDays(rangeCentre, 7 * RANGE_WEEKS);
+  const weeks = useMemo(() => {
+    const list: Date[] = [];
+    for (let i = -RANGE_WEEKS; i <= RANGE_WEEKS; i++) list.push(addDays(rangeCentre, 7 * i));
+    return list;
+  }, [rangeCentre]);
+
+  // A month picked on the wheels past either end of the run of weeks
+  // recentres it there first (noticed during render, as React recommends,
+  // so the weeks are in place by the time it's scrolled to below).
+  // Closed, the run is kept around the event's own weeks.
+  if (!editing && startDay && (weekOf(startDay) < addDays(from, 7) || weekOf(lastDay!) > addDays(to, -7))) {
+    setRangeCentre(weekOf(startDay));
+  }
+  const [jumpSeen, setJumpSeen] = useState(0);
+  if (jump && jump.n !== jumpSeen) {
+    setJumpSeen(jump.n);
+    const week = weekOf(jump.month);
+    if (week < addDays(from, 7 * WINDOW_WEEKS) || week > addDays(to, -7 * WINDOW_WEEKS)) setRangeCentre(week);
+  }
   const rowOf = (week: Date) => Math.round((week.getTime() - from.getTime()) / (7 * DAY_MS));
 
-  const slit = !editing && !!startDay && !oneDay;
-  const monthRows = rowOf(monthLastWeek) - rowOf(monthFirstWeek) + 1;
-  const openHeight = HEADER + WEEKDAYS + monthRows * ROW;
-  let height: number;
-  let offset: number;
-  if (editing) {
-    height = openHeight;
-    offset = HEADER + WEEKDAYS - rowOf(monthFirstWeek) * ROW;
-  } else if (slit) {
-    height = (rowOf(eventLastWeek!) - rowOf(eventFirstWeek!) + 1) * ROW + PEEK_TOP + PEEK_BOTTOM;
-    offset = PEEK_TOP - rowOf(eventFirstWeek!) * ROW;
-  } else {
-    // A one-day event, or none yet: a single line, the grid waiting
-    // (hidden) where it'll open to.
-    height = CIRCLE;
-    offset = HEADER + WEEKDAYS - rowOf(monthFirstWeek) * ROW;
+  const eventFirstRow = startDay ? rowOf(weekOf(startDay)) : null;
+  const eventLastRow = lastDay ? rowOf(weekOf(lastDay)) : null;
+  const slit = !editing && eventFirstRow !== null && !oneDay;
+
+  // The frame's height, and where the scrolling weeks sit in it and how
+  // far they're scrolled: closed, the event's own weeks with a little
+  // either side; open, three weeks under the header with the event in the
+  // middle; a one-day event or none yet, a single line, the weeks waiting
+  // (hidden) where they'll open to.
+  const openHeight = HEADER + WEEKDAYS + WINDOW_WEEKS * ROW;
+  const height = editing ? openHeight : slit ? (eventLastRow! - eventFirstRow! + 1) * ROW + PEEK_TOP + PEEK_BOTTOM : CIRCLE;
+  const scrollerTop = editing || !slit ? HEADER + WEEKDAYS : 0;
+  const scrollerHeight = slit ? height : WINDOW_WEEKS * ROW;
+  const centreRow =
+    eventFirstRow !== null ? (eventFirstRow + eventLastRow!) / 2 : rowOf(weekOf(new Date()));
+  const restingScroll = slit ? eventFirstRow! * ROW - PEEK_TOP : (centreRow - (WINDOW_WEEKS - 1) / 2) * ROW;
+
+  // Closed, the weeks are held exactly in place; on opening they glide to
+  // the open window's middle, centred on the event.
+  const wasEditing = useRef(editing);
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const opening = editing && !wasEditing.current;
+    wasEditing.current = editing;
+    if (editing && !opening) return;
+    el.scrollTo({ top: restingScroll, behavior: opening ? "smooth" : "auto" });
+  }, [editing, restingScroll]);
+
+  // A month picked on the wheels: its first week brought to the top.
+  useLayoutEffect(() => {
+    if (!jump) return;
+    scrollerRef.current?.scrollTo({ top: rowOf(weekOf(jump.month)) * ROW, behavior: "smooth" });
+  }, [jump]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scrolling on through the weeks: the month's name follows the middle
+  // week, and a time prompt (pinned to where its day was) goes.
+  function handleScroll() {
+    const el = scrollerRef.current;
+    if (!el || !editing) return;
+    onScrolled();
+    const row = Math.min(weeks.length - 1, Math.max(0, Math.round(el.scrollTop / ROW + (WINDOW_WEEKS - 1) / 2)));
+    const middle = addDays(weeks[row], 3);
+    if (middle.getMonth() !== viewMonth.getMonth() || middle.getFullYear() !== viewMonth.getFullYear()) {
+      onViewMonth(startOfMonth(middle));
+    }
   }
 
   const startTime = value.startsAt && value.startsTimeSet ? formatTime(value.startsAt) : null;
@@ -379,70 +486,80 @@ function CalendarBody({
     return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(2023, 0, 1 + ((firstDay + i) % 7))).toUpperCase());
   }, [firstDay]);
 
+  function pressDay(day: Date, button: HTMLElement) {
+    if (!editing) {
+      onOpen();
+      return;
+    }
+    const frame = frameRef.current!.getBoundingClientRect();
+    const scroller = scrollerRef.current!.getBoundingClientRect();
+    onTapDay(day, button.getBoundingClientRect(), frame, scroller.bottom);
+  }
+
   return (
     <div
-      role={editing ? undefined : "button"}
-      tabIndex={editing ? undefined : 0}
-      aria-label={editing ? undefined : "Edit dates"}
-      onClick={editing ? undefined : onOpen}
-      onKeyDown={(e) => {
-        if (!editing && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className={cn(
-        "relative select-none overflow-hidden rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        !editing && "cursor-pointer",
-      )}
+      ref={frameRef}
+      className={cn("relative select-none", editing ? "overflow-visible" : "overflow-hidden")}
       style={{ height, transition: `height ${OPEN_EASE}` }}
     >
-      {/* The weeks, slid to whichever window is showing. */}
+      {/* The weeks: a slit held still while closed, a window that scrolls
+          (snapping to whole weeks) while open. */}
       <div
+        ref={scrollerRef}
+        onScroll={handleScroll}
         aria-hidden={!editing && !slit ? true : undefined}
-        className={cn("absolute inset-x-0 top-0 transition-opacity duration-300", !editing && !slit && "opacity-0")}
-        style={{ transform: `translateY(${offset}px)`, transition: `transform ${OPEN_EASE}, opacity 300ms` }}
+        className={cn(
+          "no-scrollbar absolute inset-x-0 top-0",
+          editing ? "snap-y snap-mandatory overflow-y-auto overscroll-contain" : "overflow-hidden",
+          !editing && !slit && "pointer-events-none opacity-0",
+        )}
+        style={{
+          height: scrollerHeight,
+          transform: `translateY(${scrollerTop}px)`,
+          transition: `transform ${OPEN_EASE}, height ${OPEN_EASE}, opacity 300ms`,
+          // The window's top and bottom weeks fade into the frame while open.
+          maskImage: editing ? "linear-gradient(to bottom, transparent, black 14px, black calc(100% - 14px), transparent)" : undefined,
+        }}
       >
         {weeks.map((week) => (
-          <div key={week.getTime()} className="grid grid-cols-7" style={{ height: ROW }}>
+          <div key={week.getTime()} className="grid snap-start grid-cols-7" style={{ height: ROW }}>
             {Array.from({ length: 7 }, (_, i) => addDays(week, i)).map((day) => {
               const inRange = !!shownStart && !!shownEnd && day >= shownStart && day <= shownEnd;
               const isFirst = !!shownStart && sameDay(day, shownStart);
               const isLast = !!shownEnd && sameDay(day, shownEnd);
               const canPick = editing && !!mode && available(day);
-              const ownDay =
-                (startDay && sameDay(day, startDay)) || (lastDay && sameDay(day, lastDay));
+              const ownDay = (startDay && sameDay(day, startDay)) || (lastDay && sameDay(day, lastDay));
+              // Closed, the picked-out days are what opens it; open, the
+              // event's own days (to let go of) or any day that can be picked.
+              const pressable = editing ? (mode ? canPick : !!ownDay) : inRange;
               return (
                 <div key={day.getTime()} className="relative flex flex-col items-center">
-                  {/* The band joining the event's days, behind their circles;
+                  {/* The pill joining the event's days, behind their circles;
                       it starts and stops at the first and last circles' middles. */}
                   {inRange && !sameDay(shownStart!, shownEnd!) && (
                     <span
                       aria-hidden
-                      className="absolute bg-accent/12"
+                      className="absolute bg-accent/24"
                       style={{ top: 2, height: CIRCLE, left: isFirst ? "50%" : 0, right: isLast ? "50%" : 0 }}
                     />
                   )}
                   <button
                     type="button"
-                    tabIndex={editing ? 0 : -1}
-                    disabled={!editing || (!!mode && !canPick) || (!mode && !ownDay)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTapDay(day, e.currentTarget);
-                    }}
-                    aria-label={day.toDateString()}
-                    className="no-press relative mt-[2px] rounded-full disabled:cursor-default"
+                    tabIndex={pressable ? 0 : -1}
+                    disabled={!pressable}
+                    onClick={(e) => pressDay(day, e.currentTarget)}
+                    aria-label={editing ? day.toDateString() : `${day.toDateString()} — edit dates`}
+                    className="no-press relative mt-[2px] rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default"
                   >
                     <DayCircle
                       day={day}
                       kind={isFirst || isLast ? "edge" : inRange ? "inside" : "outside"}
-                      dim={editing && day.getMonth() !== viewMonth.getMonth()}
+                      dim={editing && (day.getMonth() !== viewMonth.getMonth() || day.getFullYear() !== viewMonth.getFullYear())}
                     />
                     {canPick && <span aria-hidden className="day-available absolute inset-0 rounded-full" />}
                   </button>
                   {((isFirst && startTime) || (isLast && endTime)) && (
-                    <span className="relative mt-0.5 text-[10px] font-medium leading-none tabular-nums text-muted">
+                    <span className="relative mt-0.5 text-[10px] font-semibold leading-none tabular-nums text-accent">
                       {isFirst && startTime ? startTime : endTime}
                     </span>
                   )}
@@ -468,7 +585,7 @@ function CalendarBody({
         className={cn("transition-opacity duration-300", !slit && "opacity-0")}
       />
 
-      {/* Open: the weekdays' names, over the grid. */}
+      {/* Open: the weekdays' names. */}
       <div
         aria-hidden
         className={cn(
@@ -483,9 +600,12 @@ function CalendarBody({
       </div>
 
       {/* The month's name — on the slit's blurred top edge, or heading the
-          open month, where it opens month and year wheels — and, open, the
-          arrows and Done. */}
-      <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 px-1" style={{ height: editing ? HEADER : CIRCLE }}>
+          open calendar, where it opens month and year wheels — and, open,
+          Done. */}
+      <div
+        className={cn("absolute inset-x-0 top-0 z-10 flex items-center gap-3 px-1", !editing && "pointer-events-none")}
+        style={{ height: editing ? HEADER : CIRCLE }}
+      >
         {editing ? (
           <button
             ref={monthAnchor}
@@ -503,19 +623,30 @@ function CalendarBody({
             {slit ? rangeLabel(startDay, lastDay!) : rangeLabel(startDay, startDay)}
           </span>
         ) : (
-          <span className="flex items-center gap-2 text-[15px] text-accent">
+          <button
+            type="button"
+            onClick={onOpen}
+            className="no-press pointer-events-auto flex items-center gap-2 text-[15px] text-accent"
+          >
             <CalendarIcon className="h-[18px] w-[18px]" />
             Add a date
-          </span>
+          </button>
         )}
 
-        {/* A one-day event, closed: its day beside the month, times at the
-            right. */}
+        {/* A one-day event, closed: its day (which opens the calendar)
+            beside the month, its times at the right. */}
         {!editing && oneDay && startDay && (
           <>
-            <DayCircle day={startDay} kind="edge" />
+            <button
+              type="button"
+              onClick={onOpen}
+              aria-label={`${startDay.toDateString()} — edit dates`}
+              className="no-press pointer-events-auto rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <DayCircle day={startDay} kind="edge" />
+            </button>
             {(startTime || endTime) && (
-              <span className="ml-auto text-[15px] tabular-nums text-muted">
+              <span className="ml-auto text-[15px] font-medium tabular-nums text-accent">
                 {[startTime, endTime].filter(Boolean).join(" – ")}
               </span>
             )}
@@ -523,88 +654,161 @@ function CalendarBody({
         )}
 
         {editing && (
-          <div className="pop-in ml-auto flex origin-right items-center gap-1 text-accent">
-            <button type="button" onClick={() => onShiftMonth(-1)} aria-label="Previous month" className="no-press rounded-full p-1.5">
-              <Chevron className="h-5 w-5 rotate-180" />
-            </button>
-            <button type="button" onClick={() => onShiftMonth(1)} aria-label="Next month" className="no-press rounded-full p-1.5">
-              <Chevron className="h-5 w-5" />
-            </button>
-            <button type="button" onClick={onClose} className="no-press ml-1 rounded-full px-2 py-1 text-[15px] font-semibold">
-              Done
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="no-press pop-in ml-auto origin-right rounded-full px-2 py-1 text-[15px] font-semibold text-accent"
+          >
+            Done
+          </button>
         )}
       </div>
+
+      {children}
     </div>
   );
 }
 
-// A little popover of scroll wheels hanging off what opened it, ✕ at its
-// top left and ✓ at its top right. A press outside just closes it.
-function WheelPopover({
-  open,
-  anchorRef,
-  align = "end",
-  onClose,
-  onCancel,
-  cancelLabel,
+// The prompt hanging off a just-picked day. Folded, a little label — "Pick
+// Start Time" — that opens, pressed, into a square of hour and minute
+// wheels with ✕ and ✓ tucked into its top corners. Either way the corner
+// nearest the day is a sharp point at its circle, so it's clear which day
+// it's the time of. A press anywhere else folds it away.
+function TimePromptPopover({
+  prompt,
+  hours,
+  minutes,
+  timeSet,
+  onExpand,
+  onDismiss,
+  onClearTime,
   onCommit,
-  commitLabel,
-  wheels,
-  separator,
 }: {
-  open: boolean;
-  anchorRef: RefObject<HTMLElement | null>;
-  align?: "start" | "end";
-  onClose: () => void;
-  onCancel: () => void;
-  cancelLabel: string;
-  onCommit: (a: number, b: number) => void;
-  commitLabel: string;
-  wheels: { label: string; count: number; value: number; format?: (i: number) => string; className?: string }[];
-  separator?: ReactNode;
+  prompt: TimePrompt;
+  hours: number;
+  minutes: number;
+  timeSet: boolean;
+  onExpand: () => void;
+  onDismiss: () => void;
+  onClearTime: () => void;
+  onCommit: (hours: number, minutes: number) => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const onDismissRef = useRef(onDismiss);
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  });
+  useEffect(() => {
+    function handle(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onDismissRef.current();
+    }
+    document.addEventListener("pointerdown", handle, true);
+    return () => document.removeEventListener("pointerdown", handle, true);
+  }, []);
+
+  const { x, y, below, rightward } = prompt;
+  // The sharp corner: the one facing the day.
+  const corner = below ? (rightward ? "rounded-tl-[3px]" : "rounded-tr-[3px]") : rightward ? "rounded-bl-[3px]" : "rounded-br-[3px]";
+  const label = prompt.which === "start" ? "Start" : "End";
+
   return (
-    <Menu open={open} onClose={onClose} anchorRef={anchorRef} align={align} dragSelect={false} className="p-2">
-      {/* Remounted per open, so the wheels start from the values given. */}
-      {open && <WheelPanel key={wheels.map((w) => w.value).join(",")} {...{ onCancel, cancelLabel, onCommit, commitLabel, wheels, separator }} />}
-    </Menu>
+    <div
+      ref={ref}
+      className={cn(
+        "menu-pop absolute z-30 overflow-hidden rounded-[18px] border border-border glass-material shadow-[var(--shadow-float)]",
+        corner,
+        below ? (rightward ? "origin-top-left" : "origin-top-right") : rightward ? "origin-bottom-left" : "origin-bottom-right",
+      )}
+      style={{
+        ...(rightward ? { left: x } : { right: `calc(100% - ${x}px)` }),
+        ...(below ? { top: y } : { bottom: `calc(100% - ${y}px)` }),
+      }}
+    >
+      {prompt.expanded ? (
+        <WheelSquare
+          width={POPOVER}
+          cancelLabel="Cancel"
+          commitLabel={`Set ${label.toLowerCase()} time`}
+          onCancel={onDismiss}
+          onCommit={([h, m]) => onCommit(h, m)}
+          separator=":"
+          wheels={[
+            { label: "Hour", count: 24, value: hours },
+            { label: "Minute", count: 60, value: minutes },
+          ]}
+        />
+      ) : (
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={onExpand}
+            className="no-press whitespace-nowrap px-3.5 py-2 text-[13px] font-semibold text-accent"
+          >
+            Pick {label} Time
+          </button>
+          {/* A time already set can be taken off again. */}
+          {timeSet && (
+            <button
+              type="button"
+              onClick={onClearTime}
+              title={`Remove ${label.toLowerCase()} time`}
+              aria-label={`Remove ${label.toLowerCase()} time`}
+              className="no-press -ml-1.5 mr-1.5 flex h-6 w-6 items-center justify-center rounded-full text-muted hover:text-foreground"
+            >
+              <CloseIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-function WheelPanel({
-  onCancel,
+// A square of scroll wheels, a band across their middle row, with ✕ and ✓
+// tucked into its top corners, a little over the wheels.
+function WheelSquare({
+  width,
   cancelLabel,
-  onCommit,
   commitLabel,
+  onCancel,
+  onCommit,
   wheels,
   separator,
 }: {
-  onCancel: () => void;
+  width: number;
   cancelLabel: string;
-  onCommit: (a: number, b: number) => void;
   commitLabel: string;
+  onCancel: () => void;
+  onCommit: (values: number[]) => void;
   wheels: { label: string; count: number; value: number; format?: (i: number) => string; className?: string }[];
-  separator?: ReactNode;
+  separator?: string;
 }) {
   const [values, setValues] = useState(() => wheels.map((w) => w.value));
-  const round = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full";
+  const round = "absolute top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full";
 
   return (
-    <div className="flex items-start gap-2">
+    <div className="relative flex items-center justify-center" style={{ width, height: POPOVER }}>
       <button
         type="button"
         onClick={onCancel}
         title={cancelLabel}
         aria-label={cancelLabel}
-        className={cn(round, "no-press bg-black/[.05] text-foreground dark:bg-white/[.08]")}
+        className={cn(round, "no-press left-2 bg-black/[.06] text-foreground backdrop-blur-md dark:bg-white/[.1]")}
       >
         <CloseIcon className="h-4 w-4" />
       </button>
-      <div className="relative flex items-center gap-1">
-        {/* The selection band the wheels' centre rows line up on. */}
-        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-8 -translate-y-1/2 rounded-[8px] bg-black/[.05] dark:bg-white/[.08]" />
+      <button
+        type="button"
+        onClick={() => onCommit(values)}
+        title={commitLabel}
+        aria-label={commitLabel}
+        className={cn(round, "no-press right-2 bg-accent text-accent-contrast shadow-[var(--shadow-control)]")}
+      >
+        <CheckIcon className="h-4 w-4" />
+      </button>
+      <div className="relative mt-4 flex items-center gap-1">
+        {/* The band the wheels' middle rows line up on. */}
+        <div className="pointer-events-none absolute -inset-x-2 top-1/2 h-8 -translate-y-1/2 rounded-[8px] bg-black/[.05] dark:bg-white/[.08]" />
         {wheels.map((wheel, i) => (
           <div key={wheel.label} className="flex items-center gap-1">
             {i > 0 && separator && <span className="relative text-[20px]">{separator}</span>}
@@ -620,40 +824,24 @@ function WheelPanel({
           </div>
         ))}
       </div>
-      <button
-        type="button"
-        onClick={() => onCommit(values[0], values[1])}
-        title={commitLabel}
-        aria-label={commitLabel}
-        className={cn(round, "no-press bg-accent text-accent-contrast shadow-[var(--shadow-control)]")}
-      >
-        <CheckIcon className="h-4 w-4" />
-      </button>
     </div>
   );
 }
 
 function DayCircle({ day, kind, dim = false }: { day: Date; kind: "edge" | "inside" | "outside"; dim?: boolean }) {
+  const weekend = isWeekend(day);
   return (
     <span
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full text-[16px] tabular-nums transition-colors duration-300",
-        kind === "edge" && "bg-accent font-semibold text-accent-contrast",
-        kind === "inside" && "font-medium text-accent",
-        kind === "outside" && (dim ? "text-muted/60" : "text-foreground"),
+        kind === "edge" && cn("bg-accent text-accent-contrast", weekend ? "font-bold" : "font-semibold"),
+        kind === "inside" && cn("text-accent", weekend ? "font-bold" : "font-medium"),
+        kind === "outside" && cn(dim ? "text-muted/60" : "text-foreground", weekend && "font-semibold"),
       )}
       style={{ height: CIRCLE, width: CIRCLE }}
     >
       {day.getDate()}
     </span>
-  );
-}
-
-function Chevron({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5">
-      <polyline points="9 6 15 12 9 18" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
 

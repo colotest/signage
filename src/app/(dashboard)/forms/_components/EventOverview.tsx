@@ -79,8 +79,11 @@ export function EventOverview({
   function save(patch: EventPatch) {
     setError(null);
     updateEvent(event.id, patch).then(
-      () => router.refresh(),
-      (err) => setError(err instanceof Error ? err.message : "Couldn't save that"),
+      (message) => {
+        if (message) setError(message);
+        else router.refresh();
+      },
+      () => setError("Couldn't save that"),
     );
   }
 
