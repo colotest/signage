@@ -95,7 +95,7 @@ export function EventOverview({
       titleNode={
         <EditableText
           value={event.title}
-          placeholder="Untitled Event"
+          placeholder="Title"
           label="Title"
           onSave={(title) => save({ title })}
           className="min-w-0 flex-1 text-[28px] font-semibold tracking-tight"
@@ -108,8 +108,16 @@ export function EventOverview({
     >
       {archived && <ArchivedBar event={event} onGone={onGone} isClient={isClient} />}
 
-      {/* Right under the title: who's leading it. */}
-      <div className="-mt-1 mb-4 px-1">
+      {/* Under the title, a few lines about it, then who's leading it. */}
+      <div className="-mt-1 mb-4 flex flex-col items-start gap-3 px-1">
+        <EditableText
+          value={event.description}
+          placeholder="Description"
+          label="Description"
+          multiline
+          onSave={(description) => save({ description })}
+          className="text-[15px] leading-snug text-foreground/85"
+        />
         <LeadPicker people={people} event={event} onPick={(leadId) => save({ leadId })} />
       </div>
 
@@ -117,15 +125,18 @@ export function EventOverview({
 
       {/* On the page itself, like a subtitle under the title, without labels
           — lined up with the "Setup" heading below. */}
-      <section className="flex flex-col gap-3 px-1 text-[16px] leading-snug">
+      {/* relative z-10: it rides up over the calendar's blurred bottom edge
+          (see EventCalendar), so it has to sit above it. */}
+      <section className="relative z-10 flex flex-col gap-3 px-1 text-[16px] leading-snug">
         <div className="flex flex-col">
           <EditableText
             value={event.customer}
             placeholder="Customer"
             label="Customer"
             onSave={(customer) => save({ customer })}
-            // The month's name's size, heading the contact under it.
-            className="text-[17px] font-semibold"
+            // The month's name's size, heading the contact under it — with a
+            // paragraph's gap before it.
+            className="mb-2 text-[17px] font-semibold"
           />
           <EditableText
             value={event.contactName}
@@ -175,8 +186,11 @@ export function EventOverview({
 }
 
 // A value that turns into a field when tapped, and saves when left (or on
-// Return; Escape puts it back). Empty, it shows its placeholder, muted, so
-// there's still something to tap. Cleared, the value goes (null). link: a
+// Return; Escape puts it back). Unset — empty, or still the field's own
+// name that a new event starts with — it shows that name, faded and
+// breathing back up to full, so it's clear it's waiting to be filled in.
+// multiline: a few lines of text, edited in a box that grows with them —
+// Return starts a new line, and leaving it (or ⌘/Ctrl-Return) saves. Cleared, the value goes (null). link: a
 // little button after it that acts on the value — call, write — since
 // tapping the value itself edits it.
 function EditableText({
@@ -186,6 +200,7 @@ function EditableText({
   onSave,
   inputType = "text",
   link,
+  multiline = false,
   className,
   as: Tag = "span",
 }: {
@@ -195,6 +210,7 @@ function EditableText({
   onSave: (next: string) => void;
   inputType?: "text" | "tel" | "email";
   link?: { href: string; label: string; icon: ReactNode };
+  multiline?: boolean;
   className?: string;
   as?: "span" | "h1";
 }) {
@@ -208,12 +224,40 @@ function EditableText({
     setShown(value);
   }
 
+  const unset = !shown || shown === placeholder;
+
   function commit(next: string) {
     setEditing(false);
     const trimmed = next.trim();
-    if (trimmed === (shown ?? "")) return;
+    if (trimmed === (unset ? "" : shown)) return;
     setShown(trimmed || null);
     onSave(trimmed);
+  }
+
+  if (editing && multiline) {
+    return (
+      <textarea
+        ref={(node) => {
+          if (!node || node.dataset.ready) return;
+          node.dataset.ready = "1";
+          node.focus();
+          node.setSelectionRange(node.value.length, node.value.length);
+        }}
+        defaultValue={unset ? "" : (shown ?? "")}
+        placeholder={placeholder}
+        aria-label={label}
+        rows={3}
+        onBlur={(e) => commit(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.blur();
+          else if (e.key === "Escape") setEditing(false);
+        }}
+        className={cn(
+          "-mx-1 w-full resize-none rounded-[6px] bg-black/[.04] px-1 outline-none ring-1 ring-accent [field-sizing:content] dark:bg-white/[.06]",
+          className,
+        )}
+      />
+    );
   }
 
   if (editing) {
@@ -224,7 +268,7 @@ function EditableText({
           node?.select();
         }}
         type={inputType}
-        defaultValue={shown ?? ""}
+        defaultValue={unset ? "" : (shown ?? "")}
         placeholder={placeholder}
         aria-label={label}
         onBlur={(e) => commit(e.currentTarget.value)}
@@ -240,6 +284,19 @@ function EditableText({
     );
   }
 
+  if (multiline) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        title={`Edit ${label.toLowerCase()}`}
+        className={cn("no-press w-full whitespace-pre-wrap text-left", unset && "unset-breathe", className)}
+      >
+        {unset ? placeholder : shown}
+      </button>
+    );
+  }
+
   return (
     <span className={cn("flex min-w-0 items-center gap-2", Tag === "h1" && "flex-1")}>
       <Tag className={cn("min-w-0 truncate", className)}>
@@ -247,12 +304,12 @@ function EditableText({
           type="button"
           onClick={() => setEditing(true)}
           title={`Edit ${label.toLowerCase()}`}
-          className={cn("no-press max-w-full truncate text-left", !shown && "text-muted")}
+          className={cn("no-press max-w-full truncate text-left", unset && "unset-breathe")}
         >
-          {shown || placeholder}
+          {unset ? placeholder : shown}
         </button>
       </Tag>
-      {link && (
+      {link && !unset && (
         <a
           href={link.href}
           title={link.label}
@@ -308,7 +365,7 @@ function LeadPicker({
         title="Change lead"
         className={cn(
           "no-press inline-flex max-w-full items-center gap-2 rounded-full bg-black/[.05] px-3 py-1 text-[15px] font-medium shadow-[var(--shadow-well)] dark:bg-white/[.08]",
-          !leadName && "text-muted",
+          !leadName && "unset-breathe",
         )}
       >
         <span className="truncate">{leadName || "Lead"}</span>

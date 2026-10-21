@@ -20,6 +20,8 @@ const CIRCLE = 34;
 // The top one is deeper, to hold the month's name.
 const PEEK_TOP = 36;
 const PEEK_BOTTOM = 22;
+// How far what follows the slit reaches up over its bottom edge.
+const SLIT_OVERLAP = 28;
 // Open: the month's name and its controls, the weekdays' names, then a
 // window of three weeks that scrolls on through the months.
 const HEADER = 44;
@@ -499,7 +501,13 @@ function CalendarBody({
     <div
       ref={frameRef}
       className={cn("relative select-none", editing ? "overflow-visible" : "overflow-hidden")}
-      style={{ height, transition: `height ${OPEN_EASE}` }}
+      style={{
+        height,
+        // Closed to a slit, what follows rides up into its blurred bottom
+        // edge instead of starting below it.
+        marginBottom: slit ? -SLIT_OVERLAP : 0,
+        transition: `height ${OPEN_EASE}, margin-bottom ${OPEN_EASE}`,
+      }}
     >
       {/* The weeks: a slit held still while closed, a window that scrolls
           (snapping to whole weeks) while open. */}

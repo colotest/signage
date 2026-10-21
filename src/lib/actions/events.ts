@@ -20,6 +20,7 @@ const PRESET = {
 // The fields an event's page can change, any number at a time.
 export type EventPatch = Partial<{
   title: string;
+  description: string;
   customer: string;
   contactName: string;
   contactPhone: string;
@@ -34,10 +35,11 @@ export type EventPatch = Partial<{
 }>;
 
 const MAX_TEXT = 200;
+const MAX_DESCRIPTION = 4000;
 
 // Blank fields are stored as null: every one of them is optional.
-function text(value: string) {
-  const trimmed = value.trim().slice(0, MAX_TEXT);
+function text(value: string, max = MAX_TEXT) {
+  const trimmed = value.trim().slice(0, max);
   return trimmed || null;
 }
 
@@ -88,6 +90,7 @@ async function applyUpdate(id: string, patch: EventPatch) {
 
   const row: Database["public"]["Tables"]["events"]["Update"] = {};
   if (patch.title !== undefined) row.title = text(patch.title);
+  if (patch.description !== undefined) row.description = text(patch.description, MAX_DESCRIPTION);
   if (patch.customer !== undefined) row.customer = text(patch.customer);
   if (patch.contactName !== undefined) row.contact_name = text(patch.contactName);
   if (patch.contactPhone !== undefined) row.contact_phone = text(patch.contactPhone);

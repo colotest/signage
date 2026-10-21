@@ -430,6 +430,7 @@ export type Database = {
         Row: {
           id: string;
           title: string | null;
+          description: string | null;
           customer: string | null;
           contact_name: string | null;
           contact_phone: string | null;
@@ -446,6 +447,7 @@ export type Database = {
         Insert: {
           id?: string;
           title?: string | null;
+          description?: string | null;
           customer?: string | null;
           contact_name?: string | null;
           contact_phone?: string | null;
@@ -462,6 +464,7 @@ export type Database = {
         Update: {
           id?: string;
           title?: string | null;
+          description?: string | null;
           customer?: string | null;
           contact_name?: string | null;
           contact_phone?: string | null;

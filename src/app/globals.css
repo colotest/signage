@@ -1322,6 +1322,29 @@ button[data-landing]::after {
   backdrop-filter: blur(24px) saturate(180%);
 }
 
+/* An event's details not filled in yet (EventOverview): faded, breathing
+   back up to full, to show they're there to be written in. */
+@keyframes unset-breathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.unset-breathe {
+  animation: unset-breathe 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unset-breathe {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
 /* An event's start and end on its open calendar, before either's been
    tapped: they take turns fading out and back, to show they're what to tap
    (EventCalendar). */
