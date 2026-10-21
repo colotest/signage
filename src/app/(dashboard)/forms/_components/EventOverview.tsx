@@ -79,7 +79,9 @@ export function EventOverview({
     >
       {archived && <ArchivedBar event={event} onGone={onGone} isClient={isClient} />}
 
-      <section className="rounded-[var(--radius-md)] border border-border bg-surface p-3.5">
+      {/* On the page itself rather than in a card, like a subtitle under the
+          title — lined up with the "Setup" heading below. */}
+      <section className="px-1">
         <EventDetails event={event} dates={dates} />
       </section>
 
