@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useSyncExternalStore, type CSSProperties } from "react";
 import { MediaThumb } from "@/components/MediaThumb";
 import { NoContentPlaceholder } from "@/components/NoContentPlaceholder";
 import { PauseIcon } from "@/components/icons/PlaybackIcons";
@@ -90,13 +90,7 @@ export function ScreenPreview({
           <span className={compact ? "text-[10px] font-medium text-white/60" : "text-[12px] font-medium text-white/70"}>
             Offline
           </span>
-          {!compact && status.seenAt !== null && (
-            // Server and browser can sit in different time zones, so the
-            // first paint's time may differ from the SSR's.
-            <span suppressHydrationWarning className="text-[11px] text-white/40">
-              Last seen {formatSeenAt(status.seenAt)}
-            </span>
-          )}
+          {!compact && status.seenAt !== null && <LastSeen ms={status.seenAt} />}
         </span>
       ) : (
         <div
@@ -117,6 +111,24 @@ export function ScreenPreview({
       )}
     </div>
   );
+}
+
+const noSubscribe = () => () => {};
+
+// The time is only ever written out in the browser, in its own time zone.
+// The server renders in UTC, and suppressHydrationWarning doesn't correct
+// a mismatch — it keeps the server's text — so after a reload an offline
+// screen read two hours early here, until something re-rendered it.
+// useSyncExternalStore's server snapshot leaves the line out of the server
+// render and the hydration pass, and the browser adds it straight after.
+function LastSeen({ ms }: { ms: number }) {
+  const inBrowser = useSyncExternalStore(
+    noSubscribe,
+    () => true,
+    () => false,
+  );
+  if (!inBrowser) return null;
+  return <span className="text-[11px] text-white/40">Last seen {formatSeenAt(ms)}</span>;
 }
 
 // "14:32" today, "Mon 14:32" within the week, a date beyond that.
