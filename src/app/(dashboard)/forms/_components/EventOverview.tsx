@@ -62,12 +62,12 @@ export function EventOverview({
   onGone: () => void;
 }) {
   const isClient = useIsClient();
-  const runtime = formatRuntime(event.startsAt, event.endsAt);
+  const runtime = formatRuntime(event);
   const archived = event.archivedAt !== null;
   // Dates are local times, so only written once in the browser.
   const dates =
     event.startsAt && isClient
-      ? `${formatEventRange(event.startsAt, event.endsAt)}${runtime ? ` · ${runtime}` : ""}`
+      ? `${formatEventRange(event)}${runtime ? ` · ${runtime}` : ""}`
       : null;
 
   return (

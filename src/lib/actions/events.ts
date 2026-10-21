@@ -13,9 +13,12 @@ export type NewEventInput = {
   contactPhone: string;
   contactEmail: string;
   leadId: string | null;
-  // ISO timestamps.
+  // ISO timestamps. Without a time of day, the start is the beginning of
+  // its day and the end the very end of its (see 0035).
   startsAt: string | null;
   endsAt: string | null;
+  startsTimeSet: boolean;
+  endsTimeSet: boolean;
 };
 
 const MAX_TEXT = 200;
@@ -59,6 +62,8 @@ export async function createEvent(input: NewEventInput) {
       lead_id: leadId,
       starts_at: startsAt,
       ends_at: endsAt,
+      starts_time_set: startsAt ? input.startsTimeSet : true,
+      ends_time_set: endsAt ? input.endsTimeSet : true,
       created_by: user.id,
     })
     .select("id")

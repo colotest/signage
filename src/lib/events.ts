@@ -23,6 +23,9 @@ export type EventSummary = {
   leadName: string | null;
   startsAt: string | null;
   endsAt: string | null;
+  // Whether startsAt / endsAt have a time of day, or are just a day (0035).
+  startsTimeSet: boolean;
+  endsTimeSet: boolean;
   // When it was archived, or null while it's current.
   archivedAt: string | null;
 };
@@ -84,6 +87,9 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     leadName: e.lead_id ? (leadNames.get(e.lead_id) ?? null) : null,
     startsAt: e.starts_at,
     endsAt: e.ends_at,
+    // ?? true: every event had a time before 0035.
+    startsTimeSet: e.starts_time_set ?? true,
+    endsTimeSet: e.ends_time_set ?? true,
     // ?? null: reads as current before 0034 has added the column.
     archivedAt: e.archived_at ?? null,
   }));

@@ -440,6 +440,8 @@ export type Database = {
           created_by: string | null;
           created_at: string;
           archived_at: string | null;
+          starts_time_set: boolean;
+          ends_time_set: boolean;
         };
         Insert: {
           id?: string;
@@ -454,6 +456,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           archived_at?: string | null;
+          starts_time_set?: boolean;
+          ends_time_set?: boolean;
         };
         Update: {
           id?: string;
@@ -468,6 +472,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           archived_at?: string | null;
+          starts_time_set?: boolean;
+          ends_time_set?: boolean;
         };
         Relationships: [];
       };

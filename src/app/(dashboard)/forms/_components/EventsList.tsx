@@ -143,7 +143,8 @@ function EventRow({
   onOpen: () => void;
 }) {
   const isClient = useIsClient();
-  const runtime = formatRuntime(event.startsAt, event.endsAt);
+  // Counted in local days when a time is blank, so only in the browser.
+  const runtime = isClient ? formatRuntime(event) : null;
   // The details stay mounted while the card slides shut.
   const [contentMounted, setContentMounted] = useState(isExpanded);
   if (isExpanded && !contentMounted) setContentMounted(true);

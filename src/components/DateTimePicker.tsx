@@ -15,14 +15,22 @@ const pad = (n: number) => String(n).padStart(2, "0");
 // distracting than helpful.
 // minDate: the first day that can be picked — today unless given (null for
 // none). See MonthCalendar.
+// With onHasTimeChange the time of day is optional: hasTime false leaves the
+// pill blank ("Add Time", which sets one), and a set time gets a little ✕
+// beside it that blanks it again. value's own hours are kept meanwhile, so
+// a time that's blanked and added back comes back as it was.
 export function DateTimePicker({
   value,
   onChange,
   minDate,
+  hasTime = true,
+  onHasTimeChange,
 }: {
   value: Date;
   onChange: (next: Date) => void;
   minDate?: Date | null;
+  hasTime?: boolean;
+  onHasTimeChange?: (hasTime: boolean) => void;
 }) {
   const [timeOpen, setTimeOpen] = useState(false);
 
@@ -41,21 +49,40 @@ export function DateTimePicker({
       <MonthCalendar value={value} onSelect={pickDay} minDate={minDate} />
 
       <div className="mt-3 flex items-center justify-between border-t border-border px-1 pt-3">
-        <span className="text-[17px]">Time</span>
+        <span className="flex-1 text-[17px]">Time</span>
+        {hasTime && onHasTimeChange && (
+          <button
+            type="button"
+            onClick={() => {
+              setTimeOpen(false);
+              onHasTimeChange(false);
+            }}
+            title="Remove time"
+            aria-label="Remove time"
+            className="no-press mr-1.5 flex h-7 w-7 items-center justify-center rounded-full text-[15px] leading-none text-muted hover:text-foreground"
+          >
+            ✕
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => setTimeOpen((o) => !o)}
+          onClick={() => {
+            if (!hasTime) {
+              onHasTimeChange?.(true);
+              setTimeOpen(true);
+            } else setTimeOpen((o) => !o);
+          }}
           aria-expanded={timeOpen}
           className={cn(
-            "no-press rounded-[8px] px-3 py-1.5 text-[17px] tabular-nums transition-colors",
-            timeOpen ? "bg-black/[.05] text-accent dark:bg-white/[.08]" : "bg-black/[.05] text-foreground dark:bg-white/[.08]",
+            "no-press rounded-[8px] bg-black/[.05] px-3 py-1.5 text-[17px] tabular-nums transition-colors dark:bg-white/[.08]",
+            timeOpen || !hasTime ? "text-accent" : "text-foreground",
           )}
         >
-          {pad(value.getHours())}:{pad(value.getMinutes())}
+          {hasTime ? `${pad(value.getHours())}:${pad(value.getMinutes())}` : "Add Time"}
         </button>
       </div>
 
-      {timeOpen && (
+      {timeOpen && hasTime && (
         <div className="menu-pop relative mt-3 flex justify-center gap-2 origin-top">
           {/* The selection band both wheels' centre rows line up on. */}
           <div className="pointer-events-none absolute inset-x-4 top-1/2 h-8 -translate-y-1/2 rounded-[8px] bg-black/[.05] dark:bg-white/[.08]" />
