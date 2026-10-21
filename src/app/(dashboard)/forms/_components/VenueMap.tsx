@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "
 import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils/cn";
 import { startCompass } from "./compass";
+import { createWheelClassifier } from "./wheelKind";
 
 export type FloorPlan = {
   src: string;
@@ -264,23 +265,31 @@ export function VenueMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan.width, plan.height]);
 
-  // Wheel and trackpad: a two-finger swipe (or a mouse wheel) slides the
-  // map, like scrolling a page; a trackpad pinch arrives as a wheel with
-  // ctrlKey, and ⌘ or ctrl with a wheel zooms too, about the pointer. Desktop
-  // Safari's trackpad pinch-and-turn comes as its own gesture events, which
-  // also turn the map; iOS sends those too, alongside the touches already
-  // handled below, so they're ignored while fingers are down.
+  // Wheel and trackpad, on any desktop browser. A mouse wheel zooms about
+  // the pointer; a trackpad's two-finger swipe slides the map, like
+  // scrolling a page (wheelKind tells the two apart). A trackpad pinch
+  // arrives as a wheel with ctrlKey (Chrome, Edge and Firefox, on a Mac or
+  // a Windows precision touchpad), and ⌘ or ctrl with either zooms too.
+  // Desktop Safari sends its pinch — and the trackpad's two-finger turn,
+  // which only it reports — as gesture events instead, which zoom and turn
+  // the map; while one's under way any ctrl-wheel it also sends is ignored,
+  // so the pinch doesn't count twice. iOS sends gesture events too,
+  // alongside the touches already handled below, so they're ignored while
+  // fingers are down.
   useEffect(() => {
     const el = containerRef.current!;
+    const wheelKind = createWheelClassifier();
+    let gesturing = false;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const v = viewRef.current;
       if (!v) return;
+      if (gesturing && e.ctrlKey) return;
       stopMotion();
       touchedRef.current = true;
       const rect = el.getBoundingClientRect();
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.height : 1;
-      if (e.ctrlKey || e.metaKey) {
+      if (e.ctrlKey || e.metaKey || wheelKind(e) === "mouse") {
         const k = Math.exp(-e.deltaY * unit * (e.ctrlKey ? 0.01 : 0.0025));
         commit(zoomAbout(v, e.clientX - rect.left, e.clientY - rect.top, k));
       } else {
@@ -291,6 +300,7 @@ export function VenueMap({
     type GestureEvent = UIEvent & { scale: number; rotation: number; clientX: number; clientY: number };
     const onGestureStart = (e: Event) => {
       e.preventDefault();
+      gesturing = true;
       last = pointersRef.current.size > 0 ? null : { scale: 1, rotation: 0 };
     };
     const onGestureChange = (e: Event) => {
@@ -310,13 +320,18 @@ export function VenueMap({
       last = { scale: g.scale, rotation: g.rotation };
       commit(next);
     };
+    const onGestureEnd = () => {
+      gesturing = false;
+    };
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("gesturestart", onGestureStart);
     el.addEventListener("gesturechange", onGestureChange);
+    el.addEventListener("gestureend", onGestureEnd);
     return () => {
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("gesturestart", onGestureStart);
       el.removeEventListener("gesturechange", onGestureChange);
+      el.removeEventListener("gestureend", onGestureEnd);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -393,9 +408,7 @@ export function VenueMap({
         const a1 = Math.atan2(p.y - h / 2, p.x - w / 2);
         stopFollowing();
         commit(rotateAbout(v, w / 2, h / 2, a1 - a0));
-      } else if (e.pointerType !== "mouse") {
-        // A mouse or trackpad click-and-drag doesn't move the map — on a Mac
-        // that's the two-finger swipe's job (the wheel handler above).
+      } else {
         commit({ ...v, x: v.x + p.x - prev.x, y: v.y + p.y - prev.y });
         g.samples.push(p);
         if (g.samples.length > 6) g.samples.shift();
