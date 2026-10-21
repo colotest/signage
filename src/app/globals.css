@@ -1322,6 +1322,33 @@ button[data-landing]::after {
   backdrop-filter: blur(24px) saturate(180%);
 }
 
+/* A day that can be picked, while an event's start or end is being picked
+   again on its calendar (EventCalendar): a soft ring, its edge feathered,
+   breathing in and out. */
+@keyframes day-available {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.day-available {
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent),
+    0 0 6px 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: day-available 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day-available {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 /* The Forms page's list side moves between pages the way iOS does (Files
    entering a folder): the next page slides in from the right over the
    current one, which drifts a little left and dims under it; going back

@@ -15,22 +15,14 @@ const pad = (n: number) => String(n).padStart(2, "0");
 // distracting than helpful.
 // minDate: the first day that can be picked — today unless given (null for
 // none). See MonthCalendar.
-// With onHasTimeChange the time of day is optional: hasTime false leaves the
-// pill blank ("Add Time", which sets one), and a set time gets a little ✕
-// beside it that blanks it again. value's own hours are kept meanwhile, so
-// a time that's blanked and added back comes back as it was.
 export function DateTimePicker({
   value,
   onChange,
   minDate,
-  hasTime = true,
-  onHasTimeChange,
 }: {
   value: Date;
   onChange: (next: Date) => void;
   minDate?: Date | null;
-  hasTime?: boolean;
-  onHasTimeChange?: (hasTime: boolean) => void;
 }) {
   const [timeOpen, setTimeOpen] = useState(false);
 
@@ -49,40 +41,21 @@ export function DateTimePicker({
       <MonthCalendar value={value} onSelect={pickDay} minDate={minDate} />
 
       <div className="mt-3 flex items-center justify-between border-t border-border px-1 pt-3">
-        <span className="flex-1 text-[17px]">Time</span>
-        {hasTime && onHasTimeChange && (
-          <button
-            type="button"
-            onClick={() => {
-              setTimeOpen(false);
-              onHasTimeChange(false);
-            }}
-            title="Remove time"
-            aria-label="Remove time"
-            className="no-press mr-1.5 flex h-7 w-7 items-center justify-center rounded-full text-[15px] leading-none text-muted hover:text-foreground"
-          >
-            ✕
-          </button>
-        )}
+        <span className="text-[17px]">Time</span>
         <button
           type="button"
-          onClick={() => {
-            if (!hasTime) {
-              onHasTimeChange?.(true);
-              setTimeOpen(true);
-            } else setTimeOpen((o) => !o);
-          }}
+          onClick={() => setTimeOpen((o) => !o)}
           aria-expanded={timeOpen}
           className={cn(
-            "no-press rounded-[8px] bg-black/[.05] px-3 py-1.5 text-[17px] tabular-nums transition-colors dark:bg-white/[.08]",
-            timeOpen || !hasTime ? "text-accent" : "text-foreground",
+            "no-press rounded-[8px] px-3 py-1.5 text-[17px] tabular-nums transition-colors",
+            timeOpen ? "bg-black/[.05] text-accent dark:bg-white/[.08]" : "bg-black/[.05] text-foreground dark:bg-white/[.08]",
           )}
         >
-          {hasTime ? `${pad(value.getHours())}:${pad(value.getMinutes())}` : "Add Time"}
+          {pad(value.getHours())}:{pad(value.getMinutes())}
         </button>
       </div>
 
-      {timeOpen && hasTime && (
+      {timeOpen && (
         <div className="menu-pop relative mt-3 flex justify-center gap-2 origin-top">
           {/* The selection band both wheels' centre rows line up on. */}
           <div className="pointer-events-none absolute inset-x-4 top-1/2 h-8 -translate-y-1/2 rounded-[8px] bg-black/[.05] dark:bg-white/[.08]" />
@@ -101,17 +74,26 @@ const WHEEL_PADDING = ((VISIBLE_ROWS - 1) / 2) * ITEM_HEIGHT;
 
 // An iOS-style scroll wheel of 0…count-1: scroll-snap lands a row on the
 // centre band, and whatever's settled there once scrolling stops is the
-// value. Clicking a row scrolls it there too.
-function Wheel({
+// value. Clicking a row scrolls it there too. format: how a row reads (two
+// digits by default). live: report every row passing the centre, not just
+// the one it settles on — for a popover whose ✓ might be pressed before
+// the wheel has quite come to rest.
+export function Wheel({
   count,
   value,
   onChange,
   label,
+  format = pad,
+  live = false,
+  className,
 }: {
   count: number;
   value: number;
   onChange: (next: number) => void;
   label: string;
+  format?: (index: number) => string;
+  live?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const settleRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -131,6 +113,10 @@ function Wheel({
     if (!el) return;
     const index = Math.min(count - 1, Math.max(0, Math.round(el.scrollTop / ITEM_HEIGHT)));
     setCentered(index);
+    if (live) {
+      if (index !== centered) onChange(index);
+      return;
+    }
     clearTimeout(settleRef.current);
     settleRef.current = setTimeout(() => {
       if (index !== value) onChange(index);
@@ -143,7 +129,7 @@ function Wheel({
       role="listbox"
       aria-label={label}
       onScroll={handleScroll}
-      className="no-scrollbar relative w-16 snap-y snap-mandatory overflow-y-auto overscroll-contain"
+      className={cn("no-scrollbar relative w-16 snap-y snap-mandatory overflow-y-auto overscroll-contain", className)}
       style={{
         height: ITEM_HEIGHT * VISIBLE_ROWS,
         paddingBlock: WHEEL_PADDING,
@@ -163,7 +149,7 @@ function Wheel({
           )}
           style={{ height: ITEM_HEIGHT, lineHeight: `${ITEM_HEIGHT}px` }}
         >
-          {pad(i)}
+          {format(i)}
         </button>
       ))}
     </div>
