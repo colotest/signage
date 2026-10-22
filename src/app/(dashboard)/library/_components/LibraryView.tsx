@@ -20,6 +20,8 @@ import { Menu } from "@/components/ui/Menu";
 import { MediaThumb } from "@/components/MediaThumb";
 import type { DeckWithPages, Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
 import { moveMediaItem } from "@/lib/actions/media";
+import { moveDeck } from "@/lib/actions/decks";
+import { moveFolder } from "@/lib/actions/folders";
 import {
   addMediaToPlaylist,
   getPlaylistEntryIds,
@@ -39,12 +41,23 @@ import { UploadDropzone } from "./UploadDropzone";
 import { useMediaUpload } from "./useMediaUpload";
 
 // Resolved from whatever id dnd-kit's `over` reports — a folder (including
-// root, id null) when a file's dropped inside FileTree, or a playlist when
-// it's dropped onto one instead. Keeping this as one union (rather than two
+// root, id null) when something's dropped inside FileTree, or a playlist
+// when it's dropped onto one instead. Keeping this as one union (rather than two
 // separate "am I over a folder"/"am I over a playlist" checks) is what lets
 // a single onDragEnd handle both without the two cases fighting over the
 // same `over.id` string.
 type DropTarget = { type: "folder"; folderId: string | null } | { type: "playlist"; playlistId: string };
+
+// What's being dragged, from the draggable's id: a file's is its own media
+// id (which the playlists side relies on); a folder's and a PDF's are
+// prefixed, as they're only ever moved between folders.
+type Dragged = { type: "file"; id: string } | { type: "folder"; id: string } | { type: "deck"; id: string };
+
+function parseDragged(activeId: string): Dragged {
+  if (activeId.startsWith("move-folder-")) return { type: "folder", id: activeId.slice("move-folder-".length) };
+  if (activeId.startsWith("move-deck-")) return { type: "deck", id: activeId.slice("move-deck-".length) };
+  return { type: "file", id: activeId };
+}
 
 // dnd-kit's default drop animation eases the overlay back to wherever the
 // *original* draggable element currently sits — sensible for reordering,
@@ -115,8 +128,25 @@ export function LibraryView({
     setLocalMedia(media);
   }
   const mediaById = useMemo(() => new Map(localMedia.map((m) => [m.id, m])), [localMedia]);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const draggingItem = draggingId ? (mediaById.get(draggingId) ?? null) : null;
+  // The same for folders and PDFs, which can be dragged into folders too.
+  const [localFolders, setLocalFolders] = useState(folders);
+  const [syncedFolders, setSyncedFolders] = useState(folders);
+  if (folders !== syncedFolders) {
+    setSyncedFolders(folders);
+    setLocalFolders(folders);
+  }
+  const [localDecks, setLocalDecks] = useState(decks);
+  const [syncedDecks, setSyncedDecks] = useState(decks);
+  if (decks !== syncedDecks) {
+    setSyncedDecks(decks);
+    setLocalDecks(decks);
+  }
+  const folderById = useMemo(() => new Map(localFolders.map((f) => [f.id, f])), [localFolders]);
+  const deckById = useMemo(() => new Map(localDecks.map((d) => [d.id, d])), [localDecks]);
+  const [dragging, setDragging] = useState<Dragged | null>(null);
+  const draggingItem = dragging?.type === "file" ? (mediaById.get(dragging.id) ?? null) : null;
+  const draggingFolder = dragging?.type === "folder" ? (folderById.get(dragging.id) ?? null) : null;
+  const draggingDeck = dragging?.type === "deck" ? (deckById.get(dragging.id) ?? null) : null;
   // The *resolved* drop target rather than which specific row/card is under
   // the pointer — a folder id (or null for root) drives a border around
   // that whole folder's row + its expanded files in FileTree; a playlist id
@@ -134,22 +164,42 @@ export function LibraryView({
     if (overId.startsWith("file-")) {
       return { type: "folder", folderId: mediaById.get(overId.slice("file-".length))?.folder_id ?? null };
     }
+    if (overId.startsWith("deck-")) {
+      return { type: "folder", folderId: deckById.get(overId.slice("deck-".length))?.folder_id ?? null };
+    }
     if (overId.startsWith("playlist-")) return { type: "playlist", playlistId: overId.slice("playlist-".length) };
     return undefined;
   }
 
+  // Where what's being dragged may actually go. A file anywhere it's
+  // offered; a folder or a PDF only into a folder — and a folder never into
+  // itself or anywhere below it, so those don't even light up.
+  function allowedTarget(dragged: Dragged, target: DropTarget | undefined): DropTarget | undefined {
+    if (!target || dragged.type === "file") return target;
+    if (target.type !== "folder") return undefined;
+    if (dragged.type === "folder") {
+      for (let at = target.folderId; at; at = folderById.get(at)?.parent_id ?? null) {
+        if (at === dragged.id) return undefined;
+      }
+    }
+    return target;
+  }
+
   function clearDragState() {
-    setDraggingId(null);
+    setDragging(null);
     setDropTargetFolderId(undefined);
     setDropTargetPlaylistId(null);
   }
 
   function handleDragStart(event: DragStartEvent) {
-    setDraggingId(String(event.active.id));
+    setDragging(parseDragged(String(event.active.id)));
   }
 
   function handleDragOver(event: DragOverEvent) {
-    const target = event.over ? resolveDropTarget(String(event.over.id)) : undefined;
+    const target = allowedTarget(
+      parseDragged(String(event.active.id)),
+      event.over ? resolveDropTarget(String(event.over.id)) : undefined,
+    );
     setDropTargetFolderId(target?.type === "folder" ? target.folderId : undefined);
     setDropTargetPlaylistId(target?.type === "playlist" ? target.playlistId : null);
   }
@@ -159,9 +209,38 @@ export function LibraryView({
     clearDragState();
     if (!over) return;
 
-    const mediaId = String(active.id);
-    const target = resolveDropTarget(String(over.id));
+    const dragged = parseDragged(String(active.id));
+    const target = allowedTarget(dragged, resolveDropTarget(String(over.id)));
     if (!target) return;
+
+    if (dragged.type === "folder" && target.type === "folder") {
+      const folder = folderById.get(dragged.id);
+      if (!folder || folder.parent_id === target.folderId) return;
+      if (!canEditOwned(viewer, { ownerId: folder.created_by, editRoleIds: folder.edit_role_ids ?? [] })) return;
+      setLocalFolders((current) =>
+        current.map((f) => (f.id === dragged.id ? { ...f, parent_id: target.folderId } : f)),
+      );
+      // Refused by the server after all (rights changed meanwhile, say),
+      // the refresh is what puts it back where it really is.
+      moveFolder(dragged.id, target.folderId)
+        .catch(() => {})
+        .then(() => router.refresh());
+      return;
+    }
+
+    if (dragged.type === "deck" && target.type === "folder") {
+      const deck = deckById.get(dragged.id);
+      if (!deck || deck.folder_id === target.folderId) return;
+      if (!canEditOwned(viewer, { ownerId: deck.uploaded_by, editRoleIds: deck.edit_role_ids ?? [] })) return;
+      setLocalDecks((current) => current.map((d) => (d.id === dragged.id ? { ...d, folder_id: target.folderId } : d)));
+      moveDeck(dragged.id, target.folderId)
+        .catch(() => {})
+        .then(() => router.refresh());
+      return;
+    }
+
+    if (dragged.type !== "file") return;
+    const mediaId = dragged.id;
 
     if (target.type === "folder") {
       const item = mediaById.get(mediaId);
@@ -432,9 +511,9 @@ export function LibraryView({
 
           <FileTree
             className="min-h-0 flex-1"
-            folders={folders}
+            folders={localFolders}
             media={localMedia}
-            decks={decks}
+            decks={localDecks}
             uploadLinks={uploadLinks}
             uploaders={uploaders}
             selectionMode={activePlaylistId !== null}
@@ -478,6 +557,21 @@ export function LibraryView({
               <MediaThumb item={draggingItem} />
             </div>
             <span className="max-w-[220px] truncate text-[13px] font-medium">{draggingItem.name}</span>
+          </div>
+        )}
+        {draggingFolder && (
+          <div className="drag-pickup flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 shadow-[var(--shadow-card)]">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center text-[22px]">📁</div>
+            <span className="max-w-[220px] truncate text-[13px] font-medium">{draggingFolder.name}</span>
+          </div>
+        )}
+        {draggingDeck && (
+          <div className="drag-pickup flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 shadow-[var(--shadow-card)]">
+            {/* Its first page, as on its row. */}
+            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
+              {draggingDeck.pages[0] && <MediaThumb item={draggingDeck.pages[0]} />}
+            </div>
+            <span className="max-w-[220px] truncate text-[13px] font-medium">{draggingDeck.name}</span>
           </div>
         )}
       </DragOverlay>

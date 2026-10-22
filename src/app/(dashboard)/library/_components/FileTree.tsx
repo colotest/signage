@@ -1065,6 +1065,15 @@ function FolderRow({
   const { setNodeRef } = useDroppable({ id: `folder-${folder.id}` });
   // Held here so the "⋯" menu can open the rename too (see FileRow).
   const [renaming, setRenaming] = useState(false);
+  // Dragged onto another folder, or among its files, to move it there (see
+  // LibraryView). Not while picking for a playlist, nor while its name is
+  // being edited — a drag across the field selects text instead.
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: `move-folder-${folder.id}`, disabled: selectionMode || renaming });
   const rowRef = useRef<HTMLDivElement | null>(null);
   const uploadLinks = useContext(UploadLinksContext);
   const creator = useCreatorLabel(folder);
@@ -1130,12 +1139,16 @@ function FolderRow({
     <div
       ref={(node) => {
         setNodeRef(node);
+        setDragRef(node);
         rowRef.current = node;
       }}
+      {...attributes}
+      {...listeners}
       onClick={onRowClick}
       data-flip-key={`folder-${folder.id}`}
       className={cn(
         "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
+        isDragging && "opacity-40",
         isHighlighted ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
       )}
     >
@@ -1261,9 +1274,11 @@ function FileRow({
   const [renaming, setRenaming] = useState(false);
   // Disabled during selection mode so picking files for a playlist and
   // reorganizing folders never compete for the same click-and-drag gesture.
+  // Nor while its name is being edited: a drag across the field selects
+  // text instead.
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: item.id,
-    disabled: selectionMode,
+    disabled: selectionMode || renaming,
   });
   // A file row is also a valid drop target, resolving to whichever folder
   // (including root) the file itself lives in — otherwise dropping a
@@ -1568,6 +1583,18 @@ function DeckRow({
   const { editable, flags } = useEditRights(owner);
   const cover = deck.pages[0];
   const fileName = `${deck.name}.pdf`;
+  // Dragged into a folder like any file (see LibraryView) — not while
+  // picking for a playlist, nor while its name is being edited.
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: `move-deck-${deck.id}`, disabled: selectionMode || renaming });
+  // And something can be dropped on it, landing in whichever folder the
+  // PDF itself is in, as with a file row — otherwise a drop that happened
+  // to end on a PDF had nowhere to land, and snapped back.
+  const { setNodeRef: setDropRef } = useDroppable({ id: `deck-${deck.id}` });
 
   function handleDelete() {
     if (
@@ -1591,11 +1618,18 @@ function DeckRow({
 
   return (
     <div
-      ref={rowRef}
+      ref={(node) => {
+        setDragRef(node);
+        setDropRef(node);
+        rowRef.current = node;
+      }}
+      {...attributes}
+      {...listeners}
       onClick={selectionMode ? onToggleSelect : onToggleExpanded}
       data-flip-key={`deck-${deck.id}`}
       className={cn(
         "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
+        isDragging && "opacity-40",
         selectionMode && checkState === "all"
           ? "bg-accent/10 dark:bg-accent/15"
           : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",

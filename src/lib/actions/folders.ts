@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { quote, recordActivity } from "@/lib/activity";
+import { folderName, quote, recordActivity } from "@/lib/activity";
 import { assertCanEdit, requirePage } from "@/lib/auth/session";
 import { requireEditable } from "@/lib/auth/owned";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -34,6 +34,30 @@ export async function renameFolder(id: string, name: string) {
     action: "folder.rename",
     target: `folder:${id}`,
     summary: `Renamed folder ${quote(before?.name)} to ${quote(trimmed)}`,
+  });
+  revalidatePath("/library");
+}
+
+// Into another folder, or to the top level (null). Never into itself or
+// anywhere below it — that would cut the whole branch off from the tree,
+// with nothing left pointing at it from the top.
+export async function moveFolder(id: string, parentId: string | null) {
+  const user = await requireEditable("folder", id);
+  const admin = createAdminClient();
+  if (parentId) {
+    const { data: folders, error: foldersError } = await admin.from("folders").select("id, parent_id");
+    if (foldersError) throw new Error(foldersError.message);
+    const parentOf = new Map((folders ?? []).map((folder) => [folder.id, folder.parent_id]));
+    for (let at: string | null | undefined = parentId; at; at = parentOf.get(at)) {
+      if (at === id) throw new Error("A folder can't be moved into itself");
+    }
+  }
+  const { data: moved, error } = await admin.from("folders").update({ parent_id: parentId }).eq("id", id).select("name");
+  if (error) throw new Error(error.message);
+  recordActivity(user, {
+    action: "folder.move",
+    target: `folder:${id}`,
+    summary: async (admin) => `Moved folder ${quote(moved?.[0]?.name)} to ${await folderName(admin, parentId)}`,
   });
   revalidatePath("/library");
 }
