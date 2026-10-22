@@ -7,6 +7,7 @@ import { EventsList } from "./EventsList";
 import { PageStack, type StackPage } from "./PageStack";
 import { eventTitle } from "./eventFormat";
 import { Checklist } from "./Checklist";
+import { ShareChecklist } from "./ShareChecklist";
 
 type Route = { eventId: string | null; view: EventViewKey | null; archived: boolean };
 
@@ -75,6 +76,7 @@ export function EventsPane({ events, people }: { events: EventSummary[]; people:
             title={view.label}
             backLabel={`Back to ${eventTitle(event)}`}
             onBack={() => setRoute({ eventId: event.id, view: null })}
+            trailing={view.key === "checkliste" ? <ShareChecklist event={event} people={people} /> : undefined}
           >
             {view.key === "checkliste" ? (
               <Checklist />

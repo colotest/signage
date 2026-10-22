@@ -11,7 +11,14 @@ type Admin = ReturnType<typeof createAdminClient>;
 // are made and named by hand on the Users page.
 export const EVENTS_MANAGEMENT_ROLE = "Events Management";
 
-export type EventPerson = { id: string; name: string; roleIds: string[] };
+export type EventPerson = {
+  id: string;
+  name: string;
+  email: string;
+  roleIds: string[];
+  // In the Events Management role (rather than only here as the viewer).
+  management: boolean;
+};
 
 // An event as the Forms page shows it.
 export type EventSummary = {
@@ -63,10 +70,14 @@ export async function fetchLeadCandidates(admin: Admin, viewer: { id: string }):
 
   const managementIds = (roles ?? []).map((r) => r.id);
   const memberIds = new Set<string>([viewer.id]);
+  const management = new Set<string>();
   if (managementIds.length > 0) {
     const { data: members, error } = await admin.from("user_roles").select("user_id").in("role_id", managementIds);
     if (error) throw new Error(error.message);
-    for (const m of members ?? []) memberIds.add(m.user_id);
+    for (const m of members ?? []) {
+      memberIds.add(m.user_id);
+      management.add(m.user_id);
+    }
   }
 
   const { data: users, error } = await admin
@@ -76,7 +87,13 @@ export async function fetchLeadCandidates(admin: Admin, viewer: { id: string }):
   if (error) throw new Error(error.message);
   const roleIds = await fetchRoleIds(admin, (users ?? []).map((u) => u.id));
   return (users ?? [])
-    .map((u) => ({ id: u.id, name: displayNameOf(u), roleIds: roleIds.get(u.id) ?? [] }))
+    .map((u) => ({
+      id: u.id,
+      name: displayNameOf(u),
+      email: u.email,
+      roleIds: roleIds.get(u.id) ?? [],
+      management: management.has(u.id),
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

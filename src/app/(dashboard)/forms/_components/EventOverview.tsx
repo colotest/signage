@@ -1,5 +1,6 @@
 "use client";
 
+import { EdgeBand } from "@/components/EdgeBand";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type ReactNode } from "react";
 import { ChevronLeftIcon } from "@/components/icons/PlaybackIcons";
@@ -44,15 +45,27 @@ export function SubPage({
   children: ReactNode;
 }) {
   return (
-    <div className="px-4 pb-10 pt-5 md:px-5 md:pt-6">
-      <div className="mb-4 flex min-h-[var(--title-action)] items-center gap-3">
-        <button type="button" onClick={onBack} title={backLabel} aria-label={backLabel} className={POPUP_WHITE_BUTTON}>
-          <ChevronLeftIcon className="h-5 w-5" />
-        </button>
-        {titleNode ?? <h1 className="min-w-0 flex-1 truncate text-[28px] font-semibold tracking-tight">{title}</h1>}
-        {trailing}
+    <div className="pb-10">
+      {/* Stays at the top while the page scrolls, so its buttons are always
+          in reach, over the same blurred fade as the Library's titles: from
+          the page's top edge, past the title, as far as theirs reaches past
+          theirs. */}
+      <div className="sticky top-0 z-20 mb-1 px-4 pb-3 pt-5 md:px-5 md:pt-6">
+        <EdgeBand
+          side="top"
+          depth="calc(var(--title-action) + 2rem + var(--edge-title-size) - var(--edge-title-tuck))"
+          hold="var(--edge-title-hold)"
+          blur="var(--edge-title-blur)"
+        />
+        <div className="relative z-10 flex min-h-[var(--title-action)] items-center gap-3">
+          <button type="button" onClick={onBack} title={backLabel} aria-label={backLabel} className={POPUP_WHITE_BUTTON}>
+            <ChevronLeftIcon className="h-5 w-5" />
+          </button>
+          {titleNode ?? <h1 className="min-w-0 flex-1 truncate text-[28px] font-semibold tracking-tight">{title}</h1>}
+          {trailing}
+        </div>
       </div>
-      {children}
+      <div className="px-4 md:px-5">{children}</div>
     </div>
   );
 }

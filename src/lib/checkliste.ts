@@ -290,6 +290,30 @@ export function cleanAnswer(key: string, value: unknown): true | string | null {
   return text.trim() ? text : null;
 }
 
+// The Checkliste as filled in, as plain text (an email's body): each
+// category with what's been ticked or written under its sections, leaving
+// out whatever's still blank.
+export function checklistText(answer: (key: string) => true | string | null): string {
+  const blocks: string[] = [];
+  for (const category of CHECKLISTE) {
+    const sections: string[] = [];
+    for (const section of category.sections) {
+      const lines: string[] = [];
+      for (const field of section.fields) {
+        const value = answer(field.key);
+        if (value === null || value === "") continue;
+        if (field.kind === "check") lines.push(`  • ${field.label}`);
+        else if (field.kind === "date") lines.push(`  ${new Date(`${value}T00:00:00`).toLocaleDateString("de-DE")}`);
+        else if (field.kind === "textarea") lines.push(...String(value).split("\n").map((l) => `  ${l}`));
+        else lines.push(`  ${field.label}: ${value}`);
+      }
+      if (lines.length) sections.push(`${section.title}\n${lines.join("\n")}`);
+    }
+    if (sections.length) blocks.push(`${category.title.toUpperCase()}\n\n${sections.join("\n\n")}`);
+  }
+  return blocks.length ? blocks.join("\n\n\n") : "Noch nichts ausgefüllt.";
+}
+
 // Whatever's stored, as answers: unknown keys and malformed values dropped.
 export function parseChecklist(value: unknown): ChecklistAnswers {
   const answers: ChecklistAnswers = {};
