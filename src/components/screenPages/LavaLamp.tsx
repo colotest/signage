@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 // A lava lamp the size of the screen: warm blobs rising and falling through
 // a dark ground, in the same burgundy-to-amber the clock's second hand
@@ -47,14 +47,35 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 // the edges look: nearly all of that was the alpha cut spreading an edge
 // over several of this layer's own pixels, which ALPHA_GAIN now fixes at
 // about one. What the upscale adds on top is a pixel or two.
-const STAGE = 1 / 10;
 // How far apart two blobs still reach for each other, as a fraction of the
-// filtered layer's short side — a fixed pixel blur would swallow the whole
-// lamp whole at library-thumbnail size and barely show on a 4K screen.
-// ALPHA_GAIN is how hard the pooled alpha is pushed back to solid, and
-// ALPHA_BIAS where the cut falls: together they decide whether a meeting
-// reads as a neck of wax or as two blobs merely touching.
-const BLUR_RATIO = 0.062;
+// filtered layer's short side — a fixed one would swallow the lamp whole at
+// library-thumbnail size and barely show on a 4K screen.
+//
+// This is how far a blob's own falloff reaches past its body: the soft
+// collar that pools with its neighbours' and decides whether a meeting
+// reads as a neck of wax or as two blobs merely touching. It is exactly
+// what the blur's radius used to be, drawn rather than computed.
+const REACH_RATIO = 0.062;
+// The field a blob stands up, from its middle to nothing at its edge: a
+// bell, near enough, in stops a gradient can interpolate between.
+//
+// It runs the whole way out rather than holding flat across a body and
+// falling only over a collar. A flat middle meets its collar at a corner,
+// and though the field itself only bends there, every pass downstream
+// reads that bend: the density shading and the lit edges drew it as a hard
+// lens inside each blob, and a merged mass came out looking like balls in
+// a bag rather than one body. A blur never had the problem because a blur
+// has no corners anywhere.
+const FIELD: [number, number][] = [
+  [0, 1],
+  [0.2, 0.97],
+  [0.35, 0.9],
+  [0.5, 0.75],
+  [0.65, 0.5],
+  [0.78, 0.28],
+  [0.9, 0.1],
+  [1, 0],
+];
 // Each blob is drawn at BLOB_ALPHA and added to the ones under it rather
 // than covering them, so the pooled field is a sum: one blob stands at
 // BLOB_ALPHA, two on top of each other at twice that. Cutting that sum at
@@ -69,8 +90,8 @@ const BLOB_ALPHA = 0.69;
 // The gain itself only decides how many pixels the edge takes to go from
 // nothing to solid: the higher it is, the harder the edge. Soft edges were
 // reading as fog rather than as wax.
-const ALPHA_GAIN = 60;
-const ALPHA_BIAS = -14.4;
+const ALPHA_GAIN = 40;
+const ALPHA_BIAS = -9.6;
 // All of the shading reads off the pooled field — the blurred sum of the
 // blobs, before it is cut into a silhouette. It already stands high where
 // the wax is thick, passes through the cut at the edge and falls away
@@ -263,45 +284,37 @@ const DRIFTS: Record<Blob["motion"], Pose[]> = {
   ],
 };
 
-const offset = (multiple: number, unit: string) => (multiple === 0 ? "0px" : `calc(var(${unit}) * ${multiple})`);
+// The same drifts as numbers, for the canvas variant: every stop in order,
+// with "0%, 100%" written out at both ends.
+const POSES: Record<Blob["motion"], { at: number; x: number; y: number; sx: number; sy: number }[]> =
+  Object.fromEntries(
+    Object.entries(DRIFTS).map(([motion, poses]) => [
+      motion,
+      poses
+        .flatMap((pose) => pose.at.split(",").map((at) => ({ ...pose, at: parseFloat(at) / 100 })))
+        .sort((a, b) => a.at - b.at),
+    ]),
+  ) as Record<Blob["motion"], { at: number; x: number; y: number; sx: number; sy: number }[]>;
 
-// The compositor's version: the poses as transform keyframes.
-const COMPOSITED_KEYFRAMES = Object.entries(DRIFTS)
-  .map(
-    ([name, poses]) =>
-      `@keyframes colo-lava-${name} {\n${poses
-        .map(
-          (p) =>
-            `  ${p.at} { transform: translate3d(${offset(p.x, "--lava-sway")}, ${offset(p.y, "--lava-travel")}, 0) scale(${p.sx}, ${p.sy}); }`,
-        )
-        .join("\n")}\n}`,
-  )
-  .join("\n");
-
-// The painted version (see the top of this file): the same poses as
-// registered custom properties, which a static transform on each blob reads.
-const PAINTED_KEYFRAMES = [
-  `@property --lava-x { syntax: "<length>"; inherits: false; initial-value: 0px; }`,
-  `@property --lava-y { syntax: "<length>"; inherits: false; initial-value: 0px; }`,
-  `@property --lava-sx { syntax: "<number>"; inherits: false; initial-value: 1; }`,
-  `@property --lava-sy { syntax: "<number>"; inherits: false; initial-value: 1; }`,
-  ...Object.entries(DRIFTS).map(
-    ([name, poses]) =>
-      `@keyframes colo-lava-${name}-painted {\n${poses
-        .map(
-          (p) =>
-            `  ${p.at} { --lava-x: ${offset(p.x, "--lava-sway")}; --lava-y: ${offset(p.y, "--lava-travel")}; --lava-sx: ${p.sx}; --lava-sy: ${p.sy}; }`,
-        )
-        .join("\n")}\n}`,
-  ),
-].join("\n");
-
-// Chromium — the Fire TV sticks' WebView among it — applies an SVG filter
-// to composited children; WebKit doesn't (see the top of this file).
-// Firefox isn't known either way, so it takes the painted path too, which
-// is correct everywhere.
-function compositesFilteredChildren() {
-  return /Chrome\/|Chromium\//.test(navigator.userAgent);
+// Where a drift has got to at this point in its cycle. CSS eases between
+// keyframes rather than running straight at them, so this does too — a
+// cosine, which is near enough ease-in-out that the difference does not
+// show at this speed.
+function poseAt(motion: Blob["motion"], phase: number) {
+  const poses = POSES[motion];
+  const at = ((phase % 1) + 1) % 1;
+  let i = 0;
+  while (i < poses.length - 2 && poses[i + 1].at <= at) i++;
+  const from = poses[i];
+  const to = poses[i + 1];
+  const span = to.at - from.at;
+  const k = span > 0 ? (1 - Math.cos(Math.PI * ((at - from.at) / span))) / 2 : 0;
+  return {
+    x: from.x + (to.x - from.x) * k,
+    y: from.y + (to.y - from.y) * k,
+    sx: from.sx + (to.sx - from.sx) * k,
+    sy: from.sy + (to.sy - from.sy) * k,
+  };
 }
 
 // Everything worth turning a dial on, with the constants above as its
@@ -309,8 +322,10 @@ function compositesFilteredChildren() {
 // page (/screen/lava-tuner, development only) drives these live, so the
 // numbers are found against the real thing rather than a copy of it.
 export const LAVA_TUNING = {
-  stage: STAGE,
-  blur: BLUR_RATIO,
+  reach: REACH_RATIO,
+  // Canvas variant only: how small the field is painted before being
+  // stretched back up.
+  fieldScale: 0.25,
   blobAlpha: BLOB_ALPHA,
   alphaGain: ALPHA_GAIN,
   // Where in the field the edge is cut, as a fraction of the way up it.
@@ -340,16 +355,19 @@ export const LAVA_TUNING = {
 
 export type LavaTuning = typeof LAVA_TUNING;
 
-export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<LavaTuning> } = {}) {
+export function LavaLamp({
+  tuning,
+}: {
+  now?: () => number;
+  tuning?: Partial<LavaTuning>;
+} = {}) {
   const t = { ...LAVA_TUNING, ...tuning };
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   // Scoped to this lamp: a library page draws several at once, and an SVG
   // filter is referenced by id.
   const gooId = `${useId()}-lava-goo`;
   const [size, setSize] = useState({ width: 0, height: 0 });
-  // Decided alongside the first measurement: nothing animates until then,
-  // so the server render (which can't know the browser) never has to match.
-  const [composited, setComposited] = useState(true);
 
   // Measured rather than sized in container query units, for the same
   // reason the clock measures itself: a kiosk browser on a years-old stick
@@ -361,7 +379,6 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
     function measure() {
       if (root) setSize({ width: root.clientWidth, height: root.clientHeight });
     }
-    setComposited(compositesFilteredChildren());
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(root);
@@ -369,21 +386,67 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
   }, []);
 
   // Everything inside the filtered layer is in its own smaller pixels.
-  const stageWidth = size.width * t.stage;
-  const stageHeight = size.height * t.stage;
-  const short = Math.min(stageWidth, stageHeight);
-  const blur = short * t.blur;
+  const short = Math.min(size.width, size.height);
   const lift = short * t.lift;
   // The gain only decides how many pixels the edge takes; the cut decides
   // where it falls. Multiplying them keeps the two independent, so
   // sharpening an edge never moves it.
   const alphaBias = -t.cut * t.alphaGain;
-  const wax = `hsl(${t.waxHue} ${t.waxSaturation}% ${t.waxLightness}%)`;
+  const wax = hslToRgb(t.waxHue, t.waxSaturation / 100, t.waxLightness / 100);
+
+  // The canvas variant's painter: one bitmap, a quarter of the box on each
+  // side, redrawn every frame and stretched up by the browser. Building the
+  // field small and letting bilinear filtering carry it back up is what
+  // keeps the cut off a staircase — the steps get interpolated across
+  // instead of amplified — and the gradients have no corners to crease.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || size.width === 0) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    const scale = t.fieldScale;
+    canvas.width = Math.max(Math.round(size.width * scale), 1);
+    canvas.height = Math.max(Math.round(size.height * scale), 1);
+    const shortSide = Math.min(canvas.width, canvas.height);
+    const started = performance.now();
+
+    let frame = 0;
+    function paint(now: number) {
+      const ctx = context!;
+      const seconds = (now - started) / 1000;
+      ctx.clearRect(0, 0, canvas!.width, canvas!.height);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = t.blobAlpha;
+
+      for (const blob of BLOBS) {
+        const pose = poseAt(blob.motion, (seconds + blob.delay) / (blob.duration * t.speed));
+        const radius = (shortSide * (blob.size + 2 * t.reach)) / 2;
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+        for (const [at, alpha] of FIELD) gradient.addColorStop(at, `rgba(${wax}, ${alpha})`);
+
+        ctx.save();
+        ctx.translate(
+          canvas!.width * blob.x + pose.x * canvas!.width * blob.sway,
+          canvas!.height * blob.y + pose.y * canvas!.height * blob.travel * 0.5,
+        );
+        ctx.scale(pose.sx, pose.sy);
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      frame = requestAnimationFrame(paint);
+    }
+
+    frame = requestAnimationFrame(paint);
+    return () => cancelAnimationFrame(frame);
+  }, [size.width, size.height, t.fieldScale, t.blobAlpha, t.reach, t.speed, wax]);
+
 
   return (
     <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
-      <style>{composited ? COMPOSITED_KEYFRAMES : PAINTED_KEYFRAMES}</style>
-
       {/* The filter itself draws nothing; it only lends its id to the layer
           below. One blur gives the pooled field; a matrix that leaves R, G
           and B untouched and multiplies alpha cuts it into the wax. Every
@@ -396,9 +459,8 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
               region is filtered in full, so every percent of it is work on
               every frame. */}
           <filter id={gooId} x="-9%" y="-9%" width="118%" height="118%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="pooled" />
             <feColorMatrix
-              in="pooled"
+              in="SourceGraphic"
               type="matrix"
               values={`1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${t.alphaGain} ${alphaBias}`}
               result="wax"
@@ -408,7 +470,7 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
                 where it stands highest — and multiplying it into the wax in
                 premultiplied space shades and clips in the one step. */}
             <feColorMatrix
-              in="pooled"
+              in="SourceGraphic"
               type="matrix"
               values={DENSITY.map((d) => `0 0 0 ${-Math.min(d * t.density, 1)} 1`).join("  ") + "  0 0 0 0 1"}
               result="density"
@@ -425,12 +487,12 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
             {/* Shifted down, so what was interior now sits over the lower
                 edge: the difference comes out positive along the bottom of
                 the wax and negative along the top, where it clamps away. */}
-            <feOffset in="pooled" dx="0" dy={lift} result="lowered" />
-            <feComposite in="lowered" in2="pooled" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0" result="underside" />
+            <feOffset in="SourceGraphic" dx="0" dy={lift} result="lowered" />
+            <feComposite in="lowered" in2="SourceGraphic" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0" result="underside" />
             {/* The same difference the other way about is positive along
                 the top of the wax, where the other one clamped away: the
                 light above, carried at TOP_LIGHT of the one below. */}
-            <feComposite in="pooled" in2="lowered" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0" result="topside" />
+            <feComposite in="SourceGraphic" in2="lowered" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0" result="topside" />
             <feComposite
               in="underside"
               in2="topside"
@@ -461,7 +523,7 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
                 band, screened over the lot: where there is no wax under it
                 the screen leaves it as it is, so the same pass that lights
                 the inside of an edge throws the halo outside it. */}
-            <feComponentTransfer in="pooled" result="translucence">
+            <feComponentTransfer in="SourceGraphic" result="translucence">
               <feFuncR type="linear" slope="0" intercept={HALO_COLOUR[0]} />
               <feFuncG type="linear" slope="0" intercept={HALO_COLOUR[1]} />
               <feFuncB type="linear" slope="0" intercept={HALO_COLOUR[2]} />
@@ -480,51 +542,18 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
             position: "absolute",
             top: 0,
             left: 0,
-            width: stageWidth,
-            height: stageHeight,
+            width: size.width,
+            height: size.height,
             filter: `url(#${gooId})`,
-            transform: `scale(${1 / t.stage})`,
-            transformOrigin: "0 0",
-            // Keeps the scaled-up result a compositor job rather than a
-            // re-render of the filter at full size — where the browser can
-            // still filter what's inside it (see the top of this file).
-            willChange: composited ? "transform" : undefined,
           }}
         >
-          {BLOBS.map((blob, i) => {
-            const diameter = short * blob.size;
-            return (
-              <div
-                key={i}
-                style={{
-                  position: "absolute",
-                  left: stageWidth * blob.x - diameter / 2,
-                  top: stageHeight * blob.y - diameter / 2,
-                  width: diameter,
-                  height: diameter,
-                  borderRadius: "50%",
-                  // Flat, and added to whatever is under it rather than
-                  // covering it (see BLOB_ALPHA): two blobs crossing make a
-                  // field twice as high, which is what lets the merged mass
-                  // come out bigger than the union of the two.
-                  background: wax,
-                  opacity: t.blobAlpha,
-                  mixBlendMode: "plus-lighter",
-                  ...(composited
-                    ? {
-                        animation: `colo-lava-${blob.motion} ${blob.duration * t.speed}s ease-in-out ${blob.delay}s infinite`,
-                        willChange: "transform",
-                      }
-                    : {
-                        animation: `colo-lava-${blob.motion}-painted ${blob.duration * t.speed}s ease-in-out ${blob.delay}s infinite`,
-                        transform: "translate(var(--lava-x), var(--lava-y)) scale(var(--lava-sx), var(--lava-sy))",
-                      }),
-                  ["--lava-travel" as string]: `${stageHeight * blob.travel * 0.5}px`,
-                  ["--lava-sway" as string]: `${stageWidth * blob.sway}px`,
-                }}
-              />
-            );
-          })}
+          <canvas
+            ref={canvasRef}
+            className="h-full w-full"
+            // The bitmap is a quarter of this box on each side; the browser
+            // stretches it, smoothing as it goes, which is the whole point.
+            style={{ display: "block" }}
+          />
         </div>
       )}
 
@@ -546,4 +575,28 @@ export function LavaLamp({ tuning }: { now?: () => number; tuning?: Partial<Lava
       <div className="pointer-events-none absolute inset-0" style={{ background: VIGNETTE }} />
     </div>
   );
+}
+
+// "r, g, b", ready to drop into rgb() or rgba(). The wax is held as hue,
+// saturation and lightness so the tuner can move them, but a blob's falloff
+// needs that colour at several alphas — and hsl() with a slash alpha is
+// newer than some of the kiosk browsers this has to run on.
+function hslToRgb(hue: number, saturation: number, lightness: number) {
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const sector = ((((hue % 360) + 360) % 360) / 60);
+  const second = chroma * (1 - Math.abs((sector % 2) - 1));
+  const [r, g, b] =
+    sector < 1
+      ? [chroma, second, 0]
+      : sector < 2
+        ? [second, chroma, 0]
+        : sector < 3
+          ? [0, chroma, second]
+          : sector < 4
+            ? [0, second, chroma]
+            : sector < 5
+              ? [second, 0, chroma]
+              : [chroma, 0, second];
+  const base = lightness - chroma / 2;
+  return [r, g, b].map((channel) => Math.round((channel + base) * 255)).join(", ");
 }
