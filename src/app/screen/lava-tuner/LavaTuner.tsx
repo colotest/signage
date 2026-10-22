@@ -7,7 +7,7 @@ import { LAVA_TUNING, LavaLamp, type LavaTuning } from "@/components/screenPages
 // `note` is what the number does, so the panel explains itself a month from
 // now when none of this is fresh any more.
 const DIALS: { key: keyof LavaTuning; label: string; min: number; max: number; step: number; note: string }[] = [
-  { key: "reach", label: "Merge reach", min: 0.01, max: 0.16, step: 0.002, note: "How far a blob's falloff reaches past its body, as a fraction of the screen. The soft collar that pools with its neighbours' — and the one setting that still costs real time." },
+  { key: "reach", label: "Merge reach", min: 0.01, max: 0.16, step: 0.002, note: "How far a blob's falloff reaches past its body, as a fraction of the screen. The soft collar that pools with its neighbours', and so how readily two of them run together." },
   { key: "blobAlpha", label: "Blob height", min: 0.25, max: 1, step: 0.01, note: "How high one blob stands in the field. Only the headroom under 1 can be added to, so this is how far a merge can swell: at 1 none, at 0.5 two blobs can sum, at 0.33 three. Lower it and blobs shrink too, unless you take Edge level down with it." },
   { key: "cut", label: "Edge level", min: 0.08, max: 0.6, step: 0.01, note: "Where the edge is cut, up the field. Half of Blob height puts it exactly where blobs are drawn; lower leaves them larger than drawn and reaching further for each other." },
   { key: "alphaGain", label: "Edge hardness", min: 4, max: 60, step: 1, note: "How few pixels an edge takes to go from nothing to solid." },

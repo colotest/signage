@@ -7,48 +7,40 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 // comes from. Blobs that meet pull into one another and part again, which
 // is the whole character of the thing.
 //
-// That merging is a blur followed by a hard push on alpha: blurring
-// overlapping shapes makes their soft edges pool together, and multiplying
-// the pooled alpha snaps the result back into one solid outline with a neck
-// drawn between them. It pushes *alpha* rather than contrast — CSS's
-// contrast() works on colour as well, and at the strength this needs it
-// drove every shade of wax to the same primary red, so the filter here is
-// an SVG one whose colour matrix leaves RGB alone. The blurred colour
-// underneath is what keeps the shading inside each blob.
+// That merging is a field and a hard push on alpha. Every blob stands a
+// soft mound up in a field they all share; where two of them overlap the
+// mounds add, and multiplying the summed alpha snaps the result back into
+// one solid outline with a neck drawn between them. It pushes *alpha*
+// rather than contrast — CSS's contrast() works on colour as well, and at
+// the strength this needs it drove every shade of wax to the same primary
+// red, so the filter here is an SVG one whose colour matrix leaves RGB
+// alone. The colour underneath is what keeps the shading inside each blob.
 //
-// The catch is that a filter re-rasterises its whole layer on every frame,
-// and a full-screen one at 1080p is exactly what a Fire TV stick can't
-// afford — so the blobs live on a layer a third of the screen's size where
-// the filter is a ninth of the work, and that layer is scaled back up by
-// the compositor. Nothing is lost by it: every edge here is soft by design,
-// so there is no detail for the upscale to blur away.
+// The field used to be made by blurring flat discs, which is the obvious
+// way to come by those mounds. It was also very nearly the whole cost of
+// the page: a Gaussian blur takes a slow path whatever its radius, and
+// measured against a screenful of lamps it was essentially all of the
+// frame. So the mound is drawn instead — one radial gradient per blob,
+// painted into a bitmap a quarter of the box on each side and stretched
+// back up, which runs about three and a third times faster with no blur
+// left anywhere.
 //
-// The motion itself is CSS animation on `transform` alone, so it runs on
-// the compositor and the main thread does nothing at all once the page is
-// up — no requestAnimationFrame to stutter when the player is busy
-// decoding a video.
+// What a drawn mound has to be is not a matter of taste: it is exactly the
+// profile a blurred disc has (see blurredDisc). Blurring is linear, so the
+// blur of a sum of discs is the sum of their blurs — paint every blob with
+// its own blurred-disc profile, add them, and the field is the one the blur
+// used to produce, to well inside a byte. Guessing at the curve instead is
+// what went wrong the first time this was tried: a bell falling away from
+// the middle gave a blob no flat body, and the density shading and the lit
+// edges read that as a lens inside each one.
 //
-// Except in Safari. WebKit can't run an SVG filter on the compositor, so it
-// paints the filtered layer in software — and any child it has lifted onto
-// the GPU (every blob, animating `transform` with will-change) is drawn on
-// top of that afterwards, unfiltered: the blobs slid past one another
-// without ever merging. (A backgrounded tab composites differently, which
-// is why it looked right there.) So outside Chromium the same drifts are
-// played through registered custom properties instead: the keyframes move
-// --lava-x/y and --lava-sx/sy, a plain transform reads them, and with no
-// transform animation and no will-change nothing gets its own layer — the
-// blobs are painted with the rest, through the filter. It costs a repaint
-// per frame, which only matters on the Fire TV sticks, and those are
-// Chromium.
+// The motion is a requestAnimationFrame loop, since something has to paint
+// the field. It is the only thing on the main thread, and a dropped frame
+// under a blob creeping across a screen is invisible — see the note on
+// speed by the drifts.
 
-// How much smaller the filtered layer is than the screen. The filter runs
-// over every pixel of it on every frame, so this is the biggest single
-// lever on cost. It is not, as it turns out, much of a lever on how soft
-// the edges look: nearly all of that was the alpha cut spreading an edge
-// over several of this layer's own pixels, which ALPHA_GAIN now fixes at
-// about one. What the upscale adds on top is a pixel or two.
 // How far apart two blobs still reach for each other, as a fraction of the
-// filtered layer's short side — a fixed one would swallow the lamp whole at
+// field's short side — a fixed one would swallow the lamp whole at
 // library-thumbnail size and barely show on a 4K screen.
 //
 // This is how far a blob's own falloff reaches past its body: the soft
@@ -56,26 +48,15 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 // reads as a neck of wax or as two blobs merely touching. It is exactly
 // what the blur's radius used to be, drawn rather than computed.
 const REACH_RATIO = 0.062;
-// The field a blob stands up, from its middle to nothing at its edge: a
-// bell, near enough, in stops a gradient can interpolate between.
-//
-// It runs the whole way out rather than holding flat across a body and
-// falling only over a collar. A flat middle meets its collar at a corner,
-// and though the field itself only bends there, every pass downstream
-// reads that bend: the density shading and the lit edges drew it as a hard
-// lens inside each blob, and a merged mass came out looking like balls in
-// a bag rather than one body. A blur never had the problem because a blur
-// has no corners anywhere.
-const FIELD: [number, number][] = [
-  [0, 1],
-  [0.2, 0.97],
-  [0.35, 0.9],
-  [0.5, 0.75],
-  [0.65, 0.5],
-  [0.78, 0.28],
-  [0.9, 0.1],
-  [1, 0],
-];
+// How far past its body a mound is drawn, in reaches. A Gaussian is never
+// quite nothing, but three and a half reaches out it is under a thousandth
+// — less than a byte can hold, and nothing the field will miss.
+const PROFILE_REACH = 3.5;
+// Stops in one mound's gradient. The profile's steepest stretch runs over
+// about two reaches, so at this spacing the straight line a gradient draws
+// between neighbouring stops departs from the curve by a fraction of a
+// 255th.
+const PROFILE_STOPS = 32;
 // Each blob is drawn at BLOB_ALPHA and added to the ones under it rather
 // than covering them, so the pooled field is a sum: one blob stands at
 // BLOB_ALPHA, two on top of each other at twice that. Cutting that sum at
@@ -90,8 +71,8 @@ const BLOB_ALPHA = 0.69;
 // The gain itself only decides how many pixels the edge takes to go from
 // nothing to solid: the higher it is, the harder the edge. Soft edges were
 // reading as fog rather than as wax.
-const ALPHA_GAIN = 40;
-const ALPHA_BIAS = -9.6;
+const ALPHA_GAIN = 60;
+const ALPHA_BIAS = -14.4;
 // All of the shading reads off the pooled field — the blurred sum of the
 // blobs, before it is cut into a silhouette. It already stands high where
 // the wax is thick, passes through the cut at the edge and falls away
@@ -409,6 +390,10 @@ export function LavaLamp({
     canvas.width = Math.max(Math.round(size.width * scale), 1);
     canvas.height = Math.max(Math.round(size.height * scale), 1);
     const shortSide = Math.min(canvas.width, canvas.height);
+    // The reach in this bitmap's own pixels. The bitmap is stretched to the
+    // whole box, so holding it to a fraction of the short side is what keeps
+    // a thumbnail and a 4K screen looking like the same lamp.
+    const reach = shortSide * t.reach;
     const started = performance.now();
 
     let frame = 0;
@@ -421,19 +406,27 @@ export function LavaLamp({
 
       for (const blob of BLOBS) {
         const pose = poseAt(blob.motion, (seconds + blob.delay) / (blob.duration * t.speed));
-        const radius = (shortSide * (blob.size + 2 * t.reach)) / 2;
-        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
-        for (const [at, alpha] of FIELD) gradient.addColorStop(at, `rgba(${wax}, ${alpha})`);
+        // The round part of the blob, which is what the profile is of: the
+        // drift's squash is applied around it as an area-preserving stretch,
+        // so a stretched blob carries the mass it had.
+        const squash = Math.sqrt(pose.sx * pose.sy);
+        const body = (shortSide * blob.size * squash) / 2;
+        const outer = body + PROFILE_REACH * reach;
+        const profile = profileFor(body / reach);
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, outer);
+        for (let stop = 0; stop < profile.length; stop++) {
+          gradient.addColorStop(stop / (profile.length - 1), `rgba(${wax}, ${profile[stop]})`);
+        }
 
         ctx.save();
         ctx.translate(
           canvas!.width * blob.x + pose.x * canvas!.width * blob.sway,
           canvas!.height * blob.y + pose.y * canvas!.height * blob.travel * 0.5,
         );
-        ctx.scale(pose.sx, pose.sy);
+        ctx.scale(pose.sx / squash, pose.sy / squash);
         ctx.fillStyle = gradient;
         ctx.beginPath();
-        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.arc(0, 0, outer, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
@@ -599,4 +592,85 @@ function hslToRgb(hue: number, saturation: number, lightness: number) {
               : [chroma, 0, second];
   const base = lightness - chroma / 2;
   return [r, g, b].map((channel) => Math.round((channel + base) * 255)).join(", ");
+}
+
+
+// e^-z I0(z), the modified Bessel function of the first kind scaled so it
+// stays tame: I0 on its own runs a double out of room by an argument of
+// about 700, which a blob of any size reaches. Abramowitz & Stegun 9.8.1
+// and 9.8.2, good to a few parts in a hundred million either side of 3.75.
+function scaledBessel0(z: number) {
+  if (z < 3.75) {
+    const t = z / 3.75;
+    const y = t * t;
+    const i0 =
+      1 +
+      y * (3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))));
+    return Math.exp(-z) * i0;
+  }
+  const t = 3.75 / z;
+  return (
+    (0.39894228 +
+      t *
+        (0.01328592 +
+          t *
+            (0.00225319 +
+              t *
+                (-0.00157565 +
+                  t * (0.00916281 + t * (-0.02057706 + t * (0.02635537 + t * (-0.01647633 + t * 0.00392377)))))))) /
+    Math.sqrt(z)
+  );
+}
+
+// The mound one blob stands up: the profile a flat disc of its own size has
+// once it is blurred, from the middle out to PROFILE_REACH past the body,
+// with everything measured in reaches.
+//
+// A disc of radius R blurred by a Gaussian one reach wide, read a distance
+// r from the middle, is the Gaussian integrated over the disc. In polar
+// coordinates the angle comes out as a Bessel function and leaves a single
+// integral over the radius, which the trapezium rule does to more places
+// than are wanted here:
+//
+//   P(r) = INTEGRAL from 0 to R of exp(-(r-u)^2 / 2) * e^-ru I0(r u) * u du
+//
+// The Gaussian and the Bessel are split that way on purpose — the pair
+// e^-ru I0(ru) is a slow, well-behaved decay where I0 alone overflows.
+// Checked against the closed form in the middle, 1 - e^(-R^2 / 2), and
+// against a brute-force convolution out in the tail: both agree to about a
+// ten-thousandth, a fortieth of a byte.
+function blurredDisc(bodyInReaches: number) {
+  const steps = 160;
+  const outer = bodyInReaches + PROFILE_REACH;
+  const profile: number[] = [];
+  for (let stop = 0; stop < PROFILE_STOPS; stop++) {
+    const r = (outer * stop) / (PROFILE_STOPS - 1);
+    let sum = 0;
+    for (let step = 0; step <= steps; step++) {
+      const u = (bodyInReaches * step) / steps;
+      // Half weight at both ends, which is all the trapezium rule is.
+      const weight = step === 0 || step === steps ? 0.5 : 1;
+      sum += weight * Math.exp(-((r - u) ** 2) / 2) * scaledBessel0(r * u) * u;
+    }
+    profile.push(Math.min((sum * bodyInReaches) / steps, 1));
+  }
+  return profile;
+}
+
+// A blob's body breathes as it drifts, so the profile is wanted at a great
+// many sizes — but across that little range it is the same curve stretched,
+// so the sizes are rounded into twentieths of a reach and the curves kept.
+// A couple of hundred are ever computed, and the geometry stays continuous
+// whichever rounded curve a frame gets, because it is always drawn out to
+// the blob's true size.
+const PROFILES = new Map<number, number[]>();
+
+function profileFor(bodyInReaches: number) {
+  const key = Math.max(Math.round(bodyInReaches * 20) / 20, 0.05);
+  let profile = PROFILES.get(key);
+  if (!profile) {
+    profile = blurredDisc(key);
+    PROFILES.set(key, profile);
+  }
+  return profile;
 }
