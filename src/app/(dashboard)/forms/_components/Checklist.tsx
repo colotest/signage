@@ -1,19 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { updateChecklist } from "@/lib/actions/events";
 import {
   CHECKLISTE,
-  exclusiveWith,
   MAX_CHECKLIST_TEXT,
   type ChecklistField,
   type ChecklistSection,
 } from "@/lib/checkliste";
-import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
-
-type Answer = true | string | null;
+import { useChecklist, type Answer } from "./checklistState";
 
 // How long typing in a text field rests before it's saved (leaving the
 // field saves at once).
@@ -21,27 +17,12 @@ const TEXT_SAVE_MS = 800;
 
 // An event's Checkliste (src/lib/checkliste.ts): every category in one long
 // list, each of its sections a card of options. A box is saved the moment
-// it's ticked; text as it's typed.
-export function Checklist({ event }: { event: EventSummary }) {
-  // Changes made here, ahead of the server (which catches up on the next
-  // render of the page).
-  const [edits, setEdits] = useState<Record<string, Answer>>({});
-  const [error, setError] = useState<string | null>(null);
-  // Saves go one after another, so an older answer can't land after a newer.
-  const saveChain = useRef(Promise.resolve());
-
-  const answer = (key: string): Answer => (key in edits ? edits[key] : (event.checklist[key] ?? null));
-
-  function save(key: string, value: Answer) {
-    // In a Ja / Nein section a tick takes the others' away (the server does
-    // the same; this shows it at once).
-    const patch: Record<string, Answer> = { [key]: value };
-    if (value === true) for (const other of exclusiveWith(key)) patch[other] = null;
-    setEdits((all) => ({ ...all, ...patch }));
-    saveChain.current = saveChain.current
-      .then(async () => setError(await updateChecklist(event.id, { [key]: value })))
-      .catch(() => setError("Konnte nicht gespeichert werden"));
-  }
+// it's ticked; text as it's typed. Its answers are the page's (see
+// checklistState), shared with the map's pins. Each category can be
+// scrolled to by its id, checkliste-<key> (the Gastro pin does).
+export function Checklist() {
+  const { answer, save: saveAll, error } = useChecklist();
+  const save = (key: string, value: Answer) => saveAll({ [key]: value });
 
   return (
     <div className="flex flex-col gap-9">
@@ -51,7 +32,7 @@ export function Checklist({ event }: { event: EventSummary }) {
         </p>
       )}
       {CHECKLISTE.map((category) => (
-        <section key={category.key} className="flex flex-col gap-5">
+        <section key={category.key} id={`checkliste-${category.key}`} className="flex scroll-mt-4 flex-col gap-5">
           <h2 className="text-[22px] font-semibold tracking-tight">{category.title}</h2>
           {category.sections.map((section) => (
             <Section key={section.key} section={section} answer={answer} onSave={save} />

@@ -77,7 +77,7 @@ export function EventsPane({ events, people }: { events: EventSummary[]; people:
             onBack={() => setRoute({ eventId: event.id, view: null })}
           >
             {view.key === "checkliste" ? (
-              <Checklist event={event} />
+              <Checklist />
             ) : (
               <div className="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-border px-6 py-16 text-center">
                 <p className="text-[17px] font-medium">Nothing here yet</p>

@@ -241,7 +241,13 @@ function parse(source: string): ChecklistCategory[] {
 
 export const CHECKLISTE = parse(SOURCE);
 
+const FIELDS = new Map(CHECKLISTE.flatMap((c) => c.sections.flatMap((s) => s.fields)).map((f) => [f.key, f]));
 const SECTION_OF = new Map(CHECKLISTE.flatMap((c) => c.sections.flatMap((s) => s.fields.map((f) => [f.key, s] as const))));
+const SECTIONS = new Map(CHECKLISTE.flatMap((c) => c.sections).map((s) => [s.key, s]));
+
+export function sectionByKey(key: string): ChecklistSection | undefined {
+  return SECTIONS.get(key);
+}
 
 // The options a tick on this one unticks: the rest of its section, if it's
 // a one-answer section.
@@ -251,11 +257,30 @@ export function exclusiveWith(key: string): string[] {
   return section.fields.filter((f) => f.key !== key && f.kind === "check").map((f) => f.key);
 }
 
-const FIELDS = new Map(CHECKLISTE.flatMap((c) => c.sections.flatMap((s) => s.fields)).map((f) => [f.key, f]));
+// The venue map's room pins (see PinMenus) keep a pick of their own of the
+// room requirements, stored alongside the list's answers as
+// "pin:<pin>:<field>"; the list's own option is ticked while any room has
+// it. The two Wagenhalle halls also keep their own tick ("pin:<pin>:selected"),
+// which together decide between the list's exklusiv and nicht exklusiv.
+export const ROOM_REQUIREMENTS = "besondere-anforderungen-an-raeume";
+export const WAGENHALLE_PINS = ["wagenhalle-kino", "wagenhalle-event"];
+export const ROOM_PINS = ["kino-2", "kino-3", "kino-4", "kino-5", ...WAGENHALLE_PINS];
+
+export function pinKey(pinId: string, part: string) {
+  return `pin:${pinId}:${part}`;
+}
+
+function isPinKey(key: string) {
+  const [prefix, pinId, part, ...rest] = key.split(":");
+  if (prefix !== "pin" || rest.length > 0 || !ROOM_PINS.includes(pinId)) return false;
+  if (part === "selected") return WAGENHALLE_PINS.includes(pinId);
+  return FIELDS.get(part) !== undefined && SECTION_OF.get(part)?.key === ROOM_REQUIREMENTS;
+}
 
 // One answer as it may be stored: null when it's blank (or isn't valid for
 // that field), so it's left out.
 export function cleanAnswer(key: string, value: unknown): true | string | null {
+  if (key.startsWith("pin:")) return isPinKey(key) && value === true ? true : null;
   const field = FIELDS.get(key);
   if (!field) return null;
   if (field.kind === "check") return value === true ? true : null;

@@ -3,9 +3,12 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { setEventPins } from "@/lib/actions/events";
+import { cn } from "@/lib/utils/cn";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
 import type { EventPerson, EventSummary } from "@/lib/events";
+import { ChecklistStateContext, useChecklistState } from "./checklistState";
 import { EventsPane } from "./EventsPane";
+import { LinkedPinCard } from "./PinMenus";
 import { MapCard, VenueMap, type FloorPlan, type MapSpot } from "./VenueMap";
 
 // Colosseum Berlin, ground floor. Slimmed down from the architects' 15 MB
@@ -43,7 +46,9 @@ type Placing = { kind: "new" } | { kind: "move"; id: string };
 
 // The Forms page: the events on one side (top on a phone, left on an iPad
 // or desktop), each opening into its own setup pages, and the venue map on
-// the other — with the open event's own pins on it.
+// the other — with the open event's own pins on it. The standing pins work
+// the open event's Checkliste (see PinMenus); its own pins are named,
+// moved and placed in edit mode ("Bearbeiten").
 export function FormsView({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
   const [openSpot, setOpenSpot] = useState<string | null>(null);
   // The open event, from the URL (where EventsPane keeps it).
@@ -55,6 +60,9 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   const [pinEdits, setPinEdits] = useState<Record<string, MapPin[]>>({});
   const pins = event ? (pinEdits[event.id] ?? event.mapPins) : [];
   const [placing, setPlacing] = useState<Placing | null>(null);
+  const [editing, setEditing] = useState(false);
+  // The open event's Checkliste, shared by its setup page and the pins.
+  const checklist = useChecklistState(event);
   const [message, setMessage] = useState<string | null>(null);
   // Saves go one after another, so an older list can't land after a newer.
   const saveChain = useRef(Promise.resolve());
@@ -74,6 +82,25 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
     setShownEventId(eventId);
     setPlacing(null);
     setOpenSpot(null);
+    setEditing(false);
+  }
+
+  // Opens the event's Checkliste (if it isn't already) at this category.
+  // The page slides in first, so the heading is looked for over the next
+  // second or so until it's there.
+  function showChecklistCategory(categoryKey: string) {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("view") !== "checkliste") {
+      url.searchParams.set("view", "checkliste");
+      window.history.pushState(null, "", url);
+    }
+    const started = performance.now();
+    const find = () => {
+      const heading = document.getElementById(`checkliste-${categoryKey}`);
+      if (heading) heading.scrollIntoView({ behavior: "smooth", block: "start" });
+      else if (performance.now() - started < 1500) requestAnimationFrame(find);
+    };
+    requestAnimationFrame(find);
   }
 
   function savePins(next: MapPin[]) {
@@ -129,13 +156,14 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
       u: pin.u,
       v: pin.v,
       node: (
-        <MapCard
-          title={pin.title}
+        <LinkedPinCard
+          pin={pin}
+          // While editing, the standing pins are only names.
+          state={event && !editing ? checklist : null}
           open={openSpot === pin.id}
           onToggle={() => setOpenSpot((s) => (s === pin.id ? null : pin.id))}
-        >
-          <p className="text-[13px] text-muted">Standard-Pin, für jedes Event</p>
-        </MapCard>
+          onShowCategory={showChecklistCategory}
+        />
       ),
     })),
     ...pins.map((pin) => {
@@ -147,22 +175,24 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
         node: (
           <MapCard
             title={pin.title || "Pin"}
-            open={openSpot === spotId}
+            open={editing && openSpot === spotId}
             onToggle={() => setOpenSpot((s) => (s === spotId ? null : spotId))}
           >
-            <PinEditor
-              key={pin.id}
-              pin={pin}
-              onRename={(title) => savePins(pins.map((p) => (p.id === pin.id ? { ...p, title } : p)))}
-              onMove={() => {
-                setOpenSpot(null);
-                setPlacing({ kind: "move", id: pin.id });
-              }}
-              onDelete={() => {
-                setOpenSpot(null);
-                savePins(pins.filter((p) => p.id !== pin.id));
-              }}
-            />
+            {editing && (
+              <PinEditor
+                key={pin.id}
+                pin={pin}
+                onRename={(title) => savePins(pins.map((p) => (p.id === pin.id ? { ...p, title } : p)))}
+                onMove={() => {
+                  setOpenSpot(null);
+                  setPlacing({ kind: "move", id: pin.id });
+                }}
+                onDelete={() => {
+                  setOpenSpot(null);
+                  savePins(pins.filter((p) => p.id !== pin.id));
+                }}
+              />
+            )}
           </MapCard>
         ),
       };
@@ -170,68 +200,100 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   ];
 
   return (
-    // Fills the page's scroll area edge to edge (undoing its padding): each
-    // half scrolls or pans on its own instead.
-    <div className="-mx-5 -my-6 flex h-[calc(100%+3rem)] flex-col md:flex-row">
-      <div className="min-h-0 flex-1 border-b border-border md:w-[420px] md:flex-none md:border-b-0 md:border-r lg:w-[460px]">
-        <EventsPane events={events} people={people} />
-      </div>
+    <ChecklistStateContext.Provider value={checklist}>
+      {/* Fills the page's scroll area edge to edge (undoing its padding): each
+          half scrolls or pans on its own instead. */}
+      <div className="-mx-5 -my-6 flex h-[calc(100%+3rem)] flex-col md:flex-row">
+        <div className="min-h-0 flex-1 border-b border-border md:w-[420px] md:flex-none md:border-b-0 md:border-r lg:w-[460px]">
+          <EventsPane events={events} people={people} />
+        </div>
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <VenueMap className="min-h-0 flex-1" plan={COLOSSEUM_EG} focus={null} onBackgroundTap={onMapTap} spots={spots} />
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <VenueMap className="min-h-0 flex-1" plan={COLOSSEUM_EG} focus={null} onBackgroundTap={onMapTap} spots={spots} />
 
-        {/* Along the map's bottom: the open event's "+ Pin", what a tap on
-            the map is about to do, and (for now) copying the pins out. */}
-        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex flex-wrap items-end gap-2">
-          {placing ? (
-            <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
-              <span>{placing.kind === "new" ? "Tippe auf den Plan, um den Pin zu setzen" : "Tippe auf die neue Stelle"}</span>
-              <button
-                type="button"
-                onClick={() => setPlacing(null)}
-                className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)]"
-              >
-                Abbrechen
-              </button>
-            </div>
-          ) : (
-            event && (
+          {/* Along the map's bottom, with an event open: "Bearbeiten" — and
+              while editing, "+ Pin" (or what a tap on the map is about to
+              do), for now copying the pins out, and "Fertig". */}
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex flex-wrap items-end gap-2">
+            {event && !editing && (
               <button
                 type="button"
                 onClick={() => {
                   setOpenSpot(null);
-                  setPlacing({ kind: "new" });
+                  setEditing(true);
                 }}
-                disabled={pins.length >= MAX_PINS}
-                title={`Pin für ${event.title ?? "dieses Event"} setzen`}
-                className="pointer-events-auto rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-float)] hover:opacity-90 disabled:opacity-40"
+                className={PILL}
               >
-                + Pin
+                Bearbeiten
               </button>
-            )
-          )}
-          {/* TEMPORARY: see copyPins. */}
-          <button
-            type="button"
-            onClick={copyPins}
-            className="pointer-events-auto rounded-full border border-border glass-material px-4 py-2 text-[15px] font-medium shadow-[var(--shadow-float)]"
-          >
-            Pins kopieren
-          </button>
-          {message && (
-            <button
-              type="button"
-              onClick={() => setMessage(null)}
-              className="pop-in pointer-events-auto rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
-            >
-              {message}
-            </button>
-          )}
+            )}
+            {event && editing && (
+              <>
+                {placing ? (
+                  <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                    <span>{placing.kind === "new" ? "Tippe auf den Plan, um den Pin zu setzen" : "Tippe auf die neue Stelle"}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPlacing(null)}
+                      className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)]"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenSpot(null);
+                      setPlacing({ kind: "new" });
+                    }}
+                    disabled={pins.length >= MAX_PINS}
+                    title={`Pin für ${event.title ?? "dieses Event"} setzen`}
+                    className="pointer-events-auto rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-float)] hover:opacity-90 disabled:opacity-40"
+                  >
+                    + Pin
+                  </button>
+                )}
+                {/* TEMPORARY: see copyPins. */}
+                <button type="button" onClick={copyPins} className={PILL}>
+                  Pins kopieren
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(false);
+                    setPlacing(null);
+                    setOpenSpot(null);
+                  }}
+                  className={cn(PILL, "font-semibold text-accent")}
+                >
+                  Fertig
+                </button>
+              </>
+            )}
+            {checklist.error && (
+              <p role="alert" className="pointer-events-auto rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium text-danger shadow-[var(--shadow-float)]">
+                {checklist.error}
+              </p>
+            )}
+            {message && (
+              <button
+                type="button"
+                onClick={() => setMessage(null)}
+                className="pop-in pointer-events-auto rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
+              >
+                {message}
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </ChecklistStateContext.Provider>
   );
 }
+
+const PILL =
+  "pointer-events-auto rounded-full border border-border glass-material px-4 py-2 text-[15px] font-medium shadow-[var(--shadow-float)]";
 
 // An event pin's card: its name (saved when you're done typing — on Enter
 // or leaving the field), moving it, and taking it off the map.

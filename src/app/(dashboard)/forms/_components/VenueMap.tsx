@@ -772,11 +772,20 @@ function MapButton({ label, onClick, children }: { label: string; onClick: () =>
 
 // A spot's card on the map: a dot on the place itself, and above it a
 // label that opens out into the card's details.
+//
+// Pressing the title opens the card — or, given onTitlePress, does that
+// instead (ticks the box beside it, say), and only the arrow opens it.
+// adornment sits beside the title inside its button (that box); control
+// after it, a control of its own (a switch). With no children there's
+// nothing to open: no arrow, and the title alone does nothing.
 export function MapCard({
   title,
   summary,
   open,
   onToggle,
+  onTitlePress,
+  adornment,
+  control,
   children,
 }: {
   title: string;
@@ -784,8 +793,20 @@ export function MapCard({
   summary?: string | null;
   open: boolean;
   onToggle: () => void;
-  children: ReactNode;
+  onTitlePress?: () => void;
+  adornment?: ReactNode;
+  control?: ReactNode;
+  children?: ReactNode;
 }) {
+  const openable = children != null && children !== false;
+  const titleAction = onTitlePress ?? (openable ? onToggle : undefined);
+  const titleContent = (
+    <>
+      <span className={cn("font-semibold", open ? "text-[17px]" : "text-[14px]")}>{title}</span>
+      {!open && summary !== undefined && <span className="text-[14px] text-muted">{summary ?? "offen"}</span>}
+      {adornment}
+    </>
+  );
   return (
     <div className="relative">
       <span
@@ -799,29 +820,43 @@ export function MapCard({
             open ? "w-64 rounded-[var(--radius-lg)]" : "w-max rounded-full",
           )}
         >
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-expanded={open}
-            className={cn(
-              "no-press flex w-full items-center gap-2 text-left",
-              open ? "px-4 pb-2 pt-3" : "px-3.5 py-2",
+          <div className={cn("flex items-center gap-2", open ? "px-4 pb-2 pt-3" : "px-3.5 py-2")}>
+            {titleAction ? (
+              <button
+                type="button"
+                onClick={titleAction}
+                aria-expanded={onTitlePress ? undefined : open}
+                className="no-press flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
+                {titleContent}
+              </button>
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center gap-2">{titleContent}</div>
             )}
-          >
-            <span className={cn("font-semibold", open ? "text-[17px]" : "text-[14px]")}>{title}</span>
-            {!open && summary !== undefined && <span className="text-[14px] text-muted">{summary ?? "offen"}</span>}
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden
-              className={cn("ml-auto h-4 w-4 shrink-0 text-muted transition-transform duration-300", open && "rotate-180")}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          {open && <div className="pop-in origin-top px-4 pb-4">{children}</div>}
+            {control}
+            {openable && (
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={open}
+                aria-label={open ? `${title} schließen` : `${title} öffnen`}
+                // A bigger target than the arrowhead, without growing the pill.
+                className="no-press -m-1.5 shrink-0 p-1.5 text-muted"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                  className={cn("h-4 w-4 transition-transform duration-300", open && "rotate-180")}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {open && openable && <div className="pop-in origin-top px-4 pb-4">{children}</div>}
         </div>
         {/* A little stem from the card down to its dot. */}
         <span aria-hidden className="mx-auto block h-2 w-px bg-muted/60" />
