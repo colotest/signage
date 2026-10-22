@@ -18,10 +18,10 @@ const COLOSSEUM_EG: FloorPlan = {
   src: "/venues/colosseum-eg.svg",
   width: 9519,
   height: 5253,
-  // True north points 5° anticlockwise of the plan's top edge (-5°), so
-  // facing north with the compass on, the plan sits turned 5° clockwise —
-  // its own north straight up.
-  northDeg: -5,
+  // True north points 95° anticlockwise of the plan's top edge — to its left
+  // edge, and 5° on past it — so facing north with the compass on, the plan
+  // sits turned 95° clockwise, its own north straight up. (Checked on site.)
+  northDeg: -95,
 };
 
 // The map's standing pins, shown whatever event is open (or none): where
