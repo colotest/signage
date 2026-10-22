@@ -8,9 +8,13 @@ import { createWheelClassifier } from "./wheelKind";
 
 export type FloorPlan = {
   src: string;
-  // The drawing's own size, in its own units (the SVG's viewBox).
+  // The plan's size, in its own units: what spots' u and v are fractions
+  // of.
   width: number;
   height: number;
+  // Where the picture sits on the plan, in the same units, when it doesn't
+  // fill it exactly.
+  picture?: { x: number; y: number; width: number; height: number };
   // Which way true north lies on the drawing, in degrees clockwise from
   // its top edge. Turns the map to match the compass.
   northDeg: number;
@@ -25,23 +29,25 @@ export type MapSpot = { id: string; u: number; v: number; node: ReactNode };
 // (x, y) + rotate(r) · s·p.
 type View = { x: number; y: number; s: number; r: number };
 
-// The plan is drawn by the browser from the SVG. While the map moves it's
-// a picture being slid and scaled (smooth, but soft once zoomed in); once
-// it comes to rest it's redrawn sharp at the new zoom — its lines scale
-// with the plan, so they keep the width the picture had and only sharpen, up to this wide —
-// past that a redraw would cost more memory than an iPad likes to give.
-// Drawing it means going over every line of the plan's hatching, so it's
-// only redrawn when that would show: when the zoom has changed by more
-// than RERASTER_ZOOM since the last time, when it's zoomed in past that
-// width and the picture is being blown up, or when the map's turned and
-// the picture's fine lines would be smudged by turning it. Sliding the
-// upright map otherwise reuses the picture as it is.
+// The plan is a big picture. While the map moves it's slid and scaled as
+// it was last drawn (smooth, but soft once zoomed in); once it comes to
+// rest it's drawn again at the new zoom, up to this wide — past that a
+// redraw would cost more memory than an iPad likes to give. That's only
+// done when it would show: when the zoom has changed by more than
+// RERASTER_ZOOM since the last time, when it's zoomed in past that width
+// and the picture is being blown up, or when the map's turned and the
+// picture's fine lines would be smudged by turning it. Sliding the upright
+// map otherwise reuses the picture as it is.
 const MAX_RASTER_PX = 5000;
 const RERASTER_ZOOM = 0.05;
 const SETTLE_MS = 180;
 const ZOOM_OUT_LIMIT = 0.6; // × the zoom that fits the whole plan
-// Past this the plan's lines, which grow with the zoom, get heavy.
+// Zooming in stops at ZOOM_IN_LIMIT × that, past which the plan's lines get
+// heavy — or sooner, on a big screen, where one of the picture's pixels
+// (about one of the plan's units) would cover more than MAX_PIXEL_ZOOM of
+// the screen's and it'd go soft.
 const ZOOM_IN_LIMIT = 6;
+const MAX_PIXEL_ZOOM = 1.5;
 // Two fingers have to turn this far before a pinch starts turning the map
 // too, so a plain pinch-to-zoom doesn't wobble it.
 const ROTATE_THRESHOLD = (10 * Math.PI) / 180;
@@ -203,12 +209,16 @@ export function VenueMap({
     draw();
   }
 
+  function maxZoom() {
+    const fit = fitRef.current;
+    return Math.max(fit, Math.min(fit * ZOOM_IN_LIMIT, MAX_PIXEL_ZOOM / window.devicePixelRatio));
+  }
+
   // Keeps at least part of the plan on screen: its middle can't be pushed
   // further out than about half its own size past an edge.
   function clampView(v: View): View {
     const { w, h } = sizeRef.current;
-    const fit = fitRef.current;
-    const s = Math.min(Math.max(v.s, fit * ZOOM_OUT_LIMIT), fit * ZOOM_IN_LIMIT);
+    const s = Math.min(Math.max(v.s, fitRef.current * ZOOM_OUT_LIMIT), maxZoom());
     let next = v;
     if (s !== v.s) next = zoomAbout(v, w / 2, h / 2, s / v.s, true);
     const c = toScreen(next, plan.width / 2, plan.height / 2);
@@ -220,10 +230,7 @@ export function VenueMap({
 
   function zoomAbout(v: View, cx: number, cy: number, k: number, raw = false): View {
     let s = v.s * k;
-    if (!raw) {
-      const fit = fitRef.current;
-      s = Math.min(Math.max(s, fit * ZOOM_OUT_LIMIT), fit * ZOOM_IN_LIMIT);
-    }
+    if (!raw) s = Math.min(Math.max(s, fitRef.current * ZOOM_OUT_LIMIT), maxZoom());
     const kk = s / v.s;
     return { ...v, s, x: cx + (v.x - cx) * kk, y: cy + (v.y - cy) * kk };
   }
@@ -409,7 +416,7 @@ export function VenueMap({
     const v = viewRef.current;
     if (!spot || !v) return;
     const { w, h } = sizeRef.current;
-    const s = Math.min(Math.max(v.s, fitRef.current * 2.2), fitRef.current * ZOOM_IN_LIMIT);
+    const s = Math.min(Math.max(v.s, fitRef.current * 2.2), maxZoom());
     const at = toScreen({ ...v, x: 0, y: 0, s }, spot.u * plan.width, spot.v * plan.height);
     animateTo(clampView({ ...v, s, x: w / 2 - at.x, y: h * 0.66 - at.y }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -644,6 +651,8 @@ export function VenueMap({
     });
   }
 
+  const picture = plan.picture ?? { x: 0, y: 0, width: plan.width, height: plan.height };
+
   return (
     <div
       ref={containerRef}
@@ -662,7 +671,7 @@ export function VenueMap({
         className="absolute left-0 top-0 origin-top-left"
         style={{ width: 0, height: 0, willChange: "transform" }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- an SVG drawn by the browser at whatever size the map needs, not a photo for next/image to resize */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- one big picture drawn at whatever size the map needs, not a photo for next/image to resize */}
         <img
           src={plan.src}
           alt="Grundriss"
@@ -674,8 +683,14 @@ export function VenueMap({
             if (img?.complete && img.naturalWidth) setLoaded(true);
           }}
           onLoad={() => setLoaded(true)}
+          style={{
+            left: `${(picture.x / plan.width) * 100}%`,
+            top: `${(picture.y / plan.height) * 100}%`,
+            width: `${(picture.width / plan.width) * 100}%`,
+            height: `${(picture.height / plan.height) * 100}%`,
+          }}
           className={cn(
-            "pointer-events-none block h-full w-full transition-opacity duration-500 dark:invert dark:hue-rotate-180",
+            "pointer-events-none absolute max-w-none transition-opacity duration-500 dark:invert dark:hue-rotate-180",
             loaded ? "opacity-100" : "opacity-0",
           )}
         />

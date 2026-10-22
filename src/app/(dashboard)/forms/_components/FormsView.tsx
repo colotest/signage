@@ -11,13 +11,16 @@ import { EventsPane } from "./EventsPane";
 import { LinkedPinCard } from "./PinMenus";
 import { MapCard, VenueMap, type FloorPlan, type MapSpot } from "./VenueMap";
 
-// Colosseum Berlin, ground floor. Slimmed down from the architects' 15 MB
-// export (every transform baked in, strokes merged per colour and patch
-// of the plan) — see scripts/flatten-floorplan.mjs.
+// Colosseum Berlin, ground floor: the architects' plan exported as a
+// picture, about one pixel per unit of their drawing (lossless WebP — the
+// same pixels as the PNG at a third of the size). The plan keeps the frame
+// of the vector drawing it replaced — a 40-unit margin round the picture —
+// so the pins placed on it, here and on events, stay where they were.
 const COLOSSEUM_EG: FloorPlan = {
-  src: "/venues/colosseum-eg.svg",
+  src: "/venues/colosseum-eg.webp",
   width: 9519,
   height: 5253,
+  picture: { x: 40, y: 40, width: 9439, height: 5173 },
   // True north points 95° anticlockwise of the plan's top edge — to its left
   // edge, and 5° on past it — so facing north with the compass on, the plan
   // sits turned 95° clockwise, its own north straight up. (Checked on site.)
