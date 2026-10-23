@@ -62,7 +62,11 @@ export const GLITTER_DIALS: Dial<GlitterTuning>[] = [
 
 export const LAVA_3D_DIALS: Dial<Lava3DTuning>[] = [
   { key: "speed", label: "Slowness", min: 0.3, max: 3, step: 0.05, note: "Multiplies every drift's duration. Above 1 is slower." },
-  { key: "merge", label: "Merge reach", min: 0.2, max: 1.5, step: 0.02, note: "How far past its own size each blob's pull reaches: how readily two run together, and how thick the neck between them." },
+  { key: "merge", label: "Neck roundness", min: 0, max: 1.5, step: 0.02, note: "How round the neck between two blobs gets as they run together — tight when they've just touched, this round once they're well merged." },
+  { key: "pinch", label: "Pinch", min: 0, max: 1.5, step: 0.02, note: "How far two joined blobs draw out after each other, as drops do, before letting go." },
+  { key: "bounce", label: "Bounce", min: 0, max: 3, step: 0.05, note: "How hard a blob springs back when it lets go: past round into a flattened shape, and back." },
+  { key: "wobble", label: "Wobble time", min: 0.3, max: 5, step: 0.05, note: "How long one wobble after letting go takes, in seconds." },
+  { key: "damping", label: "Wobble decay", min: 0.2, max: 5, step: 0.05, note: "How long the wobbling takes to die away, in seconds." },
   { key: "depth", label: "Lamp depth", min: 0, max: 1, step: 0.01, note: "How deep the lamp is, as a fraction of the screen: how far apart in depth the blobs lie. At 0 it's flat, and everything merges." },
   { key: "haze", label: "Haze", min: 0, max: 4, step: 0.05, note: "How thick the liquid is: how far the blobs at the back sink into its colour." },
   { key: "softness", label: "Edge softness", min: 0.005, max: 0.3, step: 0.005, note: "How soft an edge is; the back of the lamp is softer again." },

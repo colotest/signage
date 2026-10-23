@@ -18,19 +18,34 @@ import { createPass, webglUsable } from "./webgl";
 // now with a place in depth as well, drifting slowly nearer and further.
 // The flat lamp draws a picture of wax; this works out where the wax is.
 //
-// Each blob is a ball of influence in three dimensions, as metaballs are:
-// a smooth bump that falls to nothing at its edge, summed with its
-// neighbours', and the wax is wherever the sum passes a threshold. Two
-// blobs only run together where they actually meet, so one passing in
-// front of another stays in front of it, a little nearer and a little
-// brighter, rather than merging across the depth of the lamp.
+// Each blob is a shape in three dimensions, held as its distance: how far
+// any point is from its surface. Two blobs only run together where they
+// actually meet, so one passing in front of another stays in front of it,
+// a little nearer and a little brighter, rather than merging across the
+// depth of the lamp. Where they do meet they are joined smoothly, with a
+// fillet whose radius grows with how far they have run into each other:
+// two that have just touched have a tight waist between them, and two
+// most of the way merged a broad, round one. Nothing reaches out before
+// they touch, which is what summed fields (metaballs, as this used to be)
+// can't help doing — a pimple growing out of each towards the other.
+//
+// Wax holds together. Two blobs that have run together and are drifting
+// apart don't simply come unstuck: each draws out towards the other, a
+// drop hanging on by a thinning neck, until the neck can't hold and they
+// let go — and then each springs back, past round into a flattened shape
+// and back again, settling over a second or two, as surface tension
+// pulls it in. That needs memory of what was joined to what, so it is
+// worked out a frame at a time on the CPU (see Pairs) and handed to the
+// shader as each blob's stretch.
 //
 // Every pixel looks into the lamp along its own line of sight: it finds
-// which blobs lie across that line, steps along it from the front until
-// the sum first passes the threshold — the surface — and reads the surface
-// there: which way it faces, from the sum's slope, and how much wax lies
-// behind it, which the bumps' shape gives in closed form. That is enough
-// to light it properly:
+// which blobs lie across that line, steps along it from the front by the
+// distance to the nearest surface (which can never overshoot one) until
+// it arrives, and reads the surface there: which way it faces, from how
+// the distance changes around it, and roughly how much wax lies behind it.
+// How near the line of sight came to wax it missed is known as well, which
+// is what softens the edges and lights the halo around them, evenly all
+// round a join as anywhere else. That is enough to light it properly:
 // - The bulb is below the vessel. Its light falls off with distance, so
 //   wax low in the lamp is hot and wax at the top is in shade, and it
 //   reaches round the wax a little past the terminator, as light does
@@ -52,10 +67,18 @@ import { createPass, webglUsable } from "./webgl";
 export const LAVA_3D_TUNING = {
   // A multiplier on every drift's duration: above 1 is slower.
   speed: 1,
-  // How far past its own size each blob's pull reaches, as a fraction of
-  // its radius: how readily two run together, and how thick the neck
-  // between them is.
+  // How round the neck between two blobs gets as they run together: the
+  // fillet's radius once they're well merged, as a fraction of the smaller
+  // one's.
   merge: 0.7,
+  // How far two joined blobs draw out after each other before letting go,
+  // as a fraction of the smaller one's radius.
+  pinch: 0.5,
+  // How hard a blob springs back when it lets go, how long one wobble
+  // takes, and how long the wobbling takes to die away (both seconds).
+  bounce: 1,
+  wobble: 1.4,
+  damping: 1.1,
   // How deep the lamp is, as a fraction of the screen's short side: how
   // far apart in depth the blobs can lie.
   depth: 0.35,
@@ -221,25 +244,25 @@ export function LavaLamp3D({
   );
 }
 
-// How many steps a line of sight takes through the wax it crosses before
-// narrowing in on the surface, and how many it narrows in by. The steps
-// only span the depth of the blobs actually on that line, so a few do.
-const MARCH_STEPS = 14;
-const REFINE_STEPS = 5;
+// How many steps a line of sight takes at most. Each is as long as the
+// distance to the nearest wax, so a line through empty liquid crosses it
+// in a few and only one grazing a surface uses many.
+const MARCH_STEPS = 24;
 
+// The blobs as the shader takes them, each in three vec4s: centre and
+// radius; the axis it's drawn out along and how far its tip reaches past
+// round; and the undoing of its drift's squash, its stretch along the
+// axis (the wobble), and the fillet it joins the others with.
 const FRAGMENT = /* glsl */ `
 precision highp float;
 
 uniform vec2 uCanvas;
 uniform float uScale;
 uniform vec2 uSize;
-// Each blob: its centre (CSS pixels across and down, and in depth, nearer
-// being larger), and how far its pull reaches.
-uniform vec4 uBlobs[${BLOBS.length}];
-// How much to undo each blob's drift stretch by, across and down.
-uniform vec2 uShape[${BLOBS.length}];
+uniform vec4 uBlobA[${BLOBS.length}];
+uniform vec4 uBlobB[${BLOBS.length}];
+uniform vec4 uBlobC[${BLOBS.length}];
 uniform sampler2D uLiquid;
-uniform float uThreshold;
 uniform vec3 uWax;
 uniform vec3 uBulb;
 uniform vec3 uBulbLight;
@@ -248,37 +271,48 @@ uniform float uBulbReach;
 uniform vec4 uMaterial;
 // Shine, gloss, top light, exposure.
 uniform vec4 uShine;
-// The lamp's depth (half of it, either side of the middle), haze,
-// softness, and the halo round the wax.
+// The lamp's depth (half of it, either side of the middle), haze, edge
+// softness and halo width (CSS pixels).
 uniform vec4 uDepth;
+uniform float uHalo;
 
-float field(vec3 at) {
-  float sum = 0.0;
-  for (int i = 0; i < ${BLOBS.length}; i++) {
-    vec3 off = vec3((at.xy - uBlobs[i].xy) * uShape[i], at.z - uBlobs[i].z);
-    float q = dot(off, off) / (uBlobs[i].w * uBlobs[i].w);
-    if (q < 1.0) {
-      float k = 1.0 - q;
-      sum += k * k * k;
-    }
-  }
-  return sum;
+// One blob's distance: an ellipsoid (Inigo Quilez's close estimate of
+// one), round but for its drift's squash, its wobble along its axis, and a
+// tip drawn out on one side, where it hangs on to a blob it's leaving.
+// Handed the blob's own three vec4s rather than its index: WebGL only
+// promises indexing a uniform array by a loop's own counter.
+float blob(vec3 at, vec4 A, vec4 B, vec4 C) {
+  vec3 off = at - A.xyz;
+  off.xy *= C.xy;
+  vec3 axis = B.xyz;
+  float along = dot(off, axis);
+  float across = length(off - along * axis);
+  float r = A.w;
+  float stretch = C.z;
+  float tip = along > 0.0 ? B.w : 0.0;
+  float ra = r * stretch + tip;
+  // What it gains in length it loses in girth, near enough.
+  float rc = r / sqrt(stretch * (1.0 + 0.5 * B.w / r));
+  vec2 q = vec2(along / ra, across / rc);
+  float k0 = length(q);
+  float k1 = length(vec2(along / (ra * ra), across / (rc * rc)));
+  return k0 * (k0 - 1.0) / max(k1, 0.0001);
 }
 
-// The sum's slope, worked out exactly: it points into the wax, so the
-// surface faces the other way.
-vec3 slope(vec3 at) {
-  vec3 g = vec3(0.0);
+// A smooth minimum: two shapes joined with a fillet of radius k.
+float join(float a, float b, float k) {
+  if (k <= 0.0) return min(a, b);
+  float h = max(k - abs(a - b), 0.0) / k;
+  return min(a, b) - h * h * k * 0.25;
+}
+
+// The wax, as the distance to it, from just the blobs on this line.
+float wax(vec3 at, bool on[${BLOBS.length}]) {
+  float d = 1e5;
   for (int i = 0; i < ${BLOBS.length}; i++) {
-    vec3 off = vec3((at.xy - uBlobs[i].xy) * uShape[i], at.z - uBlobs[i].z);
-    float r2 = uBlobs[i].w * uBlobs[i].w;
-    float q = dot(off, off) / r2;
-    if (q < 1.0) {
-      float k = 1.0 - q;
-      g -= 6.0 * k * k * vec3(off.xy * uShape[i], off.z) / r2;
-    }
+    if (on[i]) d = join(d, blob(at, uBlobA[i], uBlobB[i], uBlobC[i]), uBlobC[i].w);
   }
-  return g;
+  return d;
 }
 
 vec3 toLinear(vec3 c) {
@@ -297,33 +331,35 @@ vec3 vignette(vec3 srgb, vec2 uv) {
   return mix(srgb, vec3(6.0, 0.0, 10.0) / 255.0, a);
 }
 
+vec3 bulbLight(vec3 at) {
+  float reach = length(uBulb - at) / uBulbReach;
+  return uBulbLight / (1.0 + reach * reach);
+}
+
 void main() {
   vec2 at = vec2(gl_FragCoord.x, uCanvas.y - gl_FragCoord.y) / uScale;
   vec2 uv = at / uSize;
   vec3 liquid = toLinear(texture2D(uLiquid, uv).rgb);
 
-  // Which blobs lie across this line of sight, over what depth, how much
-  // wax that is all told, and which reaches it most.
+  // Which blobs could be on this line of sight, near enough to touch it
+  // or to light the liquid round it; over what depth; and roughly how much
+  // wax the line crosses.
+  float haloReach = uDepth.w * 6.0;
+  bool on[${BLOBS.length}];
   float front = -1e5;
   float back = 1e5;
-  float column = 0.0;
-  float strongest = 0.0;
-  float peak = 0.0;
+  float chord = 0.0;
   for (int i = 0; i < ${BLOBS.length}; i++) {
-    vec2 off = (at - uBlobs[i].xy) * uShape[i];
-    float r = uBlobs[i].w;
-    float u = 1.0 - dot(off, off) / (r * r);
-    if (u > 0.0) {
-      float extent = r * sqrt(u);
-      front = max(front, uBlobs[i].z + extent);
-      back = min(back, uBlobs[i].z - extent);
-      // A bump's own depth along the line, in closed form: r u^3.5 times
-      // the integral of (1 - s^2)^3 over -1..1, 32/35.
-      column += r * pow(u, 3.5) * 0.9142857;
-      if (u > strongest) {
-        strongest = u;
-        peak = uBlobs[i].z;
-      }
+    vec2 off = (at - uBlobA[i].xy) * uBlobC[i].xy;
+    float r = uBlobA[i].w;
+    float bound = r * 1.3 * max(uBlobC[i].z, 1.0) + uBlobB[i].w + uBlobC[i].w + haloReach;
+    float across = dot(off, off);
+    on[i] = across < bound * bound;
+    if (on[i]) {
+      float extent = sqrt(bound * bound - across);
+      front = max(front, uBlobA[i].z + extent);
+      back = min(back, uBlobA[i].z - extent);
+      if (across < r * r) chord += 2.0 * sqrt(r * r - across);
     }
   }
   if (front < back) {
@@ -331,86 +367,113 @@ void main() {
     return;
   }
 
-  // The bulb's light at a point.
-  vec3 toBulbHere = uBulb - vec3(at, peak);
-  float reachHere = length(toBulbHere) / uBulbReach;
-  vec3 lightHere = uBulbLight / (1.0 + reachHere * reachHere);
-
-  // From the front, stepping back until the sum first passes the
-  // threshold, then halving the last step until it's found. The strongest
-  // blob's own middle is looked at too, which is where a glancing line of
-  // sight comes nearest the threshold — what the edge's softness reads.
-  float most = field(vec3(at, peak));
-  float surface = peak;
-  float stride = (front - back) / ${MARCH_STEPS}.0;
-  float previous = front;
-  for (int s = 1; s <= ${MARCH_STEPS}; s++) {
-    float z = front - stride * float(s);
-    float f = field(vec3(at, z));
-    most = max(most, f);
-    if (f >= uThreshold) {
-      float near = previous;
-      float far = z;
-      for (int k = 0; k < ${REFINE_STEPS}; k++) {
-        float middle = 0.5 * (near + far);
-        if (field(vec3(at, middle)) >= uThreshold) far = middle;
-        else near = middle;
-      }
-      surface = far;
-      break;
+  // How near this line of sight passes the wax. It runs straight into
+  // the screen, so how near it comes to each blob is that blob's distance
+  // read at its own depth — exact for a round one — and the blobs' joins
+  // apply to those as to the wax itself. Smooth everywhere, joins and all,
+  // and no stepping needed to know it: it's what softens the edges and
+  // lights the halo.
+  // The depth it passes at is each blob's, weighted by how near it passes
+  // that blob: taking the nearest one's outright would jump, in a straight
+  // line, wherever two are equally near.
+  float passes = 1e5;
+  float weights = 0.0;
+  float depths = 0.0;
+  for (int i = 0; i < ${BLOBS.length}; i++) {
+    if (on[i]) {
+      float d = blob(vec3(at, uBlobA[i].z), uBlobA[i], uBlobB[i], uBlobC[i]);
+      float weight = exp(-max(d, 0.0) / uDepth.w);
+      weights += weight;
+      depths += weight * uBlobA[i].z;
+      passes = join(passes, d, uBlobC[i].w);
     }
-    previous = z;
+  }
+  float passesZ = weights > 0.0 ? depths / weights : 0.0;
+
+  // Only lines that reach the wax step into it: from the front, each step
+  // as long as the distance to the nearest wax, until arriving. One that
+  // runs out of steps grazing a surface takes the depth it was passing.
+  float z = front;
+  float surfaceZ = passesZ;
+  if (passes < uDepth.z) {
+    for (int s = 0; s < ${MARCH_STEPS}; s++) {
+      float d = wax(vec3(at, z), on);
+      if (d < 0.2) {
+        surfaceZ = z;
+        break;
+      }
+      z -= max(d * 0.9, 0.4);
+      if (z < back) break;
+    }
   }
 
-  vec3 point = vec3(at, surface);
-  vec3 g = slope(point);
-  vec3 normal = dot(g, g) > 0.0 ? normalize(-g) : vec3(0.0, 0.0, 1.0);
-  vec3 view = vec3(0.0, 0.0, 1.0);
-  // How far back in the lamp the surface is: 0 at the very front, 1 at
-  // the back.
-  float farness = clamp((uDepth.x - surface) / (2.0 * uDepth.x), 0.0, 1.0);
+  // How far back in the lamp: 0 at the very front, 1 at the back.
+  float farness = clamp((uDepth.x - surfaceZ) / (2.0 * uDepth.x), 0.0, 1.0);
+  float soft = max(uDepth.z * (1.0 + 3.0 * farness), 1.0 / uScale);
+  float cover = 1.0 - smoothstep(-soft, soft, passes);
 
-  // The bulb's light where it lands.
-  vec3 toBulb = uBulb - point;
-  float reach = length(toBulb) / uBulbReach;
-  vec3 light = uBulbLight / (1.0 + reach * reach);
-  vec3 l = normalize(toBulb);
+  // The halo: light scattered into the liquid by hot wax nearby, by how
+  // near the line of sight passes it, faded right out before the edge of
+  // what this pixel looks at.
+  float gone = 1.0 - smoothstep(0.6 * haloReach, haloReach, passes);
+  vec3 around = liquid
+    + uWax * bulbLight(vec3(at, passesZ)) * uHalo * exp(-max(passes, 0.0) / uDepth.w) * gone * exp(-uDepth.y * farness);
 
-  // Through the wax: blue swallowed fastest, red slowest.
-  float thickness = column / min(uSize.x, uSize.y) * uMaterial.y;
-  vec3 swallow = vec3(0.35, 1.0, 1.6);
-  vec3 held = exp(-thickness * swallow);
-  vec3 thin = exp(-thickness * 0.5 * swallow);
+  vec3 colour = around;
+  if (cover > 0.0) {
+    vec3 point = vec3(at, surfaceZ);
+    // Which way the surface faces: how the distance changes around it,
+    // sampled at the corners of a small tetrahedron.
+    float e = 0.5;
+    vec2 k = vec2(1.0, -1.0);
+    vec3 normal = normalize(
+      k.xyy * wax(point + k.xyy * e, on) + k.yyx * wax(point + k.yyx * e, on) +
+      k.yxy * wax(point + k.yxy * e, on) + k.xxx * wax(point + k.xxx * e, on));
+    vec3 view = vec3(0.0, 0.0, 1.0);
 
-  float wrapped = clamp((dot(normal, l) + uMaterial.x) / (1.0 + uMaterial.x), 0.0, 1.0);
-  float edge = 1.0 - max(normal.z, 0.0);
-  vec3 body = uWax * (uMaterial.w + light * wrapped) * held;
-  vec3 glow = uWax * light * thin * uMaterial.z * (0.35 + edge * edge);
-  float bulbShine = pow(max(dot(normal, normalize(l + view)), 0.0), uShine.y) * uShine.x;
-  vec3 overhead = normalize(vec3(0.0, -1.0, 0.7));
-  float topShine = pow(max(dot(normal, normalize(overhead + view)), 0.0), uShine.y * 0.6) * uShine.z;
-  float fresnel = 0.04 + 0.96 * pow(edge, 5.0);
-  vec3 wax = body + glow + light * bulbShine + vec3(0.9, 0.92, 1.0) * topShine + liquid * fresnel * 0.8;
-  wax = 1.0 - exp(-wax * uShine.w);
+    vec3 light = bulbLight(point);
+    vec3 l = normalize(uBulb - point);
+    float thickness = chord / min(uSize.x, uSize.y) * uMaterial.y;
+    vec3 swallow = vec3(0.35, 1.0, 1.6);
+    vec3 held = exp(-thickness * swallow);
+    vec3 thin = exp(-thickness * 0.5 * swallow);
 
-  // Seen through the liquid in front of it, and softer the further back.
-  wax = mix(wax, liquid, 1.0 - exp(-uDepth.y * farness));
-  float soft = uThreshold * uDepth.z * (1.0 + 3.0 * farness);
-  float cover = smoothstep(uThreshold - soft, uThreshold + soft, most);
-  // Just outside the wax, the liquid glows with the light it scatters
-  // off it — strongest at the edge, gone by the end of the blobs' reach.
-  float nearWax = clamp(most / uThreshold, 0.0, 1.0);
-  vec3 around = liquid + uWax * lightHere * uDepth.w * nearWax * nearWax * exp(-uDepth.y * farness);
-  vec3 colour = mix(around, wax, cover);
+    float wrapped = clamp((dot(normal, l) + uMaterial.x) / (1.0 + uMaterial.x), 0.0, 1.0);
+    float grazing = 1.0 - max(normal.z, 0.0);
+    vec3 body = uWax * (uMaterial.w + light * wrapped) * held;
+    vec3 glow = uWax * light * thin * uMaterial.z * (0.35 + grazing * grazing);
+    float bulbShine = pow(max(dot(normal, normalize(l + view)), 0.0), uShine.y) * uShine.x;
+    vec3 overhead = normalize(vec3(0.0, -1.0, 0.7));
+    float topShine = pow(max(dot(normal, normalize(overhead + view)), 0.0), uShine.y * 0.6) * uShine.z;
+    float fresnel = 0.04 + 0.96 * pow(grazing, 5.0);
+    vec3 lit = body + glow + light * bulbShine + vec3(0.9, 0.92, 1.0) * topShine + liquid * fresnel * 0.8;
+    lit = 1.0 - exp(-lit * uShine.w);
+    // Seen through the liquid in front of it.
+    lit = mix(lit, liquid, 1.0 - exp(-uDepth.y * farness));
+    colour = mix(around, lit, cover);
+  }
 
   gl_FragColor = vec4(vignette(toSrgb(colour), uv), 1.0);
 }
 `;
 
+// Which blobs are joined, and what each is doing about it: kept from one
+// frame to the next, since whether two drifting apart are still holding
+// on depends on whether they were joined a moment ago.
+type Release = { at: number; axis: [number, number, number]; amount: number };
+
+function createPairs(count: number) {
+  // Joined pairs, by "i j" with i < j.
+  const joined = new Set<string>();
+  // Each blob's last letting go, for its wobble.
+  const released: (Release | null)[] = Array.from({ length: count }, () => null);
+  return { joined, released };
+}
+
 function createShader(canvas: HTMLCanvasElement) {
   const pass = createPass(canvas, "Lava Lamp 3D", FRAGMENT, [
-    "uCanvas", "uScale", "uSize", "uBlobs", "uShape", "uLiquid", "uThreshold", "uWax", "uBulb", "uBulbLight",
-    "uBulbReach", "uMaterial", "uShine", "uDepth",
+    "uCanvas", "uScale", "uSize", "uBlobA", "uBlobB", "uBlobC", "uLiquid", "uWax", "uBulb", "uBulbLight",
+    "uBulbReach", "uMaterial", "uShine", "uDepth", "uHalo",
   ] as const);
   if (!pass) return null;
   const { gl, at } = pass;
@@ -428,8 +491,11 @@ function createShader(canvas: HTMLCanvasElement) {
   const liquidCanvas = document.createElement("canvas");
   let liquidKey = "";
 
-  const blobs = new Float32Array(BLOBS.length * 4);
-  const shapes = new Float32Array(BLOBS.length * 2);
+  const n = BLOBS.length;
+  const a = new Float32Array(n * 4);
+  const b = new Float32Array(n * 4);
+  const c = new Float32Array(n * 4);
+  const pairs = createPairs(n);
 
   return {
     draw(width: number, height: number, cssWidth: number, cssHeight: number, seconds: number, t: Lava3DTuning) {
@@ -437,21 +503,92 @@ function createShader(canvas: HTMLCanvasElement) {
       const short = Math.min(cssWidth, cssHeight);
       const halfDepth = (short * t.depth) / 2;
 
-      BLOBS.forEach((blob, i) => {
+      // Where every blob would be on its own.
+      const placed = BLOBS.map((blob, i) => {
         const pose = poseAt(blob.motion, (seconds + blob.delay) / (blob.duration * t.speed));
         const squash = Math.sqrt(pose.sx * pose.sy);
         const depth = DEPTHS[i];
-        const z = halfDepth * Math.max(-1, Math.min(1, depth.at + 0.2 * Math.sin((seconds / (depth.period * t.speed)) * Math.PI * 2 + depth.phase)));
-        blobs.set(
-          [
-            cssWidth * blob.x + pose.x * cssWidth * blob.sway,
-            cssHeight * blob.y + pose.y * cssHeight * blob.travel * 0.5,
-            z,
-            ((short * blob.size * squash) / 2) * (1 + t.merge),
-          ],
-          i * 4,
-        );
-        shapes.set([squash / pose.sx, squash / pose.sy], i * 2);
+        const swing = Math.sin((seconds / (depth.period * t.speed)) * Math.PI * 2 + depth.phase);
+        return {
+          x: cssWidth * blob.x + pose.x * cssWidth * blob.sway,
+          y: cssHeight * blob.y + pose.y * cssHeight * blob.travel * 0.5,
+          z: halfDepth * Math.max(-1, Math.min(1, depth.at + 0.2 * swing)),
+          r: (short * blob.size * squash) / 2,
+          unsquashX: squash / pose.sx,
+          unsquashY: squash / pose.sy,
+          // What the pairs below make of it.
+          axis: [0, 0, 1] as [number, number, number],
+          tip: 0,
+          fillet: 0,
+        };
+      });
+
+      // Every pair, for whether it's run together, is holding on as it
+      // drifts apart, or has just let go.
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const p = placed[i];
+          const q = placed[j];
+          const dx = q.x - p.x;
+          const dy = q.y - p.y;
+          const dz = q.z - p.z;
+          const apart = Math.hypot(dx, dy, dz) || 1;
+          const gap = apart - (p.r + q.r);
+          const smaller = Math.min(p.r, q.r);
+          const key = `${i} ${j}`;
+          const axis: [number, number, number] = [dx / apart, dy / apart, dz / apart];
+
+          if (gap < 0) {
+            // Run together: the fillet rounds as they go further in.
+            pairs.joined.add(key);
+            const into = Math.min(-gap / (0.6 * smaller), 1);
+            const fillet = t.merge * smaller * (0.45 + 0.55 * into * into * (3 - 2 * into));
+            p.fillet = Math.max(p.fillet, fillet);
+            q.fillet = Math.max(q.fillet, fillet);
+          } else if (pairs.joined.has(key) && gap < t.pinch * smaller) {
+            // Drifting apart but holding on: each draws out after the
+            // other, the tips meeting in a thin neck.
+            const reach = gap * 0.55;
+            const fillet = t.merge * smaller * 0.25 * (1 - gap / (t.pinch * smaller));
+            if (reach * (p.r / (p.r + q.r)) * 2 > p.tip) {
+              p.tip = reach * ((2 * p.r) / (p.r + q.r));
+              p.axis = axis;
+            }
+            if (reach * (q.r / (p.r + q.r)) * 2 > q.tip) {
+              q.tip = reach * ((2 * q.r) / (p.r + q.r));
+              q.axis = [-axis[0], -axis[1], -axis[2]];
+            }
+            p.fillet = Math.max(p.fillet, fillet);
+            q.fillet = Math.max(q.fillet, fillet);
+          } else if (pairs.joined.has(key)) {
+            // Let go: each springs back from as far as it was drawn out.
+            pairs.joined.delete(key);
+            const drawn = (t.pinch * smaller * 0.55 * 2) / (p.r + q.r);
+            pairs.released[i] = { at: seconds, axis, amount: drawn * t.bounce };
+            pairs.released[j] = { at: seconds, axis: [-axis[0], -axis[1], -axis[2]], amount: drawn * t.bounce };
+          }
+        }
+      }
+
+      placed.forEach((p, i) => {
+        // The wobble after letting go: drawn out at first, then past round
+        // into a flattened shape and back, dying away.
+        let stretch = 1;
+        const release = pairs.released[i];
+        if (release && p.tip === 0) {
+          const since = seconds - release.at;
+          if (since > t.damping * 6) pairs.released[i] = null;
+          else {
+            stretch = Math.max(
+              0.55,
+              1 + release.amount * Math.cos((since / Math.max(t.wobble, 0.05)) * Math.PI * 2) * Math.exp(-since / Math.max(t.damping, 0.05)),
+            );
+            p.axis = release.axis;
+          }
+        }
+        a.set([p.x, p.y, p.z, p.r], i * 4);
+        b.set([...p.axis, p.tip], i * 4);
+        c.set([p.unsquashX, p.unsquashY, stretch, p.fillet], i * 4);
       });
 
       const key = [cssWidth, cssHeight, t.rampStart, t.rampDepth, t.lightDrop].join(" ");
@@ -476,24 +613,21 @@ function createShader(canvas: HTMLCanvasElement) {
         number,
         number,
       ];
-      // A bump falls from 1 in the middle to nothing at its reach; its
-      // surface, alone, is where it has fallen to this — which puts it at
-      // the blob's own size whatever the merge reach.
-      const threshold = (1 - 1 / (1 + t.merge) ** 2) ** 3;
 
       gl.uniform2f(at.uCanvas, width, height);
       gl.uniform1f(at.uScale, width / cssWidth);
       gl.uniform2f(at.uSize, cssWidth, cssHeight);
-      gl.uniform4fv(at.uBlobs, blobs);
-      gl.uniform2fv(at.uShape, shapes);
-      gl.uniform1f(at.uThreshold, threshold);
+      gl.uniform4fv(at.uBlobA, a);
+      gl.uniform4fv(at.uBlobB, b);
+      gl.uniform4fv(at.uBlobC, c);
       gl.uniform3f(at.uWax, ...wax);
       gl.uniform3f(at.uBulb, cssWidth / 2, cssHeight * (1 + t.lightDrop / 100), 0);
       gl.uniform3f(at.uBulbLight, t.bulb, t.bulb * 0.78, t.bulb * 0.5);
       gl.uniform1f(at.uBulbReach, cssHeight * t.bulbReach);
       gl.uniform4f(at.uMaterial, t.wrap, t.absorb, t.glow, t.ambient);
       gl.uniform4f(at.uShine, t.shine, t.gloss, t.topLight, t.exposure);
-      gl.uniform4f(at.uDepth, Math.max(halfDepth, 1), t.haze, t.softness, t.halo);
+      gl.uniform4f(at.uDepth, Math.max(halfDepth, 1), t.haze, Math.max(t.softness * short * 0.05, 0.5), short * 0.035);
+      gl.uniform1f(at.uHalo, t.halo);
       pass.draw(width, height);
     },
     dispose() {
