@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { MEASURE_FOR_MS, PERF_EVERY_MS, controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
+import { controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
 import type { ControlMessage } from "@/lib/realtime/channels";
 import { mediaPublicUrl } from "@/types/domain";
 import type {
@@ -653,38 +653,6 @@ export function Player({
   // reported back through useStatusReport below, like any other change.
   useEffect(() => {
     const channel = supabase.channel(controlChannelName(screen.id));
-
-    // Frame counting for "measure": a requestAnimationFrame loop, which is
-    // held back exactly when the page can't draw in time, so its rate is
-    // the rate the screen is really drawing at. Runs only while asked.
-    let measureUntil = 0;
-    let frame = 0;
-    let frames = 0;
-    let since = 0;
-    function count(now: number) {
-      if (Date.now() > measureUntil) {
-        frame = 0;
-        return;
-      }
-      frame = requestAnimationFrame(count);
-      if (!since) since = now;
-      frames++;
-      if (now - since >= PERF_EVERY_MS) {
-        channel.send({
-          type: "broadcast",
-          event: "perf",
-          payload: {
-            fps: Math.round((frames * 10000) / (now - since)) / 10,
-            width: window.innerWidth,
-            height: window.innerHeight,
-            dpr: window.devicePixelRatio || 1,
-          },
-        });
-        frames = 0;
-        since = now;
-      }
-    }
-
     channel
       .on("broadcast", { event: "control" }, ({ payload }) => {
         const message = payload as ControlMessage;
@@ -710,19 +678,10 @@ export function Player({
           case "tune":
             setPageTuning((current) => ({ ...current, [message.page]: message.tuning }));
             break;
-          case "measure":
-            measureUntil = Date.now() + MEASURE_FOR_MS;
-            if (!frame) {
-              frames = 0;
-              since = 0;
-              frame = requestAnimationFrame(count);
-            }
-            break;
         }
       })
       .subscribe();
     return () => {
-      cancelAnimationFrame(frame);
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

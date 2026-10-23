@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { Menu } from "@/components/ui/Menu";
 import { SlidersIcon } from "@/components/icons/SlidersIcon";
 import { TUNABLE_PAGES, type TunablePage } from "@/components/screenPages/dials";
-import { MEASURE_FOR_MS, type ControlMessage, type PerfReport } from "@/lib/realtime/channels";
-import { onPerfReport } from "@/lib/realtime/useScreenControl";
+import type { ControlMessage } from "@/lib/realtime/channels";
 import { cn } from "@/lib/utils/cn";
 
 // A slider moves far faster than a screen needs telling, and Realtime only
@@ -57,23 +56,6 @@ export function PageTuningMenu({
     sendRef.current = send;
   });
 
-  // While the panel is open the screen counts its frames and reports them
-  // back, so the effect of a dial on the stick shows here as it's turned.
-  // Asked again well inside the player's window, so it never lapses while
-  // open, and left to lapse on its own once closed.
-  const [perf, setPerf] = useState<PerfReport | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const stop = onPerfReport(screenId, setPerf);
-    const ask = () => sendRef.current({ type: "measure" });
-    ask();
-    const timer = setInterval(ask, MEASURE_FOR_MS / 2);
-    return () => {
-      stop();
-      clearInterval(timer);
-    };
-  }, [open, screenId]);
-
   function push(next: Record<string, number>) {
     pendingRef.current = next;
     if (timerRef.current) return;
@@ -105,7 +87,6 @@ export function PageTuningMenu({
     // A screen that has reloaded since has its defaults back; this puts
     // what was set here back on it.
     push(tuning);
-    setPerf(null);
     setOpen(true);
   }
 
@@ -160,11 +141,6 @@ export function PageTuningMenu({
                 {count(tuning, viewport?.width ?? 1920, viewport?.height ?? 1080)}
               </span>
             )}
-            <span className="font-mono text-[10px] tabular-nums text-muted" title="Frames a second the screen is drawing, as it reports them">
-              {perf
-                ? `${perf.fps} fps on screen · ${perf.width}×${perf.height} @${perf.dpr}x`
-                : "Measuring the screen…"}
-            </span>
           </span>
           <button
             type="button"
