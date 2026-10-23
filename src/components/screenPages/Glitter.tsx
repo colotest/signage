@@ -44,7 +44,7 @@ export const GLITTER_TUNING = {
   // How big a cell — one flake's room — is, as a fraction of the screen's
   // short side, so a thumbnail and a 4K screen show the same cloud. Never
   // under MIN_CELL_PX, whatever this says.
-  cell: 0.0045,
+  cell: 0.006,
   // WebGL only: how many of the device's pixels the shader works in. The
   // cost is per pixel, so half of them is a quarter of the work; the browser
   // stretches the result back up, which softens each glint into a bloom.
@@ -64,7 +64,7 @@ export const GLITTER_TUNING = {
   // How exactly a flake has to line up to flash — the width of the
   // reflection, in the same units as the tilts. Smaller is rarer and
   // briefer and sharper.
-  sparkle: 0.04,
+  sparkle: 0.05,
   // How far each flake tumbles as it floats, and how fast. Tumbling is what
   // carries a flake through its flash, so it decides how long one lasts.
   tumble: 0.1,
@@ -73,12 +73,12 @@ export const GLITTER_TUNING = {
   lightSpeed: 1,
   drift: 1,
   // The dim glitter that is always there, between flashes.
-  bed: 0.16,
+  bed: 0.55,
   // How bright a flash can get, and how rare the bright ones are: each
   // flake's brightest is a power of a random number, so higher leaves most
   // of them faint and only a few strong.
-  gain: 3,
-  falloff: 2.2,
+  gain: 5.5,
+  falloff: 1.6,
   // The share of flakes that are holographic: rather than flashing silver,
   // they run through the three colours below as they turn.
   holo: 0.35,
@@ -88,7 +88,7 @@ export const GLITTER_TUNING = {
   // WebGL only: the big flakes, nearest of all, which bloom and throw a
   // cross of light when they flash — the share of their cells holding one.
   // Fine flakes make the cloud; these are the moments in it.
-  big: 0.6,
+  big: 0.8,
   // Canvas only: how many glints are born a second, per square of the
   // screen's short side.
   glints: 150,
@@ -294,7 +294,7 @@ export function Glitter({
               them darkened over the top, once. */}
           <div
             className="pointer-events-none absolute inset-0"
-            style={{ background: "radial-gradient(120% 90% at 50% 50%, rgba(0, 0, 0, 0) 45%, rgba(3, 2, 6, 0.6) 100%)" }}
+            style={{ background: "radial-gradient(120% 90% at 50% 50%, rgba(0, 0, 0, 0) 45%, rgba(3, 2, 6, 0.45) 100%)" }}
           />
         </>
       )}
@@ -554,7 +554,10 @@ vec3 flakes(vec2 at, vec2 screen, float cell, float seed, float density, float b
   // The dim bed fills a fine cell rather than sitting in it as a dot: at a
   // pixel or two it is grain, not points, and dots on a grid that fine
   // read as the grid. A big flake's bed is its own spot.
-  vec3 bed = uShine.x * (0.35 + 0.65 * c.w) * (0.3 + 0.7 * sheen) * mix(uSilver, tint, 0.5) * mix(0.5, cover, big);
+  // Squaring the flake's own brightness spreads the bed out — many near
+  // black, a few already catching some light — which is what gives the
+  // surface its roughness. Evenly lit, it reads as a grey haze.
+  vec3 bed = uShine.x * (0.1 + 0.9 * c.w * c.w) * (0.3 + 0.7 * sheen) * mix(uSilver, tint, 0.5) * mix(0.5, cover, big);
   vec3 flash = shine * uShine.y * mix(tint, vec3(1.0), glint * glint * 0.4) * light;
   return (bed + flash) * present;
 }
@@ -567,7 +570,7 @@ void main() {
   vec3 glitter = flakes(at + swirl + uDrift.xy, screen, uCell.x, 0.0, uFlake.x, 0.0)
     + uFar * flakes(at + swirl * 0.6 + uDrift.zw, screen, uCell.y, 17.0, uFlake.x, 0.0)
     + flakes(at + swirl * 1.4 + uDrift.xy * 1.4, screen, uCell.x * ${BIG_CELL}.0, 31.0, uBig, 1.0);
-  float vignette = 1.0 - 0.55 * smoothstep(0.35, 1.0, length(screen * vec2(0.85, 1.1)));
+  float vignette = 1.0 - 0.4 * smoothstep(0.4, 1.0, length(screen * vec2(0.85, 1.1)));
   gl_FragColor = vec4(uGround + (1.0 - uGround) * (1.0 - exp(-glitter * vignette)), 1.0);
 }
 `;
@@ -687,13 +690,18 @@ function compile(gl: WebGLRenderingContext, kind: number, source: string) {
 const BED_TILE = 256;
 
 // A tile of the dim bed, its flakes scattered one to a cell like the
-// shader's, so the two renderers show the same grain.
+// shader's, so the two renderers show much the same grain.
 function paintBed(side: number, cell: number, far: boolean, tune: GlitterTuning) {
   const tile = document.createElement("canvas");
   tile.width = tile.height = Math.round(side);
   const ctx = tile.getContext("2d");
   if (!ctx) return tile;
-  const palette = colours(tune).map(([r, g, b]) => `${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}`);
+  // Holographic flakes' dim colours are half silver, as in the shader:
+  // at full strength the bed turns to confetti.
+  const [silver, ...holo] = colours(tune);
+  const palette = [silver, ...holo.map((colour) => colour.map((channel, i) => (channel + silver[i]) / 2))].map(
+    ([r, g, b]) => `${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}`,
+  );
   const cells = Math.max(Math.round(side / cell), 1);
   const step = tile.width / cells;
   const brightness = tune.bed * (far ? tune.far : 1) * 1.1;
@@ -702,9 +710,12 @@ function paintBed(side: number, cell: number, far: boolean, tune: GlitterTuning)
       if (Math.random() > tune.density) continue;
       const holo = Math.random() < tune.holo;
       const colour = holo ? palette[1 + Math.floor(Math.random() * 3)] : palette[0];
-      ctx.fillStyle = `rgba(${colour}, ${Math.min(brightness * (0.35 + 0.65 * Math.random()), 1)})`;
+      const own = Math.random();
+      ctx.fillStyle = `rgba(${colour}, ${Math.min(brightness * (0.1 + 0.9 * own * own), 1)})`;
       const dot = Math.max(step * 0.36, 1);
-      ctx.fillRect((x + 0.26 + Math.random() * 0.48) * step - dot / 2, (y + 0.26 + Math.random() * 0.48) * step - dot / 2, dot, dot);
+      // Anywhere in the cell: unlike the shader's, a dot here can spill
+      // into its neighbour's, and held to the middle the bed reads as a grid.
+      ctx.fillRect((x + Math.random()) * step - dot / 2, (y + Math.random()) * step - dot / 2, dot, dot);
     }
   }
   return tile;
@@ -754,7 +765,7 @@ function createGlints(ctx: CanvasRenderingContext2D, width: number, height: numb
 
       // How many are born this frame: a Poisson draw, which is what makes
       // the timing random rather than merely irregular.
-      const expected = tune.glints * ((width * height) / (shortPx * shortPx)) * step * (tune.sparkle / 0.04);
+      const expected = tune.glints * ((width * height) / (shortPx * shortPx)) * step * (tune.sparkle / 0.05);
       const [hx, hy] = clock.hotspot();
       for (let born = poisson(expected); born > 0; born--) {
         const farLayer = Math.random() < 0.3;
@@ -791,7 +802,7 @@ function createGlints(ctx: CanvasRenderingContext2D, width: number, height: numb
       for (const glint of live) {
         const through = (age - glint.born) / glint.life;
         const shine = Math.exp(-(((through - 0.5) * 4) ** 2));
-        const strength = Math.min(shine * glint.peak * tune.gain * 0.33 * (glint.far ? tune.far : 1), 1);
+        const strength = Math.min(shine * glint.peak * tune.gain * 0.2 * (glint.far ? tune.far : 1), 1);
         const [dx, dy] = glint.far ? far : near;
         const x = glint.x - dx * shortPx;
         const y = glint.y - dy * shortPx;
