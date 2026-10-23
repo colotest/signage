@@ -44,7 +44,7 @@ export const GLITTER_TUNING = {
   // How big a cell — one flake's room — is, as a fraction of the screen's
   // short side, so a thumbnail and a 4K screen show the same cloud. Never
   // under MIN_CELL_PX, whatever this says.
-  cell: 0.006,
+  cell: 0.003,
   // WebGL only: how many of the device's pixels the shader works in. The
   // cost is per pixel, so half of them is a quarter of the work; the browser
   // stretches the result back up, which softens each glint into a bloom.
@@ -53,10 +53,10 @@ export const GLITTER_TUNING = {
   density: 0.78,
   // How unevenly the flakes are spread: slow patches, thicker and thinner,
   // drifting through the cloud. 0 is even all over.
-  clouds: 0.55,
+  clouds: 0.73,
   // How far from flat the flakes lie. Wider spreads the glints out across
   // the whole screen; narrower gathers them round the hotspot.
-  spread: 0.5,
+  spread: 0.42,
   // How much of the screen the hotspot covers: how fast the light's
   // reflection angle changes from one side to the other. Lower is a broader
   // hotspot.
@@ -68,20 +68,20 @@ export const GLITTER_TUNING = {
   // How far each flake tumbles as it floats, and how fast. Tumbling is what
   // carries a flake through its flash, so it decides how long one lasts.
   tumble: 0.1,
-  tumbleSpeed: 0.6,
+  tumbleSpeed: 2.75,
   // How fast the light wanders, and how fast the cloud floats about.
   lightSpeed: 1,
-  drift: 1,
+  drift: 2.1,
   // The dim glitter that is always there, between flashes.
   bed: 0.55,
   // How bright a flash can get, and how rare the bright ones are: each
   // flake's brightest is a power of a random number, so higher leaves most
   // of them faint and only a few strong.
   gain: 5.5,
-  falloff: 1.6,
+  falloff: 0.9,
   // The share of flakes that are holographic: rather than flashing silver,
   // they run through the three colours below as they turn.
-  holo: 0.35,
+  holo: 1,
   // The far layer: a second, finer cloud behind the first, at this fraction
   // of its brightness.
   far: 0.5,
@@ -95,11 +95,11 @@ export const GLITTER_TUNING = {
   // there are fewer cells that size to hold them.
   flare: 0.056,
   // How strong the cross of light through a flare is.
-  rays: 1,
+  rays: 3.7,
   // How strong the holographic colours are. 0 is the soft, film-like look:
   // light colours that bloom to white at their brightest. 1 is saturated
   // colour that holds even at full strength.
-  vivid: 0,
+  vivid: 0.49,
   // Canvas only: how many glints are born a second, per square of the
   // screen's short side.
   glints: 150,
@@ -553,6 +553,7 @@ vec3 flakes(vec2 at, vec2 screen, float cell, float seed, float density, float b
   float radius = mix(0.24, 0.36, a.y) * mix(1.0, 0.15, big) * cell * (0.8 + 0.45 * shine);
   float cover = exp(-dot(fromSpot, fromSpot) / (radius * radius + 0.3));
   float light = cover;
+  float whiteness = 0.0;
   if (big > 0.0) {
     // A soft bloom round the flash, and a faint cross through it, which
     // grows faster than the flash does, so only the strongest throw one.
@@ -568,6 +569,9 @@ vec3 flakes(vec2 at, vec2 screen, float cell, float seed, float density, float b
     float rays = exp(-along.x / reach - along.y * along.y * thin) * fade.x
       + exp(-along.y / reach - along.x * along.x * thin) * fade.y;
     light += 0.3 * bloom + uRays * shine * rays;
+    // White-hot at the middle, its colour only in the bloom and the cross
+    // around it, as a strong point of light looks through a lens.
+    whiteness = exp(-dot(fromSpot, fromSpot) / (radius * radius * 1.5 + 1.0));
   }
 
   // The dim bed fills a fine cell rather than sitting in it as a dot: at a
@@ -577,7 +581,8 @@ vec3 flakes(vec2 at, vec2 screen, float cell, float seed, float density, float b
   // black, a few already catching some light — which is what gives the
   // surface its roughness. Evenly lit, it reads as a grey haze.
   vec3 bed = uShine.x * (0.1 + 0.9 * c.w * c.w) * (0.3 + 0.7 * sheen) * mix(uSilver, tint, 0.5 + 0.5 * uVivid) * mix(0.5, cover, big);
-  vec3 flash = shine * uShine.y * mix(tint, vec3(1.0), glint * glint * 0.4 * (1.0 - uVivid)) * light;
+  vec3 colour = mix(tint, vec3(1.0), max(glint * glint * 0.4 * (1.0 - uVivid), whiteness));
+  vec3 flash = shine * uShine.y * colour * light;
   return (bed + flash) * present;
 }
 
