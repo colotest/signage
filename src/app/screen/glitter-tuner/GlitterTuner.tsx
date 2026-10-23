@@ -1,14 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { GLITTER_TUNING, Glitter, type GlitterStats, type GlitterTuning } from "@/components/screenPages/Glitter";
-import { GLITTER_DIALS as DIALS } from "@/components/screenPages/dials";
+import { GLITTER_DIALS as DIALS, glitterCount } from "@/components/screenPages/dials";
 
 export function GlitterTuner() {
   const [tuning, setTuning] = useState<GlitterTuning>(GLITTER_TUNING);
   const [renderer, setRenderer] = useState<"auto" | "canvas">("auto");
   const [stats, setStats] = useState<GlitterStats | null>(null);
   const [open, setOpen] = useState(true);
+  // The window is the screen here; read as a store so the server, which
+  // has none, renders a 1080p count and the browser its own.
+  const windowSize = useSyncExternalStore(
+    subscribeResize,
+    () => `${window.innerWidth}x${window.innerHeight}`,
+    () => "1920x1080",
+  );
   const changed = DIALS.filter(({ key }) => tuning[key] !== GLITTER_TUNING[key]);
 
   // What to paste back into Glitter.tsx — only the dials actually moved.
@@ -59,6 +66,10 @@ export function GlitterTuner() {
               ))}
             </div>
 
+            <p className="mt-3 font-mono text-[10px] text-white/50">
+              {glitterCount(tuning, ...windowSize.split("x").map(Number) as [number, number])}
+            </p>
+
             {DIALS.map(({ key, label, min, max, step, note }) => (
               <label key={key} title={note} className="mt-3 block">
                 <span className="flex items-baseline justify-between text-[11px]">
@@ -85,6 +96,11 @@ export function GlitterTuner() {
       </div>
     </div>
   );
+}
+
+function subscribeResize(onChange: () => void) {
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
 }
 
 function round(value: number) {

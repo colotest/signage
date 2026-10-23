@@ -1,4 +1,4 @@
-import { GLITTER_TUNING, type GlitterTuning } from "./Glitter";
+import { GLITTER_TUNING, countFlakes, type GlitterTuning } from "./Glitter";
 import { LAVA_TUNING, type LavaTuning } from "./LavaLamp";
 
 // The dials on the pages that take tuning, shared by the development tuners
@@ -59,10 +59,29 @@ export const GLITTER_DIALS: Dial<GlitterTuning>[] = [
 
 // The pages that can be tuned live, by the key their media item's
 // storage_path names ("page:<key>", see index.tsx).
-export const TUNABLE_PAGES = {
-  glitter: { name: "Glitter", defaults: GLITTER_TUNING as Record<string, number>, dials: GLITTER_DIALS as Dial<Record<string, number>>[] },
-  lavalamp: { name: "Lava Lamp", defaults: LAVA_TUNING as Record<string, number>, dials: LAVA_DIALS as Dial<Record<string, number>>[] },
+// `count`, where a page has one, says how much it's drawing on a screen of
+// the given size — a line for the top of its panel.
+type TunablePageInfo = {
+  name: string;
+  defaults: Record<string, number>;
+  dials: Dial<Record<string, number>>[];
+  count?: (tuning: Record<string, number>, width: number, height: number) => string;
 };
+
+export const TUNABLE_PAGES: Record<"glitter" | "lavalamp", TunablePageInfo> = {
+  glitter: {
+    name: "Glitter",
+    defaults: GLITTER_TUNING,
+    dials: GLITTER_DIALS as Dial<Record<string, number>>[],
+    count: (tuning, width, height) => glitterCount({ ...GLITTER_TUNING, ...tuning }, width, height),
+  },
+  lavalamp: { name: "Lava Lamp", defaults: LAVA_TUNING, dials: LAVA_DIALS as Dial<Record<string, number>>[] },
+};
+
+export function glitterCount(tuning: GlitterTuning, width: number, height: number) {
+  const { fine, big } = countFlakes(tuning, width, height);
+  return `≈ ${fine.toLocaleString("en")} flakes · ${big.toLocaleString("en")} big`;
+}
 
 export type TunablePage = keyof typeof TUNABLE_PAGES;
 

@@ -325,7 +325,13 @@ export function ScreenTile({
               {!renaming && tunable && (
                 // Keyed by page, so a screen moving from one to the other
                 // opens on that one's dials.
-                <PageTuningMenu key={tunable} screenId={screen.id} page={tunable} send={send} />
+                <PageTuningMenu
+                  key={tunable}
+                  screenId={screen.id}
+                  page={tunable}
+                  viewport={status?.viewport ?? null}
+                  send={send}
+                />
               )}
             </div>
 

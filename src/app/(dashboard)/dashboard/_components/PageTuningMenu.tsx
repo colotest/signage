@@ -22,13 +22,17 @@ const SEND_EVERY_MS = 120;
 export function PageTuningMenu({
   screenId,
   page,
+  viewport,
   send,
 }: {
   screenId: number;
   page: TunablePage;
+  // The size the screen lays its page out at, as it reports it — what a
+  // page's count is worked out for. Until it has, a 1080p screen.
+  viewport: { width: number; height: number } | null;
   send: (message: ControlMessage) => void;
 }) {
-  const { name, defaults, dials } = TUNABLE_PAGES[page];
+  const { name, defaults, dials, count } = TUNABLE_PAGES[page];
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   // What was last set from this browser, until something is set now. Read
@@ -130,7 +134,14 @@ export function PageTuningMenu({
         className="flex max-h-[min(560px,calc(100dvh-32px))] w-72 flex-col p-0"
       >
         <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-          <span className="text-[13px] font-semibold">{name}</span>
+          <span className="flex min-w-0 flex-col">
+            <span className="text-[13px] font-semibold">{name}</span>
+            {count && (
+              <span className="font-mono text-[10px] tabular-nums text-muted">
+                {count(tuning, viewport?.width ?? 1920, viewport?.height ?? 1080)}
+              </span>
+            )}
+          </span>
           <button
             type="button"
             onClick={() => change({ ...defaults })}

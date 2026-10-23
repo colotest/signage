@@ -321,6 +321,28 @@ export function Glitter({
   );
 }
 
+// How many flakes the shader lays out on a screen this size (in CSS
+// pixels), counted the way it cuts its cells: every cell of each layer
+// that holds one, with the clouds thinning them by half their amount on
+// average. A screen draws at most MAX_SHORT_PX down its short side, which
+// every TV reaches, so that is the size counted at.
+export function countFlakes(tune: GlitterTuning, width: number, height: number) {
+  const short = Math.min(width, height);
+  if (short <= 0) return { fine: 0, big: 0 };
+  const scale = (MAX_SHORT_PX / short) * tune.resolution;
+  const across = width * scale;
+  const down = height * scale;
+  const shortPx = short * scale;
+  const thinned = 1 - tune.clouds / 2;
+  const layer = (cell: number, density: number) =>
+    Math.floor(across / cell) * Math.floor(down / cell) * Math.min(Math.max(density, 0), 1) * thinned;
+  const near = wholeCell(tune.cell * shortPx);
+  return {
+    fine: Math.round(layer(near, tune.density) + layer(wholeCell(near * FAR_CELL), tune.density)),
+    big: Math.round(layer(wholeCell(tune.flare * shortPx), tune.big)),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // The clock both renderers keep. Each motion runs on its own, advanced by
 // the frame's time at its own dial's speed rather than read off the time
