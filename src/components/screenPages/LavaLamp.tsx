@@ -142,7 +142,7 @@ const HALO_STRENGTH = 0.16;
 // The lamp's own vessel. Deliberately not the screen's black/white
 // background setting: a lava lamp is a dark vessel, and a white one isn't
 // one.
-const GROUND = "#17031a";
+export const GROUND = "#17031a";
 // Every blob is this one colour, flat — which is also what lets two of them
 // become one, since the merging blur mixes colour as well as alpha and
 // there is nothing left to mix. What varies is not the wax but the light
@@ -186,7 +186,7 @@ const RAMP_STOPS: [number, string, number][] = [
 // one as CSS gradients on layers of their own, the shader as one picture
 // laid over the wax inside it (see paintLight).
 type Stop = [colour: string, at: number];
-type Light =
+export type Light =
   | { kind: "up"; stops: Stop[] }
   // An elliptical radial gradient: its radii and centre as fractions of
   // the box's width and height, like CSS's "74% 48% at 50% 110%".
@@ -261,7 +261,7 @@ const VIGNETTE: Light = {
 };
 
 // Every light layer, bottom to top, as the tuning places them.
-function lights(t: LavaTuning): Light[] {
+export function lights(t: LavaTuning): Light[] {
   return [heightRamp(t.rampStart, t.rampDepth), glow(t.lightDrop), LIGHT_FALLOFF, lamp(t.lightDrop), VIGNETTE];
 }
 
@@ -277,8 +277,15 @@ function css(light: Light) {
 // the wax: layers laid over one another one by one come to the same as a
 // single layer that is their sum, so five full-screen blends a frame
 // become one texture read. Smooth gradients, so a small canvas does.
-function paintLight(ctx: CanvasRenderingContext2D, layers: Light[], width: number, height: number) {
-  ctx.clearRect(0, 0, width, height);
+export function paintLight(
+  ctx: CanvasRenderingContext2D,
+  layers: Light[],
+  width: number,
+  height: number,
+  // Painted over what's already there, rather than onto a clear canvas.
+  { over = false }: { over?: boolean } = {},
+) {
+  if (!over) ctx.clearRect(0, 0, width, height);
   for (const light of layers) {
     ctx.save();
     let gradient: CanvasGradient;
@@ -302,7 +309,7 @@ function paintLight(ctx: CanvasRenderingContext2D, layers: Light[], width: numbe
   }
 }
 
-type Blob = {
+export type Blob = {
   // Across the screen, and how far up it starts, as fractions of the box.
   x: number;
   y: number;
@@ -321,7 +328,7 @@ type Blob = {
 };
 
 
-const BLOBS: Blob[] = [
+export const BLOBS: Blob[] = [
   { x: 0.26, y: 0.74, size: 0.3, motion: "rise", duration: 164, delay: -3, travel: 0.74, sway: 0.09 },
   { x: 0.62, y: 0.8, size: 0.4, motion: "rise", duration: 236, delay: -31, travel: 0.86, sway: -0.12 },
   { x: 0.46, y: 0.5, size: 0.46, motion: "swell", duration: 192, delay: -17, travel: 0.34, sway: 0.07 },
@@ -381,7 +388,7 @@ const POSES: Record<Blob["motion"], { at: number; x: number; y: number; sx: numb
 // keyframes rather than running straight at them, so this does too — a
 // cosine, which is near enough ease-in-out that the difference does not
 // show at this speed.
-function poseAt(motion: Blob["motion"], phase: number) {
+export function poseAt(motion: Blob["motion"], phase: number) {
   const poses = POSES[motion];
   const at = ((phase % 1) + 1) % 1;
   let i = 0;
@@ -769,7 +776,7 @@ export function LavaLamp({
 // saturation and lightness so the tuner can move them, but a blob's falloff
 // needs that colour at several alphas — and hsl() with a slash alpha is
 // newer than some of the kiosk browsers this has to run on.
-function hslToRgb(hue: number, saturation: number, lightness: number) {
+export function hslToRgb(hue: number, saturation: number, lightness: number) {
   const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
   const sector = ((((hue % 360) + 360) % 360) / 60);
   const second = chroma * (1 - Math.abs((sector % 2) - 1));
@@ -871,7 +878,7 @@ function profileFor(bodyInReaches: number) {
 }
 
 // Counts frames for the tuner's readout, reporting once a second.
-function frameCounter(renderer: LavaStats["renderer"], statsRef: { current: ((stats: LavaStats) => void) | undefined }) {
+export function frameCounter(renderer: LavaStats["renderer"], statsRef: { current: ((stats: LavaStats) => void) | undefined }) {
   let counted = 0;
   let since = -1;
   return (now: number) => {
@@ -1107,10 +1114,10 @@ function createShader(canvas: HTMLCanvasElement) {
 }
 
 // "r, g, b" (see hslToRgb) and "#rrggbb", as 0–1 channels.
-function rgbChannels(rgb: string) {
+export function rgbChannels(rgb: string) {
   return rgb.split(",").map((channel) => Number(channel) / 255) as [number, number, number];
 }
 
-function hexChannels(hex: string) {
+export function hexChannels(hex: string) {
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
 }

@@ -5,6 +5,7 @@ import type { MediaItem } from "@/types/domain";
 import { ClockFace } from "./ClockFace";
 import { Glitter } from "./Glitter";
 import { LavaLamp } from "./LavaLamp";
+import { LavaLamp3D } from "./LavaLamp3D";
 
 // Pages are built-in, code-rendered slides (see 0013/0014 migrations). Each
 // one is still a media_items row, so it goes through the library, playlists
@@ -18,6 +19,7 @@ const PAGES: Record<string, ComponentType<PageProps>> = {
   clock: ClockFace,
   lavalamp: LavaLamp,
   glitter: Glitter,
+  lavalamp3d: LavaLamp3D,
 };
 
 const PREFIX = "page:";

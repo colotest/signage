@@ -1,5 +1,6 @@
 import { GLITTER_TUNING, countFlakes, type GlitterTuning } from "./Glitter";
 import { LAVA_TUNING, type LavaTuning } from "./LavaLamp";
+import { LAVA_3D_TUNING, type Lava3DTuning } from "./LavaLamp3D";
 
 // The dials on the pages that take tuning, shared by the development tuners
 // (/screen/lava-tuner, /screen/glitter-tuner) and the live tuning panel on
@@ -59,6 +60,33 @@ export const GLITTER_DIALS: Dial<GlitterTuning>[] = [
   { key: "greenHue", label: "Green hue", min: 0, max: 360, step: 1, note: "The other end of the holographic run." },
 ];
 
+export const LAVA_3D_DIALS: Dial<Lava3DTuning>[] = [
+  { key: "speed", label: "Slowness", min: 0.3, max: 3, step: 0.05, note: "Multiplies every drift's duration. Above 1 is slower." },
+  { key: "merge", label: "Merge reach", min: 0.2, max: 1.5, step: 0.02, note: "How far past its own size each blob's pull reaches: how readily two run together, and how thick the neck between them." },
+  { key: "depth", label: "Lamp depth", min: 0, max: 1, step: 0.01, note: "How deep the lamp is, as a fraction of the screen: how far apart in depth the blobs lie. At 0 it's flat, and everything merges." },
+  { key: "haze", label: "Haze", min: 0, max: 4, step: 0.05, note: "How thick the liquid is: how far the blobs at the back sink into its colour." },
+  { key: "softness", label: "Edge softness", min: 0.005, max: 0.3, step: 0.005, note: "How soft an edge is; the back of the lamp is softer again." },
+  { key: "bulb", label: "Bulb", min: 0, max: 10, step: 0.1, note: "How strong the bulb under the lamp is." },
+  { key: "bulbReach", label: "Bulb reach", min: 0.1, max: 2, step: 0.02, note: "How far up the lamp its light carries, as a fraction of the screen's height." },
+  { key: "lightDrop", label: "Light drop", min: -6, max: 40, step: 1, note: "How far below the bottom edge the bulb sits, in percent of the height." },
+  { key: "wrap", label: "Light wrap", min: 0, max: 1.5, step: 0.02, note: "How far the bulb's light reaches round the wax past where it would stop on something opaque." },
+  { key: "absorb", label: "Wax density", min: 0, max: 5, step: 0.05, note: "How much light thick wax swallows — blue first, so thick wax runs deep red." },
+  { key: "glow", label: "Translucence", min: 0, max: 3, step: 0.05, note: "How strongly thin wax and edges glow with the light that gets through." },
+  { key: "ambient", label: "Ambient", min: 0, max: 0.5, step: 0.01, note: "Light from nowhere in particular, so the shaded tops aren't black." },
+  { key: "shine", label: "Highlight", min: 0, max: 3, step: 0.05, note: "How strong the bulb's highlight on the wax is." },
+  { key: "gloss", label: "Gloss", min: 2, max: 200, step: 1, note: "How tight the highlights are: higher is glossier." },
+  { key: "topLight", label: "Light from above", min: 0, max: 2, step: 0.05, note: "The softer highlight from over the top." },
+  { key: "halo", label: "Halo", min: 0, max: 2, step: 0.02, note: "The glow hot wax throws into the liquid just around it." },
+  { key: "exposure", label: "Exposure", min: 0.3, max: 4, step: 0.05, note: "How brightly the wax is exposed; past 1 it rolls off rather than clipping." },
+  { key: "waxHue", label: "Wax hue", min: 0, max: 360, step: 1, note: "The wax's colour." },
+  { key: "waxSaturation", label: "Wax saturation", min: 0, max: 100, step: 1, note: "How far from grey the wax sits." },
+  { key: "waxLightness", label: "Wax lightness", min: 20, max: 80, step: 0.5, note: "How light the wax is before any light reaches it." },
+  { key: "rampDepth", label: "Gradient depth", min: 0, max: 1.8, step: 0.05, note: "How far the liquid darkens towards the top." },
+  { key: "rampStart", label: "Gradient start", min: 0, max: 0.7, step: 0.02, note: "How far up the screen that darkening begins." },
+  { key: "resolution", label: "Resolution", min: 0.2, max: 1, step: 0.05, note: "The share of the device's pixels the shader works in. The cost goes with its square." },
+  { key: "fps", label: "Frame cap", min: 10, max: 60, step: 1, note: "Frames a second at most." },
+];
+
 // The pages that can be tuned live, by the key their media item's
 // storage_path names ("page:<key>", see index.tsx).
 // `count`, where a page has one, says how much it's drawing on a screen of
@@ -70,7 +98,7 @@ type TunablePageInfo = {
   count?: (tuning: Record<string, number>, width: number, height: number) => string;
 };
 
-export const TUNABLE_PAGES: Record<"glitter" | "lavalamp", TunablePageInfo> = {
+export const TUNABLE_PAGES: Record<"glitter" | "lavalamp" | "lavalamp3d", TunablePageInfo> = {
   glitter: {
     name: "Glitter",
     defaults: GLITTER_TUNING,
@@ -78,6 +106,7 @@ export const TUNABLE_PAGES: Record<"glitter" | "lavalamp", TunablePageInfo> = {
     count: (tuning, width, height) => glitterCount({ ...GLITTER_TUNING, ...tuning }, width, height),
   },
   lavalamp: { name: "Lava Lamp", defaults: LAVA_TUNING, dials: LAVA_DIALS as Dial<Record<string, number>>[] },
+  lavalamp3d: { name: "Lava Lamp 3D", defaults: LAVA_3D_TUNING, dials: LAVA_3D_DIALS as Dial<Record<string, number>>[] },
 };
 
 export function glitterCount(tuning: GlitterTuning, width: number, height: number) {
