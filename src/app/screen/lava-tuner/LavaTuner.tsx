@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { LAVA_TUNING, LavaLamp, type LavaTuning } from "@/components/screenPages/LavaLamp";
+import { LAVA_TUNING, LavaLamp, type LavaStats, type LavaTuning } from "@/components/screenPages/LavaLamp";
 import { LAVA_DIALS as DIALS } from "@/components/screenPages/dials";
 
 export function LavaTuner() {
   const [tuning, setTuning] = useState<LavaTuning>(LAVA_TUNING);
   const [open, setOpen] = useState(true);
+  const [renderer, setRenderer] = useState<"auto" | "canvas">("auto");
+  const [stats, setStats] = useState<LavaStats | null>(null);
   const changed = DIALS.filter(({ key }) => tuning[key] !== LAVA_TUNING[key]);
 
   // What to paste back into LavaLamp.tsx — only the dials actually moved,
@@ -17,12 +19,15 @@ export function LavaTuner() {
 
   return (
     <div className="relative h-dvh w-dvw overflow-hidden bg-black">
-      <LavaLamp tuning={tuning} />
+      <LavaLamp tuning={tuning} renderer={renderer} onStats={setStats} />
 
       <div className="absolute left-4 top-4 w-[300px] rounded-[14px] border border-white/15 bg-black/70 text-white backdrop-blur-xl">
         <div className="flex items-center justify-between px-3 py-2">
           <span className="text-[13px] font-medium tracking-tight">Lava Lamp</span>
           <div className="flex items-center gap-2">
+            <span className="font-mono text-[11px] text-white/50">
+              {stats ? `${stats.renderer} · ${stats.fps} fps` : "…"}
+            </span>
             <button
               type="button"
               onClick={() => setTuning(LAVA_TUNING)}
@@ -42,6 +47,19 @@ export function LavaTuner() {
 
         {open && (
           <div className="max-h-[80vh] overflow-y-auto border-t border-white/10 px-3 pb-3">
+            <div className="mt-3 flex gap-1 text-[11px]">
+              {(["auto", "canvas"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setRenderer(option)}
+                  className={`flex-1 rounded-full px-2 py-1 ${renderer === option ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10"}`}
+                >
+                  {option === "auto" ? "WebGL if it can" : "Canvas only"}
+                </button>
+              ))}
+            </div>
+
             {DIALS.map(({ key, label, min, max, step, note }) => (
               <label key={key} title={note} className="mt-3 block">
                 <span className="flex items-baseline justify-between text-[11px]">

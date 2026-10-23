@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPass, webglUsable } from "./webgl";
 
 // A cloud of glitter the size of the screen, floating in the dark: a dense
 // bed of dim flakes, and every so often one of them catching the light. It
@@ -420,47 +421,6 @@ function runFrames(
 // ---------------------------------------------------------------------------
 // The shader.
 
-// Whether this browser can run the shader at all, found out once with a
-// throwaway context and given straight back. It needs highp floats in the
-// fragment shader — the cell hashes and the positions inside each cell are
-// garbage at half precision — and it asks the browser to refuse outright
-// rather than fall back on drawing WebGL in software, which on a stick
-// would be far slower than the canvas renderer.
-let webglVerdict: boolean | undefined;
-
-function webglUsable() {
-  if (webglVerdict !== undefined) return webglVerdict;
-  if (typeof document === "undefined") return false;
-  const gl = getWebgl(document.createElement("canvas"));
-  const high = gl?.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
-  webglVerdict = !!high && high.precision >= 23;
-  gl?.getExtension("WEBGL_lose_context")?.loseContext();
-  return webglVerdict;
-}
-
-function getWebgl(canvas: HTMLCanvasElement) {
-  const options: WebGLContextAttributes = {
-    // Opaque: the shader paints the ground itself, and an opaque canvas
-    // composites as a plain copy rather than a blend.
-    alpha: false,
-    antialias: false,
-    depth: false,
-    stencil: false,
-    preserveDrawingBuffer: false,
-    failIfMajorPerformanceCaveat: true,
-    powerPreference: "low-power",
-  };
-  return (canvas.getContext("webgl", options) ??
-    canvas.getContext("experimental-webgl", options)) as WebGLRenderingContext | null;
-}
-
-const VERTEX = `
-attribute vec2 aPosition;
-void main() {
-  gl_Position = vec4(aPosition, 0.0, 1.0);
-}
-`;
-
 // Every pixel works out which cell it is in, and from the cell's own hash
 // everything about the flake there: whether there is one, where in the cell
 // it sits, how big, how it is tilted, how bright it can get, and whether it
@@ -630,41 +590,17 @@ void main() {
 `;
 
 function createShader(canvas: HTMLCanvasElement) {
-  const gl = getWebgl(canvas);
-  if (!gl) return null;
-  const program = gl.createProgram();
-  const parts = [compile(gl, gl.VERTEX_SHADER, VERTEX), compile(gl, gl.FRAGMENT_SHADER, FRAGMENT)];
-  if (!program || parts.some((part) => !part)) return null;
-  for (const part of parts) gl.attachShader(program, part!);
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    console.warn("Glitter: shader didn't link", gl.getProgramInfoLog(program));
-    return null;
-  }
-  gl.useProgram(program);
-
-  // One triangle twice the screen's size covers all of it, with no seam
-  // down a diagonal for two triangles to meet along.
-  const buffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  const position = gl.getAttribLocation(program, "aPosition");
-  gl.enableVertexAttribArray(position);
-  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-
-  const names = [
+  const pass = createPass(canvas, "Glitter", FRAGMENT, [
     "uResolution", "uCell", "uLight", "uSweep", "uTumble1", "uTumble2", "uTumble3", "uDrift", "uSwirl",
-    "uClouds", "uFlake", "uShine", "uFar", "uBig", "uBigCell", "uRays", "uVivid", "uGround", "uSilver", "uPurple", "uOrange", "uGreen",
-  ] as const;
-  const at = Object.fromEntries(names.map((name) => [name, gl.getUniformLocation(program, name)])) as Record<
-    (typeof names)[number],
-    WebGLUniformLocation | null
-  >;
+    "uClouds", "uFlake", "uShine", "uFar", "uBig", "uBigCell", "uRays", "uVivid", "uGround", "uSilver", "uPurple",
+    "uOrange", "uGreen",
+  ] as const);
+  if (!pass) return null;
+  const { gl, at } = pass;
 
   return {
     draw(width: number, height: number, shortPx: number, cell: number, clock: Clock, tune: GlitterTuning) {
       if (gl.isContextLost()) return;
-      gl.viewport(0, 0, width, height);
       gl.uniform2f(at.uResolution, width, height);
       gl.uniform3f(at.uCell, cell, wholeCell(cell * FAR_CELL), 1 / shortPx);
       // The hotspot is where a flat flake reflects the light, which is
@@ -710,13 +646,9 @@ function createShader(canvas: HTMLCanvasElement) {
       gl.uniform3f(at.uPurple, ...palette[1]);
       gl.uniform3f(at.uOrange, ...palette[2]);
       gl.uniform3f(at.uGreen, ...palette[3]);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      pass.draw(width, height);
     },
-    dispose() {
-      gl.deleteBuffer(buffer);
-      gl.deleteProgram(program);
-      parts.forEach((part) => gl.deleteShader(part));
-    },
+    dispose: pass.dispose,
   };
 }
 
@@ -725,18 +657,6 @@ function createShader(canvas: HTMLCanvasElement) {
 // pixel grid in faint stripes.
 function wholeCell(px: number) {
   return Math.max(Math.round(px), MIN_CELL_PX);
-}
-
-function compile(gl: WebGLRenderingContext, kind: number, source: string) {
-  const shader = gl.createShader(kind);
-  if (!shader) return null;
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    console.warn("Glitter: shader didn't compile", gl.getShaderInfoLog(shader));
-    return null;
-  }
-  return shader;
 }
 
 // ---------------------------------------------------------------------------

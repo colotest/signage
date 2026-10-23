@@ -26,6 +26,8 @@ export const LAVA_DIALS: Dial<LavaTuning>[] = [
   { key: "rampDepth", label: "Gradient depth", min: 0, max: 1.8, step: 0.05, note: "How far into the vessel's dark a blob sinks as it rises. Zero is one flat colour top to bottom." },
   { key: "rampStart", label: "Gradient start", min: 0, max: 0.7, step: 0.02, note: "How far up the screen the darkening begins. Higher keeps the lower half at full strength." },
   { key: "lightDrop", label: "Light drop", min: -6, max: 22, step: 1, note: "How far below the bottom edge the bulb's centre sits, in percent of the height." },
+  { key: "resolution", label: "Resolution", min: 0.2, max: 1, step: 0.05, note: "WebGL only: the share of the device's pixels the shader works in. Half is a quarter of the cost; wax is smooth enough not to show it." },
+  { key: "fps", label: "Frame cap", min: 10, max: 60, step: 1, note: "WebGL only: frames a second at most." },
 ];
 
 export const GLITTER_DIALS: Dial<GlitterTuning>[] = [

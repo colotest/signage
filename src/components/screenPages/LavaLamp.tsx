@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPass, webglUsable } from "./webgl";
 
 // A lava lamp the size of the screen: warm blobs rising and falling through
 // a dark ground, in the same burgundy-to-amber the clock's second hand
@@ -33,6 +34,16 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 // what went wrong the first time this was tried: a bell falling away from
 // the middle gave a blob no flat body, and the density shading and the lit
 // edges read that as a lens inside each one.
+//
+// That is the canvas renderer. Where WebGL can be had, a shader does all of
+// it instead, in one pass (see FRAGMENT at the bottom): the same mounds,
+// summed per pixel straight from the same profiles, the same filter steps
+// worked through in the same colour space, and the light layers laid over
+// as one picture. A Fire TV stick spends most of the canvas renderer's
+// frame running that filter over the whole screen; the shader does the
+// same arithmetic in a fraction of it. The canvas renderer stays for
+// library thumbnails, sticks without WebGL, and a lost context, as
+// Glitter's does.
 //
 // The motion is a requestAnimationFrame loop, since something has to paint
 // the field. It is the only thing on the main thread, and a dropped frame
@@ -169,12 +180,26 @@ const RAMP_STOPS: [number, string, number][] = [
   [1, "24, 3, 20", 0.741],
 ];
 
-function heightRamp(start: number, depth: number) {
-  const stops = RAMP_STOPS.map(
-    ([at, colour, alpha]) =>
-      `rgba(${colour}, ${Math.min(alpha * depth, 1)}) ${Math.round((start + at * (1 - start)) * 100)}%`,
-  );
-  return `linear-gradient(to top, ${stops.join(", ")})`;
+// The light layers over the wax — the ramp above, and the lamp's glow, its
+// falloff, the bulb and the vignette below — held as data rather than as
+// CSS, so the two renderers paint them from the same numbers: the canvas
+// one as CSS gradients on layers of their own, the shader as one picture
+// laid over the wax inside it (see paintLight).
+type Stop = [colour: string, at: number];
+type Light =
+  | { kind: "up"; stops: Stop[] }
+  // An elliptical radial gradient: its radii and centre as fractions of
+  // the box's width and height, like CSS's "74% 48% at 50% 110%".
+  | { kind: "ellipse"; size: [number, number]; at: [number, number]; stops: Stop[] };
+
+function heightRamp(start: number, depth: number): Light {
+  return {
+    kind: "up",
+    stops: RAMP_STOPS.map(([at, colour, alpha]) => [
+      `rgba(${colour}, ${Math.min(alpha * depth, 1)})`,
+      Math.round((start + at * (1 - start)) * 100) / 100,
+    ]),
+  };
 }
 // The lamp itself, below the glass: a hot pool at the base and the cone it
 // throws up through the vessel.
@@ -187,20 +212,95 @@ function heightRamp(start: number, depth: number) {
 // where a lamp's own bulb would be.
 const LIGHT_DROP = 10;
 
-function glow(drop: number) {
-  return `radial-gradient(74% 48% at 50% ${100 + drop}%, rgba(255, 104, 104, 0.5) 0%, rgba(255, 66, 118, 0.16) 44%, rgba(220, 40, 140, 0) 78%)`;
+function glow(drop: number): Light {
+  return {
+    kind: "ellipse",
+    size: [0.74, 0.48],
+    at: [0.5, 1 + drop / 100],
+    stops: [
+      ["rgba(255, 104, 104, 0.5)", 0],
+      ["rgba(255, 66, 118, 0.16)", 0.44],
+      ["rgba(220, 40, 140, 0)", 0.78],
+    ],
+  };
 }
 
-function lamp(drop: number) {
-  return `radial-gradient(44% 17% at 50% ${100 + drop}%, rgba(255, 244, 214, 0.92) 0%, rgba(255, 170, 90, 0.55) 36%, rgba(255, 70, 120, 0) 100%)`;
+function lamp(drop: number): Light {
+  return {
+    kind: "ellipse",
+    size: [0.44, 0.17],
+    at: [0.5, 1 + drop / 100],
+    stops: [
+      ["rgba(255, 244, 214, 0.92)", 0],
+      ["rgba(255, 170, 90, 0.55)", 0.36],
+      ["rgba(255, 70, 120, 0)", 1],
+    ],
+  };
 }
 // Laid over everything, so whatever sits low in the vessel — wax most of
 // all — is lit hotter than what has risen away from the light. Plain alpha
 // again, for the same reason as the ramp: over a dark vessel it lands close
 // enough to the screen blend it replaces.
-const LIGHT_FALLOFF =
-  "linear-gradient(to top, rgba(255, 186, 120, 0.4) 0%, rgba(255, 126, 96, 0.17) 24%, rgba(230, 80, 140, 0.05) 50%, rgba(200, 60, 160, 0) 72%)";
-const VIGNETTE = "radial-gradient(118% 86% at 50% 48%, rgba(0, 0, 0, 0) 52%, rgba(6, 0, 10, 0.74) 100%)";
+const LIGHT_FALLOFF: Light = {
+  kind: "up",
+  stops: [
+    ["rgba(255, 186, 120, 0.4)", 0],
+    ["rgba(255, 126, 96, 0.17)", 0.24],
+    ["rgba(230, 80, 140, 0.05)", 0.5],
+    ["rgba(200, 60, 160, 0)", 0.72],
+  ],
+};
+const VIGNETTE: Light = {
+  kind: "ellipse",
+  size: [1.18, 0.86],
+  at: [0.5, 0.48],
+  stops: [
+    ["rgba(0, 0, 0, 0)", 0.52],
+    ["rgba(6, 0, 10, 0.74)", 1],
+  ],
+};
+
+// Every light layer, bottom to top, as the tuning places them.
+function lights(t: LavaTuning): Light[] {
+  return [heightRamp(t.rampStart, t.rampDepth), glow(t.lightDrop), LIGHT_FALLOFF, lamp(t.lightDrop), VIGNETTE];
+}
+
+function css(light: Light) {
+  const percent = (value: number) => `${Math.round(value * 10000) / 100}%`;
+  const stops = light.stops.map(([colour, at]) => `${colour} ${percent(at)}`).join(", ");
+  return light.kind === "up"
+    ? `linear-gradient(to top, ${stops})`
+    : `radial-gradient(${percent(light.size[0])} ${percent(light.size[1])} at ${percent(light.at[0])} ${percent(light.at[1])}, ${stops})`;
+}
+
+// Every light layer flattened into one picture, for the shader to lay over
+// the wax: layers laid over one another one by one come to the same as a
+// single layer that is their sum, so five full-screen blends a frame
+// become one texture read. Smooth gradients, so a small canvas does.
+function paintLight(ctx: CanvasRenderingContext2D, layers: Light[], width: number, height: number) {
+  ctx.clearRect(0, 0, width, height);
+  for (const light of layers) {
+    ctx.save();
+    let gradient: CanvasGradient;
+    if (light.kind === "up") {
+      gradient = ctx.createLinearGradient(0, height, 0, 0);
+    } else {
+      // A circle of radius 1, stretched into the ellipse.
+      const [rx, ry] = [light.size[0] * width, light.size[1] * height];
+      ctx.translate(light.at[0] * width, light.at[1] * height);
+      ctx.scale(rx, ry);
+      gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    }
+    for (const [colour, at] of light.stops) gradient.addColorStop(Math.min(Math.max(at, 0), 1), colour);
+    ctx.fillStyle = gradient;
+    if (light.kind === "up") ctx.fillRect(0, 0, width, height);
+    else {
+      const [cx, cy] = [light.at[0] / light.size[0], light.at[1] / light.size[1]];
+      ctx.fillRect(-cx, -cy, 1 / light.size[0], 1 / light.size[1]);
+    }
+    ctx.restore();
+  }
+}
 
 type Blob = {
   // Across the screen, and how far up it starts, as fractions of the box.
@@ -332,18 +432,51 @@ export const LAVA_TUNING = {
   rampDepth: 1,
   rampStart: RAMP_START,
   lightDrop: LIGHT_DROP,
+  // WebGL only: how many of the device's pixels the shader works in. Wax
+  // is smooth, so half of them — a quarter of the work — loses nothing
+  // the stretch back up doesn't smooth over.
+  resolution: 0.5,
+  // WebGL only: frames a second, at most. A lamp turns itself over in
+  // minutes; the headroom is the stick's to keep cool with.
+  fps: 30,
 };
 
 export type LavaTuning = typeof LAVA_TUNING;
 
+// Which renderer ran, and how fast — the tuner shows it.
+export type LavaStats = { renderer: "webgl" | "canvas"; fps: number };
+
+// Below this short side, in CSS pixels, the canvas renderer draws: nothing
+// that small needs a shader, and every library thumbnail holding a WebGL
+// context would run the browser out of them.
+const MIN_WEBGL_SIDE = 240;
+// The most device pixels down the short side the shader works in; a 4K
+// screen gets the 1080p lamp stretched up.
+const MAX_SHORT_PX = 1080;
+
 export function LavaLamp({
   tuning,
+  renderer = "auto",
+  onStats,
 }: {
   now?: () => number;
   tuning?: Partial<LavaTuning>;
+  // The tuner can hold the canvas renderer on, to compare the two.
+  renderer?: "auto" | "canvas";
+  onStats?: (stats: LavaStats) => void;
 } = {}) {
   const t = { ...LAVA_TUNING, ...tuning };
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const glCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [webglLost, setWebglLost] = useState(false);
+  // The shader reads the dials from here each frame rather than starting
+  // over on every change.
+  const tuningRef = useRef(t);
+  const statsRef = useRef(onStats);
+  useEffect(() => {
+    tuningRef.current = t;
+    statsRef.current = onStats;
+  });
   const rootRef = useRef<HTMLDivElement>(null);
   // Scoped to this lamp: a library page draws several at once, and an SVG
   // filter is referenced by id.
@@ -372,6 +505,11 @@ export function LavaLamp({
 
   // Everything inside the filtered layer is in its own smaller pixels.
   const short = Math.min(size.width, size.height);
+  const mode = renderer === "auto" && !webglLost && short >= MIN_WEBGL_SIDE && webglUsable() ? "webgl" : "canvas";
+  const pixelScale =
+    short > 0
+      ? Math.min(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, MAX_SHORT_PX / short) * t.resolution
+      : 1;
   const lift = short * t.lift;
   // The gain only decides how many pixels the edge takes; the cut decides
   // where it falls. Multiplying them keeps the two independent, so
@@ -386,7 +524,7 @@ export function LavaLamp({
   // instead of amplified — and the gradients have no corners to crease.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || size.width === 0) return;
+    if (mode !== "canvas" || !canvas || size.width === 0) return;
     const context = canvas.getContext("2d");
     if (!context) return;
 
@@ -402,7 +540,9 @@ export function LavaLamp({
     const started = litRef.current;
 
     let frame = 0;
+    const count = frameCounter("canvas", statsRef);
     function paint(now: number) {
+      count(now);
       const ctx = context!;
       const seconds = (now - started) / 1000;
       ctx.clearRect(0, 0, canvas!.width, canvas!.height);
@@ -440,7 +580,56 @@ export function LavaLamp({
 
     frame = requestAnimationFrame(paint);
     return () => cancelAnimationFrame(frame);
-  }, [size.width, size.height, t.fieldScale, t.blobAlpha, t.reach, t.speed, wax]);
+  }, [mode, size.width, size.height, t.fieldScale, t.blobAlpha, t.reach, t.speed, wax]);
+
+  // The shader's painter: one pass a frame, at most fps a second.
+  useEffect(() => {
+    const canvas = glCanvasRef.current;
+    if (mode !== "webgl" || !canvas || size.width === 0) return;
+    canvas.width = Math.max(Math.round(size.width * pixelScale), 1);
+    canvas.height = Math.max(Math.round(size.height * pixelScale), 1);
+    const shader = createShader(canvas);
+    if (!shader) {
+      setWebglLost(true);
+      return;
+    }
+    // A stick short of memory, or a browser with too many open: the canvas
+    // renderer carries on in its place.
+    function lost(event: Event) {
+      event.preventDefault();
+      setWebglLost(true);
+    }
+    canvas.addEventListener("webglcontextlost", lost);
+
+    litRef.current ??= performance.now();
+    const started = litRef.current;
+    const count = frameCounter("webgl", statsRef);
+    const { width, height } = size;
+    let frame = 0;
+    let last = -1;
+    function tick(now: number) {
+      frame = requestAnimationFrame(tick);
+      const tune = tuningRef.current;
+      if (last >= 0 && now - last < 1000 / tune.fps - 2) return;
+      last = now;
+      count(now);
+      shader!.draw(canvas!.width, canvas!.height, width, height, (now - started) / 1000, tune);
+    }
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      canvas.removeEventListener("webglcontextlost", lost);
+      shader.dispose();
+    };
+  }, [mode, size, pixelScale]);
+
+  if (mode === "webgl") {
+    return (
+      <div ref={rootRef} className="relative h-full w-full overflow-hidden" style={{ background: GROUND }}>
+        {short > 0 && <canvas key="webgl" ref={glCanvasRef} className="absolute inset-0 block h-full w-full" />}
+      </div>
+    );
+  }
 
 
   return (
@@ -546,6 +735,7 @@ export function LavaLamp({
           }}
         >
           <canvas
+            key="canvas"
             ref={canvasRef}
             className="h-full w-full"
             // The bitmap is a quarter of this box on each side; the browser
@@ -560,17 +750,17 @@ export function LavaLamp({
           full strength by the bulb and sinks into the vessel's dark as it
           rises. Over the ground, which is nearly black already, it barely
           registers. */}
-      <div className="pointer-events-none absolute inset-0" style={{ background: heightRamp(t.rampStart, t.rampDepth) }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: css(heightRamp(t.rampStart, t.rampDepth)) }} />
 
       {/* The light itself, and what it does to everything above it. All of
           these sit outside the filtered layer, so none of them is dragged
           through the alpha push, and all are static: one paint each and
           nothing after that. The ramp above cannot touch them — they are
           the lamp, not the wax. */}
-      <div className="pointer-events-none absolute inset-0" style={{ background: glow(t.lightDrop) }} />
-      <div className="pointer-events-none absolute inset-0" style={{ background: LIGHT_FALLOFF }} />
-      <div className="pointer-events-none absolute inset-0" style={{ background: lamp(t.lightDrop) }} />
-      <div className="pointer-events-none absolute inset-0" style={{ background: VIGNETTE }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: css(glow(t.lightDrop)) }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: css(LIGHT_FALLOFF) }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: css(lamp(t.lightDrop)) }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: css(VIGNETTE) }} />
     </div>
   );
 }
@@ -678,4 +868,249 @@ function profileFor(bodyInReaches: number) {
     PROFILES.set(key, profile);
   }
   return profile;
+}
+
+// Counts frames for the tuner's readout, reporting once a second.
+function frameCounter(renderer: LavaStats["renderer"], statsRef: { current: ((stats: LavaStats) => void) | undefined }) {
+  let counted = 0;
+  let since = -1;
+  return (now: number) => {
+    counted++;
+    if (since < 0) since = now;
+    if (now - since < 1000) return;
+    statsRef.current?.({ renderer, fps: Math.round((counted * 1000) / (now - since)) });
+    counted = 0;
+    since = now;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The shader.
+
+// Where a blob is at this moment, and how big, in whatever pixels the box
+// is measured in — the same placing the canvas renderer works out inline.
+function placeBlob(blob: Blob, seconds: number, t: LavaTuning, width: number, height: number) {
+  const short = Math.min(width, height);
+  const reach = short * t.reach;
+  const pose = poseAt(blob.motion, (seconds + blob.delay) / (blob.duration * t.speed));
+  const squash = Math.sqrt(pose.sx * pose.sy);
+  const body = (short * blob.size * squash) / 2;
+  return {
+    x: width * blob.x + pose.x * width * blob.sway,
+    y: height * blob.y + pose.y * height * blob.travel * 0.5,
+    // How much to undo the drift's stretch by, along each axis, to read the
+    // round profile.
+    unstretchX: squash / pose.sx,
+    unstretchY: squash / pose.sy,
+    outer: body + PROFILE_REACH * reach,
+    profile: profileFor(body / reach),
+  };
+}
+
+// The rows of the profile texture: one per blob, PROFILE_STOPS across.
+const PROFILE_ROWS = 16;
+
+// The canvas renderer, step for step: the mounds summed as the canvas sums
+// them ("lighter": added, held at 1), then each filter primitive in turn.
+// SVG filters work in linear light unless told otherwise, so this does
+// too — the wax's colour is taken into it on the way in, the filter's own
+// colours (the rim, the halo) are linear already, and the result comes
+// back out to sRGB before it's laid over the vessel and the light layers.
+const FRAGMENT = /* glsl */ `
+precision highp float;
+
+uniform vec2 uCanvas;
+// Canvas pixels per CSS pixel; everything else is in CSS pixels, down
+// from the top, as the canvas renderer's field and filter are.
+uniform float uScale;
+// Each blob's centre, and how much to undo its stretch along each axis.
+uniform vec4 uBlobs[${BLOBS.length}];
+uniform float uOuter[${BLOBS.length}];
+uniform sampler2D uProfiles;
+uniform sampler2D uLight;
+uniform float uBlobAlpha;
+uniform float uGain;
+uniform float uCut;
+uniform float uLift;
+uniform vec3 uDensity;
+// Rim strength, rim focus, light from above.
+uniform vec3 uRim;
+uniform vec3 uRimColour;
+uniform vec3 uHaloColour;
+uniform float uHalo[11];
+uniform vec3 uWax;
+uniform vec3 uGround;
+
+// The mounds summed, before the canvas would hold the sum at 1.
+float field(vec2 at) {
+  float sum = 0.0;
+  for (int i = 0; i < ${BLOBS.length}; i++) {
+    vec2 off = (at - uBlobs[i].xy) * uBlobs[i].zw;
+    float r = length(off) / uOuter[i];
+    float stop = min(r, 1.0) * ${(PROFILE_STOPS - 1) / PROFILE_STOPS} + ${0.5 / PROFILE_STOPS};
+    sum += texture2D(uProfiles, vec2(stop, (float(i) + 0.5) / ${PROFILE_ROWS}.0)).a * step(r, 1.0);
+  }
+  return sum * uBlobAlpha;
+}
+
+vec3 toLinear(vec3 c) {
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}
+
+vec3 toSrgb(vec3 c) {
+  c = clamp(c, 0.0, 1.0);
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+
+// feFuncA's table: straight lines between eleven values.
+float halo(float a) {
+  float x = clamp(a, 0.0, 1.0) * 10.0;
+  float value = 0.0;
+  for (int k = 0; k < 10; k++) {
+    float f = x - float(k);
+    if (f >= 0.0 && f <= 1.0) value = mix(uHalo[k], uHalo[k + 1], f);
+  }
+  return value;
+}
+
+// Arithmetic k1 = -1, k2 = k3 = 1: a screen, in premultiplied colour.
+vec4 screen(vec4 over, vec4 under) {
+  return over + under - over * under;
+}
+
+void main() {
+  vec2 at = vec2(gl_FragCoord.x, uCanvas.y - gl_FragCoord.y) / uScale;
+  float sum = field(at);
+  float a = min(sum, 1.0);
+  float above = min(field(at - vec2(0.0, uLift)), 1.0);
+
+  // Adding colour as well as alpha, the canvas runs a thick spot's colour
+  // past the wax towards white wherever the sum passes 1; so does this.
+  vec3 source = toLinear(min(uWax * sum, 1.0) / max(a, 0.0001));
+
+  float waxAlpha = clamp(uGain * (a - uCut), 0.0, 1.0);
+  vec4 dense = vec4(source * (1.0 - uDensity * a) * waxAlpha, waxAlpha);
+
+  float lights = clamp(max(above - a, 0.0) + uRim.z * max(a - above, 0.0), 0.0, 1.0);
+  float rimAlpha = lights > 0.0 ? clamp(uRim.x * pow(lights, uRim.y), 0.0, 1.0) * waxAlpha : 0.0;
+  vec4 shaded = screen(vec4(uRimColour * rimAlpha, rimAlpha), dense);
+
+  float haloAlpha = clamp(halo(a), 0.0, 1.0);
+  vec4 lit = screen(vec4(uHaloColour * haloAlpha, haloAlpha), shaded);
+
+  vec3 colour = lit.a > 0.0 ? toSrgb(lit.rgb / lit.a) : vec3(0.0);
+  vec3 painted = mix(uGround, colour, lit.a);
+  vec4 light = texture2D(uLight, vec2(gl_FragCoord.x / uCanvas.x, 1.0 - gl_FragCoord.y / uCanvas.y));
+  gl_FragColor = vec4(light.rgb + (1.0 - light.a) * painted, 1.0);
+}
+`;
+
+function createShader(canvas: HTMLCanvasElement) {
+  const pass = createPass(canvas, "Lava Lamp", FRAGMENT, [
+    "uCanvas", "uScale", "uBlobs", "uOuter", "uProfiles", "uLight", "uBlobAlpha", "uGain", "uCut", "uLift",
+    "uDensity", "uRim", "uRimColour", "uHaloColour", "uHalo", "uWax", "uGround",
+  ] as const);
+  if (!pass) return null;
+  const { gl, at } = pass;
+
+  function texture(unit: number) {
+    const made = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, made);
+    // Linear between texels: along a profile, that's the straight line a
+    // canvas gradient draws between its stops.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return made;
+  }
+
+  // The profiles: rewritten only when a blob's breathing moves it onto
+  // another of the cached curves, a few times a minute.
+  const profiles = texture(0);
+  const profileBytes = new Uint8Array(PROFILE_STOPS * PROFILE_ROWS);
+  const shown: (number[] | null)[] = BLOBS.map(() => null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, PROFILE_STOPS, PROFILE_ROWS, 0, gl.ALPHA, gl.UNSIGNED_BYTE, profileBytes);
+
+  // The light layers, painted small and premultiplied, so laying them over
+  // is one multiply-add; repainted only when the box or their dials change.
+  const light = texture(1);
+  const lightCanvas = document.createElement("canvas");
+  let lightKey = "";
+
+  gl.uniform1i(at.uProfiles, 0);
+  gl.uniform1i(at.uLight, 1);
+  gl.uniform3f(at.uRimColour, ...RIM_COLOUR);
+  gl.uniform3f(at.uHaloColour, ...HALO_COLOUR);
+  gl.uniform3f(at.uGround, ...hexChannels(GROUND));
+
+  const blobs = new Float32Array(BLOBS.length * 4);
+  const outers = new Float32Array(BLOBS.length);
+
+  return {
+    draw(width: number, height: number, cssWidth: number, cssHeight: number, seconds: number, t: LavaTuning) {
+      if (gl.isContextLost()) return;
+
+      let changed = false;
+      BLOBS.forEach((blob, i) => {
+        const placed = placeBlob(blob, seconds, t, cssWidth, cssHeight);
+        blobs.set([placed.x, placed.y, placed.unstretchX, placed.unstretchY], i * 4);
+        outers[i] = placed.outer;
+        if (shown[i] !== placed.profile) {
+          shown[i] = placed.profile;
+          placed.profile.forEach((value, stop) => (profileBytes[i * PROFILE_STOPS + stop] = Math.round(value * 255)));
+          changed = true;
+        }
+      });
+      if (changed) {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, profiles);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, PROFILE_STOPS, PROFILE_ROWS, gl.ALPHA, gl.UNSIGNED_BYTE, profileBytes);
+      }
+
+      const key = [cssWidth, cssHeight, t.rampStart, t.rampDepth, t.lightDrop].join(" ");
+      if (key !== lightKey) {
+        lightKey = key;
+        lightCanvas.width = Math.max(Math.round(cssWidth / 4), 2);
+        lightCanvas.height = Math.max(Math.round(cssHeight / 4), 2);
+        const ctx = lightCanvas.getContext("2d");
+        if (ctx) paintLight(ctx, lights(t), lightCanvas.width, lightCanvas.height);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, light);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, lightCanvas);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      }
+
+      const short = Math.min(cssWidth, cssHeight);
+      gl.uniform2f(at.uCanvas, width, height);
+      gl.uniform1f(at.uScale, width / cssWidth);
+      gl.uniform4fv(at.uBlobs, blobs);
+      gl.uniform1fv(at.uOuter, outers);
+      gl.uniform1f(at.uBlobAlpha, t.blobAlpha);
+      gl.uniform1f(at.uGain, t.alphaGain);
+      gl.uniform1f(at.uCut, t.cut);
+      gl.uniform1f(at.uLift, short * t.lift);
+      gl.uniform3f(at.uDensity, ...(DENSITY.map((d) => Math.min(d * t.density, 1)) as [number, number, number]));
+      gl.uniform3f(at.uRim, t.rimStrength, t.rimFocus, t.topLight);
+      gl.uniform1fv(at.uHalo, HALO_BAND.map((v) => v * t.haloStrength));
+      gl.uniform3f(at.uWax, ...rgbChannels(hslToRgb(t.waxHue, t.waxSaturation / 100, t.waxLightness / 100)));
+      pass.draw(width, height);
+    },
+    dispose() {
+      gl.deleteTexture(profiles);
+      gl.deleteTexture(light);
+      pass.dispose();
+    },
+  };
+}
+
+// "r, g, b" (see hslToRgb) and "#rrggbb", as 0–1 channels.
+function rgbChannels(rgb: string) {
+  return rgb.split(",").map((channel) => Number(channel) / 255) as [number, number, number];
+}
+
+function hexChannels(hex: string) {
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
 }
