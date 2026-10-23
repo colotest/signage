@@ -21,6 +21,8 @@ import { useScreenControl } from "@/lib/realtime/useScreenControl";
 import { PlaybackControls } from "./PlaybackControls";
 import { PlaybackMenu, type LibraryData } from "./PlaybackMenu";
 import { ScreenSetupMenu } from "./ScreenSetupMenu";
+import { PageTuningMenu } from "./PageTuningMenu";
+import { tunablePage } from "@/components/screenPages/dials";
 import { ScreenPreview } from "./ScreenPreview";
 import { useViewer } from "@/lib/auth/ViewerContext";
 
@@ -120,6 +122,10 @@ export function ScreenTile({
   // the pill is pressed (see FitModeToggle).
   const [fitMode, setOptimisticFitMode] = useOptimistic(screen.fit_mode);
   const playerPath = `/screen/${screen.id}`;
+  // Glitter and the Lava Lamp can be tuned live while a screen is showing
+  // one — by what the screen reports it's on, so the dials match what's
+  // actually there.
+  const tunable = status?.online && status.mediaItemId ? tunablePage(mediaById.get(status.mediaItemId)?.storage_path) : null;
 
   // The bordered frame rotates as one piece, but its content (thumbnail/
   // text) must not visibly spin along with it. Sequenced rather than run
@@ -315,6 +321,11 @@ export function ScreenTile({
                   onRename={() => setRenaming(true)}
                   onReload={() => send({ type: "reload" })}
                 />
+              )}
+              {!renaming && tunable && (
+                // Keyed by page, so a screen moving from one to the other
+                // opens on that one's dials.
+                <PageTuningMenu key={tunable} screenId={screen.id} page={tunable} send={send} />
               )}
             </div>
 

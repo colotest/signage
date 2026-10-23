@@ -14,4 +14,11 @@ export function controlChannelName(screenId: number) {
 
 // "reload" makes the player do a full page reload — a remote stand-in for
 // walking over to the TV and refreshing it by hand.
-export type ControlMessage = { type: "play" | "pause" | "next" | "prev" | "reload" };
+//
+// "tune" sets the dials on one of the code-drawn pages (see
+// screenPages/dials.ts) — the whole set each time, so a message that goes
+// missing costs nothing once the next arrives. Live only: it holds until
+// the player reloads, and the page's own defaults come back after that.
+export type ControlMessage =
+  | { type: "play" | "pause" | "next" | "prev" | "reload" }
+  | { type: "tune"; page: string; tuning: Record<string, number> };

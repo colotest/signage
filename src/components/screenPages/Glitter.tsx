@@ -89,6 +89,17 @@ export const GLITTER_TUNING = {
   // cross of light when they flash — the share of their cells holding one.
   // Fine flakes make the cloud; these are the moments in it.
   big: 0.8,
+  // WebGL only: how big a big flake's flare can get — the side of its cell,
+  // which its bloom and cross have to fit inside, as a fraction of the
+  // screen's short side. Larger flares come fewer to the screen, since
+  // there are fewer cells that size to hold them.
+  flare: 0.056,
+  // How strong the cross of light through a flare is.
+  rays: 1,
+  // How strong the holographic colours are. 0 is the soft, film-like look:
+  // light colours that bloom to white at their brightest. 1 is saturated
+  // colour that holds even at full strength.
+  vivid: 0,
   // Canvas only: how many glints are born a second, per square of the
   // screen's short side.
   glints: 150,
@@ -135,10 +146,8 @@ const SWIRL_AMOUNT = 0.025;
 const SWIRL_LENGTH = 0.9;
 // The size of the thick and thin patches, in short sides.
 const CLOUD_LENGTH = 0.7;
-// The far layer's cells, and the big flakes', against the near one's. A
-// whole number for the big ones, so their cells stay whole pixels too.
+// The far layer's cells, against the near one's.
 const FAR_CELL = 0.7;
-const BIG_CELL = 10;
 
 export function Glitter({
   tuning,
@@ -227,7 +236,7 @@ export function Glitter({
   // layer, repeated across a box a tile larger than the screen and slid
   // about inside it by the loop below. Moving a layer is the compositor's
   // work alone; nothing is painted again.
-  const bedTuning = [t.cell, t.density, t.bed, t.holo, t.far, t.silverHue, t.purpleHue, t.orangeHue, t.greenHue];
+  const bedTuning = [t.cell, t.density, t.bed, t.holo, t.far, t.silverHue, t.purpleHue, t.orangeHue, t.greenHue, t.vivid];
   const bedKey = bedTuning.join(" ");
   useEffect(() => {
     if (mode !== "canvas" || short === 0) return;
@@ -464,9 +473,13 @@ uniform vec4 uClouds;
 uniform vec4 uFlake;
 // Bed, gain, falloff, holographic share.
 uniform vec4 uShine;
-// Far layer's brightness; big layer's density.
+// Far layer's brightness; big layer's density, cell, and cross strength.
 uniform float uFar;
 uniform float uBig;
+uniform float uBigCell;
+uniform float uRays;
+// How saturated the colours hold (see vivid).
+uniform float uVivid;
 uniform vec3 uGround;
 uniform vec3 uSilver;
 uniform vec3 uPurple;
@@ -508,7 +521,12 @@ vec3 flakes(vec2 at, vec2 screen, float cell, float seed, float density, float b
   // mix of the same three slow swings.
   vec2 tilt = (b.xy + b.zw - 1.0) * uFlake.y
     + uFlake.z * ((c.x * 2.0 - 1.0) * uTumble1 + (c.y * 2.0 - 1.0) * uTumble2 + (c.z * 2.0 - 1.0) * uTumble3);
-  vec2 miss = tilt - (uLight + screen * uSweep);
+  // Read where the flake is, not where this pixel is: across a big flare
+  // the two differ enough that one side of it would flash and the other
+  // not.
+  vec2 spot = 0.5 + (a.zw - 0.5) * mix(0.4, 0.24, big);
+  vec2 fromSpot = (inCell - spot) * cell;
+  vec2 miss = tilt - (uLight + (screen - fromSpot * uCell.z) * uSweep);
   float off = dot(miss, miss) * uFlake.w;
   float glint = exp(-off);
   // The same reflection, far wider: the soft sheen the hotspot puts on
@@ -533,8 +551,6 @@ vec3 flakes(vec2 at, vec2 screen, float cell, float seed, float density, float b
   // the pixels are read at and goes missing, or blinks as it drifts across
   // them. Measured in pixels, since that is what it must not fall below.
   float radius = mix(0.24, 0.36, a.y) * mix(1.0, 0.15, big) * cell * (0.8 + 0.45 * shine);
-  vec2 spot = 0.5 + (a.zw - 0.5) * mix(0.4, 0.24, big);
-  vec2 fromSpot = (inCell - spot) * cell;
   float cover = exp(-dot(fromSpot, fromSpot) / (radius * radius + 0.3));
   float light = cover;
   if (big > 0.0) {
@@ -542,13 +558,16 @@ vec3 flakes(vec2 at, vec2 screen, float cell, float seed, float density, float b
     // grows faster than the flash does, so only the strongest throw one.
     // Both fall to nothing inside the cell, since nothing outside it is
     // looked at.
+    // A big flare's cross thickens a little with it, or at the largest it
+    // is a hair across a screen-sized burst.
     float bloom = exp(-dot(fromSpot, fromSpot) / (radius * radius * 2.0 + 3.0));
     vec2 along = abs(fromSpot);
     vec2 fade = 1.0 - smoothstep(0.16 * cell, 0.36 * cell, along);
     float reach = 0.11 * cell;
-    float rays = exp(-along.x / reach - along.y * along.y * 2.0) * fade.x
-      + exp(-along.y / reach - along.x * along.x * 2.0) * fade.y;
-    light += 0.3 * bloom + shine * rays;
+    float thin = 1.0 / (0.5 + 0.0001 * cell * cell);
+    float rays = exp(-along.x / reach - along.y * along.y * thin) * fade.x
+      + exp(-along.y / reach - along.x * along.x * thin) * fade.y;
+    light += 0.3 * bloom + uRays * shine * rays;
   }
 
   // The dim bed fills a fine cell rather than sitting in it as a dot: at a
@@ -557,8 +576,8 @@ vec3 flakes(vec2 at, vec2 screen, float cell, float seed, float density, float b
   // Squaring the flake's own brightness spreads the bed out — many near
   // black, a few already catching some light — which is what gives the
   // surface its roughness. Evenly lit, it reads as a grey haze.
-  vec3 bed = uShine.x * (0.1 + 0.9 * c.w * c.w) * (0.3 + 0.7 * sheen) * mix(uSilver, tint, 0.5) * mix(0.5, cover, big);
-  vec3 flash = shine * uShine.y * mix(tint, vec3(1.0), glint * glint * 0.4) * light;
+  vec3 bed = uShine.x * (0.1 + 0.9 * c.w * c.w) * (0.3 + 0.7 * sheen) * mix(uSilver, tint, 0.5 + 0.5 * uVivid) * mix(0.5, cover, big);
+  vec3 flash = shine * uShine.y * mix(tint, vec3(1.0), glint * glint * 0.4 * (1.0 - uVivid)) * light;
   return (bed + flash) * present;
 }
 
@@ -569,9 +588,17 @@ void main() {
   // The big flakes are the nearest, so they float furthest: parallax.
   vec3 glitter = flakes(at + swirl + uDrift.xy, screen, uCell.x, 0.0, uFlake.x, 0.0)
     + uFar * flakes(at + swirl * 0.6 + uDrift.zw, screen, uCell.y, 17.0, uFlake.x, 0.0)
-    + flakes(at + swirl * 1.4 + uDrift.xy * 1.4, screen, uCell.x * ${BIG_CELL}.0, 31.0, uBig, 1.0);
+    + flakes(at + swirl * 1.4 + uDrift.xy * 1.4, screen, uBigCell, 31.0, uBig, 1.0);
   float vignette = 1.0 - 0.4 * smoothstep(0.4, 1.0, length(screen * vec2(0.85, 1.1)));
-  gl_FragColor = vec4(uGround + (1.0 - uGround) * (1.0 - exp(-glitter * vignette)), 1.0);
+  // Rolled off softly rather than clipped. Channel by channel, a bright
+  // colour runs to white as its weaker channels catch up; rolled off by its
+  // strongest channel alone, it keeps its hue at any strength. Vivid
+  // chooses between the two.
+  vec3 lit = glitter * vignette;
+  float strongest = max(max(lit.r, lit.g), lit.b);
+  vec3 held = lit * (1.0 - exp(-strongest)) / max(strongest, 0.0001);
+  vec3 rolled = mix(1.0 - exp(-lit), held, uVivid);
+  gl_FragColor = vec4(uGround + (1.0 - uGround) * rolled, 1.0);
 }
 `;
 
@@ -600,7 +627,7 @@ function createShader(canvas: HTMLCanvasElement) {
 
   const names = [
     "uResolution", "uCell", "uLight", "uSweep", "uTumble1", "uTumble2", "uTumble3", "uDrift", "uSwirl",
-    "uClouds", "uFlake", "uShine", "uFar", "uBig", "uGround", "uSilver", "uPurple", "uOrange", "uGreen",
+    "uClouds", "uFlake", "uShine", "uFar", "uBig", "uBigCell", "uRays", "uVivid", "uGround", "uSilver", "uPurple", "uOrange", "uGreen",
   ] as const;
   const at = Object.fromEntries(names.map((name) => [name, gl.getUniformLocation(program, name)])) as Record<
     (typeof names)[number],
@@ -647,6 +674,9 @@ function createShader(canvas: HTMLCanvasElement) {
       gl.uniform4f(at.uShine, tune.bed, tune.gain, tune.falloff, tune.holo);
       gl.uniform1f(at.uFar, tune.far);
       gl.uniform1f(at.uBig, tune.big);
+      gl.uniform1f(at.uBigCell, wholeCell(tune.flare * shortPx));
+      gl.uniform1f(at.uRays, tune.rays);
+      gl.uniform1f(at.uVivid, Math.min(Math.max(tune.vivid, 0), 1));
       gl.uniform3f(at.uGround, ...GROUND_RGB);
       const palette = colours(tune);
       gl.uniform3f(at.uSilver, ...palette[0]);
@@ -756,7 +786,7 @@ function createGlints(ctx: CanvasRenderingContext2D, width: number, height: numb
 
   return {
     frame(clock: Clock, tune: GlitterTuning, step: number, near: [number, number], far: [number, number]) {
-      const key = [tune.silverHue, tune.purpleHue, tune.orangeHue, tune.greenHue].join(" ");
+      const key = [tune.silverHue, tune.purpleHue, tune.orangeHue, tune.greenHue, tune.vivid].join(" ");
       if (key !== paletteKey) {
         paletteKey = key;
         sprites = colours(tune).map(paintSprite);
@@ -815,8 +845,9 @@ function createGlints(ctx: CanvasRenderingContext2D, width: number, height: numb
         // The strongest few throw a faint cross of light, as a bright point
         // does through an eye's lashes or a lens.
         if (glint.peak > 0.9 && !glint.far) {
-          ctx.globalAlpha = strength * 0.35;
-          ctx.drawImage(star, x - size * 1.6, y - size * 1.6, size * 3.2, size * 3.2);
+          const span = size * 3.2 * (tune.flare / GLITTER_TUNING.flare);
+          ctx.globalAlpha = Math.min(strength * 0.35 * tune.rays, 1);
+          ctx.drawImage(star, x - span / 2, y - span / 2, span, span);
         }
       }
       ctx.globalAlpha = 1;
@@ -884,15 +915,20 @@ function gaussianPair(): [number, number] {
 
 // ---------------------------------------------------------------------------
 
-// Silver, purple, orange, green, as 0–1 channels. The saturations and
-// lightnesses are fixed: the silver nearly white, the holographic colours
-// strong but light, as a thin film's are.
+// Silver, purple, orange, green, as 0–1 channels. The silver is nearly
+// white; the holographic colours strong but light, as a thin film's are,
+// until vivid pushes them further.
 function colours(tune: GlitterTuning): [number, number, number][] {
+  // Vivid takes the holographic ones to full saturation at middle
+  // lightness: pure colour, with nothing of white left in it.
+  const vivid = Math.min(Math.max(tune.vivid, 0), 1);
+  const film = (hue: number, saturation: number, lightness: number) =>
+    hsl(hue, saturation + (1 - saturation) * vivid, lightness + (0.5 - lightness) * vivid);
   return [
     hsl(tune.silverHue, 0.3, 0.88),
-    hsl(tune.purpleHue, 0.85, 0.66),
-    hsl(tune.orangeHue, 0.95, 0.6),
-    hsl(tune.greenHue, 0.7, 0.55),
+    film(tune.purpleHue, 0.85, 0.66),
+    film(tune.orangeHue, 0.95, 0.6),
+    film(tune.greenHue, 0.7, 0.55),
   ];
 }
 

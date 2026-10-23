@@ -2,29 +2,7 @@
 
 import { useState } from "react";
 import { LAVA_TUNING, LavaLamp, type LavaTuning } from "@/components/screenPages/LavaLamp";
-
-// Each dial, with the range worth exploring and how fine a step is useful.
-// `note` is what the number does, so the panel explains itself a month from
-// now when none of this is fresh any more.
-const DIALS: { key: keyof LavaTuning; label: string; min: number; max: number; step: number; note: string }[] = [
-  { key: "reach", label: "Merge reach", min: 0.01, max: 0.16, step: 0.002, note: "How far a blob's falloff reaches past its body, as a fraction of the screen. The soft collar that pools with its neighbours', and so how readily two of them run together." },
-  { key: "blobAlpha", label: "Blob height", min: 0.25, max: 1, step: 0.01, note: "How high one blob stands in the field. Only the headroom under 1 can be added to, so this is how far a merge can swell: at 1 none, at 0.5 two blobs can sum, at 0.33 three. Lower it and blobs shrink too, unless you take Edge level down with it." },
-  { key: "cut", label: "Edge level", min: 0.08, max: 0.6, step: 0.01, note: "Where the edge is cut, up the field. Half of Blob height puts it exactly where blobs are drawn; lower leaves them larger than drawn and reaching further for each other." },
-  { key: "alphaGain", label: "Edge hardness", min: 4, max: 60, step: 1, note: "How few pixels an edge takes to go from nothing to solid." },
-  { key: "lift", label: "Light band", min: 0.005, max: 0.08, step: 0.002, note: "How wide the lit edge is. Narrow reads as gloss, wide as a dipped blob." },
-  { key: "rimStrength", label: "Light strength", min: 0, max: 14, step: 0.2, note: "How bright the lit edges are, top and bottom together." },
-  { key: "rimFocus", label: "Gloss focus", min: 0.6, max: 3, step: 0.05, note: "Above 1 concentrates the light into a sheen; 1 is a flat band." },
-  { key: "topLight", label: "Light from above", min: 0, max: 1.5, step: 0.05, note: "The upper light, as a fraction of the one below it." },
-  { key: "haloStrength", label: "Translucence", min: 0, max: 1, step: 0.02, note: "The glow outside the edge and the light inside it, together." },
-  { key: "density", label: "Wax density", min: 0, max: 1.6, step: 0.05, note: "How much thick wax swallows light — the dark through a blob's middle." },
-  { key: "speed", label: "Slowness", min: 0.3, max: 3, step: 0.05, note: "Multiplies every drift's duration. Above 1 is slower." },
-  { key: "waxHue", label: "Wax hue", min: 0, max: 360, step: 1, note: "The one colour every blob is, before the vessel's light reaches it." },
-  { key: "waxSaturation", label: "Wax saturation", min: 0, max: 100, step: 1, note: "How far from grey that colour sits." },
-  { key: "waxLightness", label: "Wax lightness", min: 20, max: 80, step: 0.5, note: "How bright it is at the bottom of the vessel, before anything darkens it." },
-  { key: "rampDepth", label: "Gradient depth", min: 0, max: 1.8, step: 0.05, note: "How far into the vessel's dark a blob sinks as it rises. Zero is one flat colour top to bottom." },
-  { key: "rampStart", label: "Gradient start", min: 0, max: 0.7, step: 0.02, note: "How far up the screen the darkening begins. Higher keeps the lower half at full strength." },
-  { key: "lightDrop", label: "Light drop", min: -6, max: 22, step: 1, note: "How far below the bottom edge the bulb's centre sits, in percent of the height." },
-];
+import { LAVA_DIALS as DIALS } from "@/components/screenPages/dials";
 
 export function LavaTuner() {
   const [tuning, setTuning] = useState<LavaTuning>(LAVA_TUNING);

@@ -290,6 +290,10 @@ export function Player({
   // trace of "paused" lives on the dashboard's preview tile.
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
+  // Dials turned live on the code-drawn pages from a dashboard tile, by
+  // page — see the "tune" control message. Kept here rather than in the
+  // page, so they hold across slides and a page coming round again.
+  const [pageTuning, setPageTuning] = useState<Record<string, Record<string, number>>>({});
   const remainingMsRef = useRef(0);
   const segmentStartRef = useRef(0);
 
@@ -671,6 +675,9 @@ export function Player({
             // page network-first, so this really does refetch it.
             window.location.reload();
             break;
+          case "tune":
+            setPageTuning((current) => ({ ...current, [message.page]: message.tuning }));
+            break;
         }
       })
       .subscribe();
@@ -855,6 +862,7 @@ export function Player({
               >
                 <Slide
                   item={outgoing}
+                  pageTuning={pageTuning}
                   nativeMedia={nativeMedia}
                   fitMode={screen.fit_mode}
                   now={serverNow}
@@ -869,6 +877,7 @@ export function Player({
             <div key={`in-${current.id}-${reloadToken}`} className="absolute inset-0" style={animation.incoming}>
               <Slide
                 item={current}
+                pageTuning={pageTuning}
                 nativeMedia={nativeMedia}
                 fitMode={screen.fit_mode}
                 now={serverNow}
@@ -894,6 +903,7 @@ export function Player({
 
 function Slide({
   item,
+  pageTuning,
   nativeMedia,
   fitMode,
   now,
@@ -906,6 +916,7 @@ function Slide({
   onPlaybackChange,
 }: {
   item: PlaylistItemWithMedia;
+  pageTuning: Record<string, Record<string, number>>;
   nativeMedia: boolean;
   fitMode: FitMode;
   now: () => number;
@@ -919,7 +930,7 @@ function Slide({
   onPlaybackChange?: () => void;
 }) {
   if (item.media_item.media_type === "page") {
-    return <ScreenPage item={item.media_item} now={now} />;
+    return <ScreenPage item={item.media_item} now={now} tuning={pageTuning} />;
   }
 
   // The Fire TV app's image or video shows through here — see Player.

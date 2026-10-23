@@ -349,6 +349,10 @@ export function LavaLamp({
   // filter is referenced by id.
   const gooId = `${useId()}-lava-goo`;
   const [size, setSize] = useState({ width: 0, height: 0 });
+  // When the lamp was lit. Held across the painter's restarts — every dial
+  // that changes how it paints restarts it — so turning one live from the
+  // dashboard doesn't throw every blob back to where it began.
+  const litRef = useRef<number | null>(null);
 
   // Measured rather than sized in container query units, for the same
   // reason the clock measures itself: a kiosk browser on a years-old stick
@@ -394,7 +398,8 @@ export function LavaLamp({
     // whole box, so holding it to a fraction of the short side is what keeps
     // a thumbnail and a 4K screen looking like the same lamp.
     const reach = shortSide * t.reach;
-    const started = performance.now();
+    litRef.current ??= performance.now();
+    const started = litRef.current;
 
     let frame = 0;
     function paint(now: number) {
