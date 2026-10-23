@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { controlChannelName, type ControlMessage } from "@/lib/realtime/channels";
+import { controlChannelName, type ControlMessage, type PerfReport } from "@/lib/realtime/channels";
 
 type Channel = ReturnType<ReturnType<typeof createBrowserClient>["channel"]>;
 
@@ -11,7 +11,10 @@ type Channel = ReturnType<ReturnType<typeof createBrowserClient>["channel"]>;
 // in. The Supabase client hands back the same channel object for the same
 // topic, so letting each tile subscribe and remove its own would have the
 // first one to unmount cut the others off — hence the reference count.
-const channels = new Map<number, { channel: Channel; users: number }>();
+//
+// The players' frame-rate reports come back over the same channel, and go
+// to whoever is listening for that screen (see onPerfReport).
+const channels = new Map<number, { channel: Channel; users: number; listeners: Set<(report: PerfReport) => void> }>();
 
 function acquire(screenId: number) {
   const existing = channels.get(screenId);
@@ -20,8 +23,10 @@ function acquire(screenId: number) {
     return;
   }
   const channel = createBrowserClient().channel(controlChannelName(screenId));
+  const listeners = new Set<(report: PerfReport) => void>();
+  channel.on("broadcast", { event: "perf" }, ({ payload }) => listeners.forEach((listen) => listen(payload as PerfReport)));
   channel.subscribe();
-  channels.set(screenId, { channel, users: 1 });
+  channels.set(screenId, { channel, users: 1, listeners });
 }
 
 function release(screenId: number) {
@@ -35,6 +40,17 @@ function release(screenId: number) {
 
 function sendTo(screenId: number, message: ControlMessage) {
   channels.get(screenId)?.channel.send({ type: "broadcast", event: "control", payload: message });
+}
+
+// Hears a screen's frame-rate reports while it's measuring (see "measure"),
+// for as long as the returned function isn't called. Only while that
+// screen's channel is held by a useScreenControl.
+export function onPerfReport(screenId: number, listen: (report: PerfReport) => void) {
+  const entry = channels.get(screenId);
+  entry?.listeners.add(listen);
+  return () => {
+    entry?.listeners.delete(listen);
+  };
 }
 
 // Sends one-off playback commands to a screen's live player over a
