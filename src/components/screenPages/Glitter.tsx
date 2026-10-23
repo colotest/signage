@@ -64,10 +64,10 @@ export const GLITTER_TUNING = {
   // How exactly a flake has to line up to flash — the width of the
   // reflection, in the same units as the tilts. Smaller is rarer and
   // briefer and sharper.
-  sparkle: 0.05,
+  sparkle: 0.038,
   // How far each flake tumbles as it floats, and how fast. Tumbling is what
   // carries a flake through its flash, so it decides how long one lasts.
-  tumble: 0.1,
+  tumble: 0.115,
   tumbleSpeed: 2.75,
   // How fast the light wanders, and how fast the cloud floats about.
   lightSpeed: 1,
@@ -84,7 +84,7 @@ export const GLITTER_TUNING = {
   holo: 1,
   // The far layer: a second, finer cloud behind the first, at this fraction
   // of its brightness.
-  far: 0.5,
+  far: 1.07,
   // WebGL only: the big flakes, nearest of all, which bloom and throw a
   // cross of light when they flash — the share of their cells holding one.
   // Fine flakes make the cloud; these are the moments in it.
@@ -99,7 +99,7 @@ export const GLITTER_TUNING = {
   // How strong the holographic colours are. 0 is the soft, film-like look:
   // light colours that bloom to white at their brightest. 1 is saturated
   // colour that holds even at full strength.
-  vivid: 0.49,
+  vivid: 0.66,
   // Canvas only: how many glints are born a second, per square of the
   // screen's short side.
   glints: 150,
@@ -109,9 +109,9 @@ export const GLITTER_TUNING = {
   // The colours. The silver is nearly white with a little warmth in it;
   // the holographic flakes run from purple through orange to green.
   silverHue: 40,
-  purpleHue: 282,
-  orangeHue: 28,
-  greenHue: 150,
+  purpleHue: 337,
+  orangeHue: 17,
+  greenHue: 97,
 };
 
 export type GlitterTuning = typeof GLITTER_TUNING;
