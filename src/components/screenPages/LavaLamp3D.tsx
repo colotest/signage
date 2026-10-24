@@ -118,7 +118,7 @@ export const LAVA_3D_TUNING = {
   waxLightness: 53,
   // The liquid's darkening towards the top, as the flat lamp's.
   rampDepth: 0.85,
-  rampStart: LAVA_TUNING.rampStart,
+  rampStart: 0.2,
   // How many of the device's pixels the shader works in, and frames a
   // second at most.
   resolution: 0.5,
