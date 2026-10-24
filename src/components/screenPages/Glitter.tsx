@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPass, webglUsable } from "./webgl";
+import { isMotionFrozen } from "@/lib/animation/motionFreeze";
 
 // A cloud of glitter the size of the screen, floating in the dark: a dense
 // bed of dim flakes, and every so often one of them catching the light. It
@@ -223,7 +224,7 @@ export function Glitter({
     const width = canvas.width;
     const height = canvas.height;
     const shortPx = Math.min(width, height);
-    const stop = runFrames(tuningRef, statsRef, "webgl", (clock, tune) => {
+    const stop = runFrames(canvas, tuningRef, statsRef, "webgl", (clock, tune) => {
       shader.draw(width, height, shortPx, wholeCell(tune.cell * shortPx), clock, tune);
     });
     return () => {
@@ -273,7 +274,7 @@ export function Glitter({
     canvas.width = Math.max(Math.round(size.width * pixelScale), 1);
     canvas.height = Math.max(Math.round(size.height * pixelScale), 1);
     const glints = createGlints(context, canvas.width, canvas.height);
-    const stop = runFrames(tuningRef, statsRef, "canvas", (clock, tune, step) => {
+    const stop = runFrames(canvas, tuningRef, statsRef, "canvas", (clock, tune, step) => {
       const shortCss = Math.min(size.width, size.height);
       const near = clock.drift(NEAR_DRIFT, 0);
       const far = clock.drift(FAR_DRIFT, 1);
@@ -383,6 +384,9 @@ function createClock(): Clock {
 // stick — moves the clock on by a quarter of a second at most, so nothing
 // lurches to catch up.
 function runFrames(
+  // What it paints into: held still while that's behind a card on a phone
+  // (see motionFreeze).
+  surface: Element,
   tuningRef: { current: GlitterTuning },
   statsRef: { current: ((stats: GlitterStats) => void) | undefined },
   renderer: GlitterRenderer,
@@ -396,6 +400,12 @@ function runFrames(
 
   function tick(now: number) {
     frame = requestAnimationFrame(tick);
+    // Held, its clock doesn't move on either: the first frame after takes
+    // no step at all, so it carries on from exactly where it stopped.
+    if (isMotionFrozen(surface)) {
+      last = -1;
+      return;
+    }
     const tune = tuningRef.current;
     if (last >= 0 && now - last < 1000 / tune.fps - 2) return;
     const step = last < 0 ? 0 : Math.min((now - last) / 1000, 0.25);

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { brandFont } from "@/lib/fonts";
+import { isMotionFrozen } from "@/lib/animation/motionFreeze";
 import { COLOSSEUM_WORDMARK, HOUR_ARM, HOUR_MARKINGS, MINUTE_ARM, TEN_MIN_MARKINGS, type ArmArt } from "./clockArt";
 
 // The whole screen is the watch face: the dial's markings are a rectangular
@@ -284,6 +285,12 @@ function Hands({
     let lastHour: number | null = null;
     let lastMinute: number | null = null;
     function tick() {
+      // Held still behind a card on a phone (see motionFreeze) — and back
+      // at the right time, not a stale one, the moment it's let go.
+      if (isMotionFrozen(secondRef.current)) {
+        frame = requestAnimationFrame(tick);
+        return;
+      }
       const t = new Date(nowRef.current());
       const s = t.getSeconds() + t.getMilliseconds() / 1000;
       const m = t.getMinutes() + s / 60;

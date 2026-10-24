@@ -12,6 +12,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { freezePageMotion, thawPageMotion } from "@/lib/animation/motionFreeze";
 import { MenuContainerContext } from "./Menu";
 
 // Renders as a centered popup on desktop (>=640px) and as an iOS page sheet
@@ -62,8 +63,8 @@ export function Sheet({
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const dragHandlers = useSheetDrag(contentRef, overlayRef, () => onOpenChange(false));
   // The status bar's tint strip lies over the top edge of the screen on a
-  // phone (globals.css), above the card and the sliver of page beside it,
-  // so it takes any press that lands there: a pull on it drags the sheet,
+  // phone (globals.css), above the card's top edge (installed, above the
+  // sliver of page there instead), so it takes any press that lands there: a pull on it drags the sheet,
   // as one on the header does (wired up in presentSheet) — and a tap on it
   // doesn't count as one outside the sheet (onInteractOutside below).
   const dragRef = useRef(dragHandlers);
@@ -130,11 +131,11 @@ export function Sheet({
             covers the whole screen, and a full-screen backdrop blur under it
             would still be recomputed for every frame of whatever's playing
             in the screen previews behind.
-            Solid black on a phone, faded in: it's not the dimming over the
-            page there but the void behind it — the page itself shrinks back
-            above this and keeps its own z-index and its own dimming (see
-            app-shell in globals.css), so what shows through around it, and
-            behind the status bar, is this. */}
+            Solid black on a phone, faded in: in a Safari tab the page dims
+            all the way to black behind the card, Safari's status bar along
+            with it (see presentSheet). Installed to the Home Screen it's a
+            42% black instead, over the page as it shrinks back behind the
+            card (see app-shell in globals.css). */}
         <Dialog.Overlay
           ref={overlayRef}
           className="sheet-overlay absolute inset-x-0 top-0 z-40 h-[var(--shell-h)] bg-black sm:fixed sm:bg-black/40 sm:backdrop-blur-sm"
@@ -170,11 +171,12 @@ export function Sheet({
             // absolute, and down to the shell's own height: as the overlay —
             // on a phone it runs right down behind Safari's toolbar, showing
             // what's there, with the content keeping its own clearance from
-            // it. Up top it stops at --sheet-top (globals.css): clear of the
-            // status bar, with a sliver of the page behind showing above it,
-            // as a native card sheet does. It used to start at the viewport's
-            // own top edge, which installed to the Home Screen is the screen's
-            // — under the clock and the Dynamic Island.
+            // it. Up top it stops at --sheet-top (globals.css): the very top
+            // of the viewport in a Safari tab, which is just below Safari's
+            // status bar; installed to the Home Screen, where the viewport is
+            // the whole screen, below the clock and the Dynamic Island, with a
+            // sliver of the page behind showing above it, as a native card
+            // sheet does.
             "sheet-content launch-popup absolute z-50 sm:fixed flex flex-col overflow-hidden bg-surface [--edge-scrim:var(--surface)] shadow-[var(--shadow-sheet)] outline-none",
             "inset-x-0 top-[var(--sheet-top)] h-[calc(var(--shell-h)_-_var(--sheet-top))] rounded-t-[var(--sheet-radius)]",
             "sm:inset-auto sm:h-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
@@ -240,6 +242,7 @@ function useSheetDrag(
     if ((e.target as Element).closest("button, a, input, textarea, select, label, .menu-pop")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     drag.current = { id: e.pointerId, startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, v: 0, offset: 0 };
+    beginDragProgress();
     node.style.transition = "none";
     document.documentElement.setAttribute("data-sheet-dragging", "");
   }
@@ -279,33 +282,49 @@ function useSheetDrag(
   return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
 }
 
-// How far (0–1) the sheet has been pulled down: the void behind it lifts by
-// that much, the status bar's tint (the header's colour, dimmed the same
-// way) with it, and the page behind comes forward again by the same
-// fraction (--sheet-back-p, see app-shell in globals.css) — so pulling the
-// card down pushes the page back to full size under the finger, as it does
-// natively. 0 hands all three back to the stylesheet.
+// What a drag needs on every move, read once as it starts rather than per
+// pointer event — reading styles mid-drag forces the browser to bring the
+// whole page's up to date first. The page behind's resting transform as a
+// card holds it (installed only: in a Safari tab it doesn't move, and
+// `shell` is null), and the palette's surface colour for the tint.
+let dragBase: { shell: HTMLElement | null; scale: number; ty: number; surface: number[] } | null = null;
+
+function beginDragProgress() {
+  const shell = document.querySelector<HTMLElement>(".app-shell");
+  const transform = shell ? getComputedStyle(shell).transform : "none";
+  const held = transform && transform !== "none" ? new DOMMatrix(transform) : null;
+  dragBase = {
+    shell: held ? shell : null,
+    scale: held?.a ?? 1,
+    ty: held?.f ?? 0,
+    surface: surfaceChannels(getComputedStyle(document.documentElement).getPropertyValue("--surface")),
+  };
+}
+
+// How far (0–1) the sheet has been pulled down: the dimming lifts by that
+// much, the status bar's tint (the header's colour, dimmed the same way)
+// with it, and — installed — the page behind comes forward again by the
+// same fraction, so pulling the card down pushes the page back to full size
+// under the finger, as it does natively. Set straight on the page as an
+// inline transform: nothing inside it is restyled, so a move costs one
+// composited transform. 0 hands all three back to the stylesheet.
 // The tint is mixed here as plain rgb(), not color-mix(): easing back from a
 // color-mix() would be interpolated in a different colour space (oklab)
 // from the dimming's, and drift off its hue on the way.
 function setDragProgress(overlay: HTMLElement | null, p: number) {
   p = Math.min(1, p);
   if (overlay) overlay.style.opacity = p ? `${1 - p}` : "";
-  // The page behind is driven by a custom property, and changing one of
-  // those on <html> costs a style recalc across the whole page — so it's
-  // moved in 1% steps rather than on every pointer event. 1% is 0.0008 of
-  // the page's scale, far too little to see, and it turns a recalc per
-  // move into a handful over a drag.
-  const step = Math.round(p * 100);
-  if (step !== backStep) {
-    backStep = step;
-    const rootStyle = document.documentElement.style;
-    if (step) rootStyle.setProperty("--sheet-back-p", `${step / 100}`);
-    else rootStyle.removeProperty("--sheet-back-p");
+  const base = dragBase;
+  if (base?.shell) {
+    if (p) {
+      const scale = 1 - (1 - base.scale) * (1 - p);
+      base.shell.style.transform = `translateY(${base.ty * (1 - p)}px) scale(${scale})`;
+    } else {
+      base.shell.style.removeProperty("transform");
+    }
   }
-  if (statusTint) {
-    const surface = getComputedStyle(document.documentElement).getPropertyValue("--surface");
-    const rgb = surfaceChannels(surface).map((c) => Math.round(c * p));
+  if (statusTint && base) {
+    const rgb = base.surface.map((c) => Math.round(c * p));
     statusTint.style.backgroundColor = p ? `rgb(${rgb.join(", ")})` : "";
   }
 }
@@ -338,9 +357,6 @@ function surfaceChannels(color: string) {
 //   fill (globals.css).
 const SHEET_CLOSE_MS = 500;
 let dismissTimer: number | undefined;
-// The last whole percent of drag the page behind was set to (see
-// setDragProgress); -1 until a drag sets one.
-let backStep = -1;
 let statusTint: HTMLElement | null = null;
 // Where presses on the strip go: the presented sheet's drag.
 let onStripPointer: ((e: PointerEvent) => void) | null = null;
@@ -363,6 +379,10 @@ function presentSheet(onPointer: (e: PointerEvent) => void) {
   const root = document.documentElement;
   root.setAttribute("data-sheet-open", "");
   root.setAttribute("data-sheet-shown", "");
+  // The page behind holds still until the card's close has played out —
+  // its live screen pages and video previews would otherwise repaint every
+  // frame of the card's motion (see motionFreeze).
+  freezePageMotion();
 }
 
 function dismissSheet() {
@@ -374,13 +394,14 @@ function dismissSheet() {
   // From wherever a drag left it, the tint eases back from there (the
   // dimming fades out from its own inline opacity, and the page behind
   // from wherever the drag had brought it forward to).
-  root.style.removeProperty("--sheet-back-p");
-  backStep = -1;
+  dragBase?.shell?.style.removeProperty("transform");
+  dragBase = null;
   statusTint?.style.removeProperty("background-color");
   dismissTimer = window.setTimeout(() => {
     root.removeAttribute("data-sheet-shown");
     statusTint?.remove();
     statusTint = null;
+    thawPageMotion();
   }, SHEET_CLOSE_MS);
 }
 

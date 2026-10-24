@@ -13,6 +13,7 @@ import {
   rgbChannels,
 } from "./LavaLamp";
 import { createPass, webglUsable } from "./webgl";
+import { isMotionFrozen } from "@/lib/animation/motionFreeze";
 
 // The Lava Lamp again, with depth: the same blobs on the same drifts,
 // now with a place in depth as well, drifting slowly nearer and further.
@@ -201,12 +202,24 @@ export function LavaLamp3D({
     canvas.addEventListener("webglcontextlost", lost);
 
     litRef.current ??= performance.now();
-    const started = litRef.current;
+    let started = litRef.current;
+    let heldSince: number | null = null;
     const { width, height } = size;
     let frame = 0;
     let last = -1;
     function tick(now: number) {
       frame = requestAnimationFrame(tick);
+      // Held still behind a card on a phone (see motionFreeze), then
+      // picking up exactly where it stopped.
+      if (isMotionFrozen(canvas)) {
+        heldSince ??= now;
+        return;
+      }
+      if (heldSince !== null) {
+        started += now - heldSince;
+        litRef.current = started;
+        heldSince = null;
+      }
       const tune = tuningRef.current;
       if (last >= 0 && now - last < 1000 / tune.fps - 2) return;
       last = now;

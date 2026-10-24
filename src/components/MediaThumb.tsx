@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ScreenPage } from "@/components/screenPages";
 import { mediaPublicUrl } from "@/types/domain";
 import type { FitMode, MediaItem } from "@/types/domain";
+import { isMotionFrozen, onPageMotionThaw } from "@/lib/animation/motionFreeze";
 
 // A thumbnail that keeps the file's own proportions inside a fixed slot,
 // for list rows: the slot is what keeps names and columns aligned down the
@@ -189,6 +190,13 @@ function SyncedVideo({ url, fitClass, sync }: { url: string; fitClass: string; s
     if (!video) return;
 
     function align() {
+      // Not while it's held still behind a card on a phone (see
+      // motionFreeze) — a report from its screen arriving meanwhile would
+      // otherwise start it again. It's re-aligned as that's let go.
+      if (isMotionFrozen(video)) {
+        video!.pause();
+        return;
+      }
       const duration = video!.duration;
       // Until its metadata is in, there's no duration to wrap against and
       // nothing to seek; loadedmetadata calls back in here.
@@ -214,9 +222,11 @@ function SyncedVideo({ url, fitClass, sync }: { url: string; fitClass: string; s
       if (document.visibilityState === "visible") align();
     }
     document.addEventListener("visibilitychange", onVisible);
+    const stopThaw = onPageMotionThaw(align);
     return () => {
       video.removeEventListener("loadedmetadata", align);
       document.removeEventListener("visibilitychange", onVisible);
+      stopThaw();
     };
   }, [positionMs, reportedAt, paused, loop]);
 

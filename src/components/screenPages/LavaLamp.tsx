@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPass, webglUsable } from "./webgl";
+import { isMotionFrozen } from "@/lib/animation/motionFreeze";
 
 // A lava lamp the size of the screen: warm blobs rising and falling through
 // a dark ground, in the same burgundy-to-amber the clock's second hand
@@ -564,11 +565,25 @@ export function LavaLamp({
     // a thumbnail and a 4K screen looking like the same lamp.
     const reach = shortSide * t.reach;
     litRef.current ??= performance.now();
-    const started = litRef.current;
+    let started = litRef.current;
+    let heldSince: number | null = null;
 
     let frame = 0;
     const count = frameCounter("canvas", statsRef);
     function paint(now: number) {
+      // Held still behind a card on a phone (see motionFreeze); let go, its
+      // clock is moved on by however long that was, so the wax picks up
+      // exactly where it stopped rather than jumping ahead.
+      if (isMotionFrozen(canvas)) {
+        heldSince ??= now;
+        frame = requestAnimationFrame(paint);
+        return;
+      }
+      if (heldSince !== null) {
+        started += now - heldSince;
+        litRef.current = started;
+        heldSince = null;
+      }
       count(now);
       const ctx = context!;
       const seconds = (now - started) / 1000;
@@ -629,13 +644,25 @@ export function LavaLamp({
     canvas.addEventListener("webglcontextlost", lost);
 
     litRef.current ??= performance.now();
-    const started = litRef.current;
+    let started = litRef.current;
+    let heldSince: number | null = null;
     const count = frameCounter("webgl", statsRef);
     const { width, height } = size;
     let frame = 0;
     let last = -1;
     function tick(now: number) {
       frame = requestAnimationFrame(tick);
+      // Held still behind a card, then picking up where it stopped (see
+      // the canvas version above).
+      if (isMotionFrozen(canvas)) {
+        heldSince ??= now;
+        return;
+      }
+      if (heldSince !== null) {
+        started += now - heldSince;
+        litRef.current = started;
+        heldSince = null;
+      }
       const tune = tuningRef.current;
       if (last >= 0 && now - last < 1000 / tune.fps - 2) return;
       last = now;

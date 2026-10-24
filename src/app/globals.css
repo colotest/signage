@@ -589,103 +589,37 @@ body {
   }
 }
 
-/* On a phone, popups present as iOS card page sheets: the card slides up to
-   just below the status bar, with large rounded top corners, while the page
-   behind it shrinks back, dims, and stays visible as a sliver above it
-   against the black of the void — then comes forward again as the card
-   goes. Driven by attributes Sheet sets on <html> (presentSheet there), and
-   by inline styles while the card's pulled down. Nothing animates here but
-   opacity, transforms and one 11px strip's colour.
-
-   env(safe-area-inset-top) is what "below the status bar" means in both
-   contexts this app runs in: 0 in a Safari tab, where the viewport already
-   starts below the bar, and the real inset installed to the Home Screen,
-   where the page runs up behind it — which is where the card used to end
-   up, under the clock and the Dynamic Island. */
+/* On a phone, popups present as iOS page sheets, sliding up from the bottom
+   edge with large rounded top corners — and what happens behind them
+   depends on where the app is running:
+   - In a Safari tab, the page simply dims to black behind the card, and
+     the card comes up to the very top of the viewport (just below
+     Safari's status bar).
+   - Installed to the Home Screen, it's a native card sheet: the card stops
+     just below the status bar, and the page behind it shrinks back, dims,
+     and stays visible as a sliver above it against the black of the void.
+     There the viewport starts at the screen's own top edge, under the
+     clock and the Dynamic Island, so the card has to keep clear of them
+     (env(safe-area-inset-top), which only reports anything installed).
+   Either way the page comes back as the card goes. Driven by attributes
+   Sheet sets on <html> (presentSheet there), and by inline styles while
+   the card's pulled down. Nothing animates here but opacity, transforms
+   and one 11px strip's colour. */
 :root {
-  /* The card's corners, and the page behind rounded to the same shape. */
+  /* The card's corners, and (installed) the page behind rounded to match. */
   --sheet-radius: 32px;
-  --sheet-back-top: env(safe-area-inset-top, 0px);
-  --sheet-top: calc(var(--sheet-back-top) + 10px);
-  --sheet-back-scale: 0.92;
+  --sheet-top: 0px;
+}
+
+@media (display-mode: standalone) {
+  :root {
+    --sheet-back-top: env(safe-area-inset-top, 0px);
+    --sheet-top: calc(var(--sheet-back-top) + 10px);
+    --sheet-back-scale: 0.92;
+  }
 }
 
 @media (max-width: 639.98px) {
-  /* The page behind, while a card is up: shrunk back from its top edge,
-     rounded off at the corners and dimmed. It's lifted above the overlay
-     (z-index) for any of it to show at all, and stays below the card
-     itself (z-50).
-
-     Its corners and the black around it are painted over it — ::before is
-     a transparent box with an enormous black shadow, so everything outside
-     the page's rounded box is black: the void it leaves at the edges of
-     the screen, and the four notches the rounding cuts out of it — rather
-     than clipped by an overflow: hidden + border-radius on the shell,
-     which is what this started as. That clip was wrong on both counts.
-     WebKit doesn't apply it to a descendant with a layer of its own, and
-     the header has one — so its square corners went on being painted over
-     the rounded ones. And a rounded clip is re-applied to everything
-     inside it for every frame of a scale, which is most of what made the
-     motion stutter: a painted corner costs nothing to move, since the
-     whole page is one layer by then (will-change) that's rasterised once
-     and only transformed after that.
-
-     ::after is the dimming, inside the same rounded box, over the page's
-     contents (z-index within the shell) and so over the header too, but
-     under the card. Rounded as well, so it leaves the notches to ::before
-     rather than painting its own square corners into them.
-
-     --sheet-back-p is how far a drag has pulled the card back down (see
-     setDragProgress in Sheet): at 1 the page is forward again, so page and
-     card move together under the finger, as they do natively. */
-  .app-shell {
-    position: relative;
-    transform-origin: top center;
-  }
-
-  html[data-sheet-shown] .app-shell {
-    z-index: 45;
-    will-change: transform;
-  }
-
-  html[data-sheet-open] .app-shell {
-    transform: translateY(calc(var(--sheet-back-top) * (1 - var(--sheet-back-p, 0))))
-      scale(calc(1 - (1 - var(--sheet-back-scale)) * (1 - var(--sheet-back-p, 0))));
-  }
-
-  /* Only while a card is up: at rest this is a black ring just outside the
-     screen, and there's nothing for it to do. 250px covers the widest the
-     void ever gets — the gap under the page once it has gone back and down
-     by the top inset. */
-  html[data-sheet-shown] .app-shell::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 59;
-    border-radius: var(--sheet-radius);
-    box-shadow: 0 0 0 250px #000;
-    pointer-events: none;
-  }
-
-  .app-shell::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 60;
-    border-radius: var(--sheet-radius);
-    background: #000;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  html[data-sheet-shown] .app-shell::after {
-    will-change: opacity;
-  }
-
-  html[data-sheet-open] .app-shell::after {
-    opacity: calc(0.42 * (1 - var(--sheet-back-p, 0)));
-  }
-
   /* Safari fills the strip behind its toolbar with <body>'s background
      while the sheet slides (see presentSheet in Sheet). In the sheet's own
      colour, the fill and the sheet are one. */
@@ -695,8 +629,8 @@ body {
 
   /* What Safari tints its status bar after while a sheet's open (see
      presentSheet): fixed, full width and over 10px deep at the top edge,
-     where it has to be the first thing Safari finds — so over the card and
-     the page behind it, both of which stop below it. Safari finds it by
+     where it has to be the first thing Safari finds — so over the card,
+     which reaches right up to the status bar. Safari finds it by
      hit-testing, which goes by its box, and takes its colour from its
      background-color as set, not from what's on screen — so it paints
      nothing at all: an 11px box of padding, with the background clipped to
@@ -728,15 +662,23 @@ body {
     background-color: #000;
   }
 
-  /* The page's blurs are off while a card is up: everything but the top
-     sliver of the page is hidden behind the card, and each blur would
-     otherwise be re-rendered every frame the page moves. All but the
-     header's glass — that's the sliver, and the one blur still in sight,
-     so it stays glass the whole way back and forward again rather than
-     dropping to a flat fill the moment the card is opened. */
+  /* The page's blurs are off while a card is up: almost all of the page is
+     hidden behind the card or the dimming, and each blur would otherwise be
+     re-rendered every frame anything moves. All but the header's glass —
+     installed, that's the sliver above the card, and the one blur still in
+     sight, so it stays glass the whole way back and forward again. */
   html[data-sheet-shown] .app-shell *:not(.header-surface) {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
+  }
+
+  /* Anything animating in the page holds still while a card is up, for the
+     same reason — with the live screen pages and video previews, which
+     paint themselves frame by frame, held by motionFreeze (see Sheet). */
+  html[data-sheet-shown] .app-shell *,
+  html[data-sheet-shown] .app-shell *::before,
+  html[data-sheet-shown] .app-shell *::after {
+    animation-play-state: paused !important;
   }
 
   .sheet-overlay[data-state="open"] {
@@ -748,10 +690,67 @@ body {
   }
 }
 
+/* Installed: the page behind shrinks back from its top edge, rounded off at
+   the corners and dimmed, while the card's up.
+
+   It's lifted above the overlay's usual place (z-index) for any of it to
+   show, and the overlay goes over it instead, as the dimming: a 42% black
+   rather than solid, between the page and the card (z-50) — and it's the
+   same element a drag already lightens as the card is pulled down.
+
+   Its corners and the black around it are painted over it — ::before is a
+   transparent box with an enormous black shadow, so everything outside the
+   page's rounded box is black: the void it leaves at the edges of the
+   screen, and the four notches the rounding cuts out of it — rather than
+   clipped by an overflow: hidden + border-radius, which WebKit doesn't
+   apply to a descendant with a layer of its own (the header has one, and
+   its square corners went on showing) and re-applies to everything inside
+   for every frame of a scale. A painted corner costs nothing to move, and
+   with the page one layer for the duration (will-change), rasterised once,
+   the motion is only ever a transform of it.
+
+   During a drag the page's transform is set straight on it, inline (see
+   setDragProgress in Sheet), so page and card move together under the
+   finger, as natively — and nothing else in the page is restyled. */
+@media (display-mode: standalone) and (max-width: 639.98px) {
+  .app-shell {
+    position: relative;
+    transform-origin: top center;
+  }
+
+  html[data-sheet-shown] .app-shell {
+    z-index: 45;
+    will-change: transform;
+  }
+
+  html[data-sheet-open] .app-shell {
+    transform: translateY(var(--sheet-back-top)) scale(var(--sheet-back-scale));
+  }
+
+  .sheet-overlay {
+    z-index: 46;
+    background-color: rgba(0, 0, 0, 0.42);
+  }
+
+  /* Only while a card is up: at rest this is a black ring just outside the
+     screen, and there's nothing for it to do. 250px covers the widest the
+     void ever gets — the gap under the page once it has gone back and down
+     by the top inset. */
+  html[data-sheet-shown] .app-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 59;
+    border-radius: var(--sheet-radius);
+    box-shadow: 0 0 0 250px #000;
+    pointer-events: none;
+  }
+}
+
 @media (max-width: 639.98px) and (prefers-reduced-motion: no-preference) {
   /* The dimming eases back after a drag that didn't close it; the tint
-     follows it, in step, everywhere. So does the page behind, going back
-     and coming forward again on the same curve as the card itself. */
+     follows it, in step, everywhere. So does the page behind, installed,
+     going back and coming forward again on the same curve as the card. */
   .sheet-overlay,
   .sheet-status-tint {
     transition:
@@ -759,17 +758,13 @@ body {
       background-color 500ms var(--ease-spring);
   }
 
-  .app-shell,
-  .app-shell::after {
-    transition:
-      transform 500ms var(--ease-spring),
-      opacity 500ms var(--ease-spring);
+  .app-shell {
+    transition: transform 500ms var(--ease-spring);
   }
 
   html[data-sheet-dragging] .sheet-overlay,
   html[data-sheet-dragging] .sheet-status-tint,
-  html[data-sheet-dragging] .app-shell,
-  html[data-sheet-dragging] .app-shell::after {
+  html[data-sheet-dragging] .app-shell {
     transition: none;
   }
 
