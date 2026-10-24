@@ -101,7 +101,10 @@ export function VenueMap({
   // resize; after that a resize keeps whatever's in the middle there.
   const touchedRef = useRef(false);
 
-  const [loaded, setLoaded] = useState(false);
+  // The plan whose picture has loaded; swapping to another shows the
+  // spinner again until that one has.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const loaded = loadedSrc === plan.src;
   const [following, setFollowing] = useState(false);
   const followingRef = useRef(false);
   const headingRef = useRef<number | null>(null);
@@ -673,6 +676,7 @@ export function VenueMap({
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- one big picture drawn at whatever size the map needs, not a photo for next/image to resize */}
         <img
+          key={plan.src}
           src={plan.src}
           alt="Grundriss"
           draggable={false}
@@ -680,9 +684,9 @@ export function VenueMap({
           // A cached plan can finish loading before React is listening, so
           // it's checked for on mount as well.
           ref={(img) => {
-            if (img?.complete && img.naturalWidth) setLoaded(true);
+            if (img?.complete && img.naturalWidth) setLoadedSrc(plan.src);
           }}
-          onLoad={() => setLoaded(true)}
+          onLoad={() => setLoadedSrc(plan.src)}
           style={{
             left: `${(picture.x / plan.width) * 100}%`,
             top: `${(picture.y / plan.height) * 100}%`,

@@ -9,22 +9,37 @@ import type { EventPerson, EventSummary } from "@/lib/events";
 import { ChecklistStateContext, useChecklistState } from "./checklistState";
 import { EventsPane } from "./EventsPane";
 import { LinkedPinCard } from "./PinMenus";
+import { SegmentedSlider } from "./SegmentedSlider";
 import { MapCard, VenueMap, type FloorPlan, type MapSpot } from "./VenueMap";
 
-// Colosseum Berlin, ground floor: the architects' plan exported as a
-// picture, about one pixel per unit of their drawing (lossless WebP — the
-// same pixels as the PNG at a third of the size). The plan keeps the frame
-// of the vector drawing it replaced — a 40-unit margin round the picture —
-// so the pins placed on it, here and on events, stay where they were.
-const COLOSSEUM_EG: FloorPlan = {
-  src: "/venues/colosseum-eg.webp",
-  width: 9519,
-  height: 5253,
-  picture: { x: 40, y: 40, width: 9439, height: 5173 },
-  // True north points 95° anticlockwise of the plan's top edge — to its left
-  // edge, and 5° on past it — so facing north with the compass on, the plan
-  // sits turned 95° clockwise, its own north straight up. (Checked on site.)
-  northDeg: -95,
+// Colosseum Berlin, ground floor, two ways — to see which moves better on
+// an iPad, the map has a switch between them (see PLAN_KEY):
+// - "vektor": the architects' drawing as vectors, slimmed down by
+//   scripts/flatten-floorplan.mjs. Its viewBox is the plan's frame.
+// - "pixel": their PNG export, about one pixel per unit of the drawing
+//   (lossless WebP — the same pixels as the PNG at a third of the size). It
+//   sits inside the same frame, in the drawing's 40-unit margin, so the
+//   pins placed on the plan, here and on events, land in the same spot on
+//   either.
+type PlanKind = "vektor" | "pixel";
+const PLAN_KINDS: { value: PlanKind; label: string }[] = [
+  { value: "vektor", label: "Vektor" },
+  { value: "pixel", label: "Pixel" },
+];
+const PLAN_KEY = "forms.venuePlan"; // which one, remembered on this device
+// True north points 95° anticlockwise of the plan's top edge — to its left
+// edge, and 5° on past it — so facing north with the compass on, the plan
+// sits turned 95° clockwise, its own north straight up. (Checked on site.)
+const NORTH_DEG = -95;
+const COLOSSEUM_EG: Record<PlanKind, FloorPlan> = {
+  vektor: { src: "/venues/colosseum-eg.svg", width: 9519, height: 5253, northDeg: NORTH_DEG },
+  pixel: {
+    src: "/venues/colosseum-eg.webp",
+    width: 9519,
+    height: 5253,
+    picture: { x: 40, y: 40, width: 9439, height: 5173 },
+    northDeg: NORTH_DEG,
+  },
 };
 
 // The map's standing pins, shown whatever event is open (or none): where
@@ -68,8 +83,26 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   // The open event's Checkliste, shared by its setup page and the pins.
   const checklist = useChecklistState(event);
   const [message, setMessage] = useState<string | null>(null);
+  const [planKind, setPlanKind] = useState<PlanKind>("pixel");
   // Saves go one after another, so an older list can't land after a newer.
   const saveChain = useRef(Promise.resolve());
+
+  // The plan picked last time on this device. Read once mounted: the
+  // server can't know it, and the page has to match what it sent first.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PLAN_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-off read of this device's setting after hydration
+      if (saved === "vektor" || saved === "pixel") setPlanKind(saved);
+    } catch {}
+  }, []);
+
+  function pickPlan(kind: PlanKind) {
+    setPlanKind(kind);
+    try {
+      localStorage.setItem(PLAN_KEY, kind);
+    } catch {}
+  }
 
   // A note (copied, or a save that failed) goes again after a few seconds.
   useEffect(() => {
@@ -213,7 +246,19 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
         </div>
 
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <VenueMap className="min-h-0 flex-1" plan={COLOSSEUM_EG} focus={null} onBackgroundTap={onMapTap} spots={spots} />
+          <VenueMap
+            className="min-h-0 flex-1"
+            plan={COLOSSEUM_EG[planKind]}
+            focus={null}
+            onBackgroundTap={onMapTap}
+            spots={spots}
+          />
+
+          {/* Vektor or Pixel: swaps the plan under the map as it is, so the
+              two can be compared at the same spot and zoom. */}
+          <div className="absolute left-3 top-3 z-20 w-40 rounded-full glass-material shadow-[var(--shadow-float)]">
+            <SegmentedSlider label="Plan" options={PLAN_KINDS} value={planKind} onChange={pickPlan} />
+          </div>
 
           {/* Along the map's bottom, with an event open: "Bearbeiten" — and
               while editing, "+ Pin" (or what a tap on the map is about to
