@@ -32,7 +32,7 @@ const PLAN_KEY = "forms.venuePlan"; // which one, remembered on this device
 // sits turned 95° clockwise, its own north straight up. (Checked on site.)
 const NORTH_DEG = -95;
 const COLOSSEUM_EG: Record<PlanKind, FloorPlan> = {
-  vektor: { src: "/venues/colosseum-eg.svg", width: 9519, height: 5253, northDeg: NORTH_DEG },
+  vektor: { src: "/venues/colosseum-eg.svg", width: 9519, height: 5253, vector: true, northDeg: NORTH_DEG },
   pixel: {
     src: "/venues/colosseum-eg.webp",
     width: 9519,

@@ -15,6 +15,9 @@ export type FloorPlan = {
   // Where the picture sits on the plan, in the same units, when it doesn't
   // fill it exactly.
   picture?: { x: number; y: number; width: number; height: number };
+  // Drawn from vectors rather than pixels: sharp at any zoom, so only
+  // ZOOM_IN_LIMIT stops the zoom (see MAX_PIXEL_ZOOM).
+  vector?: boolean;
   // Which way true north lies on the drawing, in degrees clockwise from
   // its top edge. Turns the map to match the compass.
   northDeg: number;
@@ -30,22 +33,25 @@ export type MapSpot = { id: string; u: number; v: number; node: ReactNode };
 type View = { x: number; y: number; s: number; r: number };
 
 // The plan is a big picture. While the map moves it's slid and scaled as
-// it was last drawn (smooth, but soft once zoomed in); once it comes to
-// rest it's drawn again at the new zoom, up to this wide — past that a
-// redraw would cost more memory than an iPad likes to give. That's only
-// done when it would show: when the zoom has changed by more than
+// it was last drawn — smooth, but soft once it's been blown up far, so a
+// zoom draws it again whenever it's come LIVE_REDRAW_ZOOM × closer or
+// further than the drawing it's scaling. Once it comes to rest it's drawn
+// again at the new zoom, up to this wide — past that a redraw would cost
+// more memory than an iPad likes to give. That's only done when it would
+// show: when the zoom has changed by more than
 // RERASTER_ZOOM since the last time, when it's zoomed in past that width
 // and the picture is being blown up, or when the map's turned and the
 // picture's fine lines would be smudged by turning it. Sliding the upright
 // map otherwise reuses the picture as it is.
 const MAX_RASTER_PX = 5000;
 const RERASTER_ZOOM = 0.05;
+const LIVE_REDRAW_ZOOM = 1.3;
 const SETTLE_MS = 180;
 const ZOOM_OUT_LIMIT = 0.6; // × the zoom that fits the whole plan
 // Zooming in stops at ZOOM_IN_LIMIT × that, past which the plan's lines get
-// heavy — or sooner, on a big screen, where one of the picture's pixels
-// (about one of the plan's units) would cover more than MAX_PIXEL_ZOOM of
-// the screen's and it'd go soft.
+// heavy — or, for a plan drawn from pixels, sooner on a big screen, where
+// one of the picture's pixels (about one of the plan's units) would cover
+// more than MAX_PIXEL_ZOOM of the screen's and it'd go soft.
 const ZOOM_IN_LIMIT = 6;
 const MAX_PIXEL_ZOOM = 1.5;
 // Two fingers have to turn this far before a pinch starts turning the map
@@ -109,6 +115,10 @@ export function VenueMap({
   const followingRef = useRef(false);
   const headingRef = useRef<number | null>(null);
   const stopCompassRef = useRef<(() => void) | null>(null);
+  // A nudge to the plan's north, set by hand while following the compass to
+  // line the plan up with the room — the sum is the northDeg to keep.
+  const [northNudge, setNorthNudge] = useState(0);
+  const northRef = useRef(plan.northDeg);
   const [notice, setNotice] = useState<string | null>(null);
 
   const spotsRef = useRef(spots);
@@ -116,6 +126,7 @@ export function VenueMap({
   useEffect(() => {
     spotsRef.current = spots;
     onBackgroundTapRef.current = onBackgroundTap;
+    northRef.current = plan.northDeg + northNudge;
   });
 
   // --- geometry -----------------------------------------------------------
@@ -132,18 +143,23 @@ export function VenueMap({
     el.style.transform = `translate(${p.x}px, ${p.y}px)`;
   }
 
-  // Places the plan, the spots and the compass needle for the current view.
+  // Places the plan, the spots and the compass needle for the current view
+  // — drawing the plan again first if the zoom has run too far from the
+  // drawing being scaled (see LIVE_REDRAW_ZOOM).
   function draw() {
     const v = viewRef.current;
     const planEl = planRef.current;
     if (!v || !planEl) return;
+    const rs = Math.min(v.s, MAX_RASTER_PX / plan.width);
+    const drift = rs / rasterRef.current;
+    if (drift > LIVE_REDRAW_ZOOM || drift < 1 / LIVE_REDRAW_ZOOM) setRaster(rs);
     planEl.style.transform = `translate(${v.x}px, ${v.y}px) rotate(${v.r}rad) scale(${v.s / rasterRef.current})`;
     for (const spot of spotsRef.current) {
       const el = spotRefs.current.get(spot.id);
       if (el) placeSpot(el, spot);
     }
     if (needleRef.current) {
-      needleRef.current.style.transform = `rotate(${v.r + (plan.northDeg * Math.PI) / 180}rad)`;
+      needleRef.current.style.transform = `rotate(${v.r + (northRef.current * Math.PI) / 180}rad)`;
     }
   }
 
@@ -214,6 +230,7 @@ export function VenueMap({
 
   function maxZoom() {
     const fit = fitRef.current;
+    if (plan.vector) return fit * ZOOM_IN_LIMIT;
     return Math.max(fit, Math.min(fit * ZOOM_IN_LIMIT, MAX_PIXEL_ZOOM / window.devicePixelRatio));
   }
 
@@ -599,7 +616,7 @@ export function VenueMap({
     const v = viewRef.current;
     const heading = headingRef.current;
     if (v && heading !== null && pointersRef.current.size === 0) {
-      const target = (-(heading + plan.northDeg) * Math.PI) / 180;
+      const target = (-(heading + northRef.current) * Math.PI) / 180;
       let da = (target - v.r) % (2 * Math.PI);
       if (da > Math.PI) da -= 2 * Math.PI;
       if (da < -Math.PI) da += 2 * Math.PI;
@@ -761,6 +778,13 @@ export function VenueMap({
         </button>
       </div>
 
+      {following && (
+        <NorthNudge
+          value={normalizeDeg(plan.northDeg + northNudge)}
+          onStep={(step) => setNorthNudge((n) => n + step)}
+        />
+      )}
+
       {notice && (
         <div
           role="status"
@@ -769,6 +793,60 @@ export function VenueMap({
           {notice}
         </div>
       )}
+    </div>
+  );
+}
+
+// -180 < degrees ≤ 180.
+function normalizeDeg(degrees: number) {
+  const d = ((degrees % 360) + 360) % 360;
+  return d > 180 ? d - 360 : d;
+}
+
+// While following the compass: the plan's north, a degree at a time (held,
+// it keeps going), to line the plan up with the room by eye. The number
+// shown is the north to write into the plan (FloorPlan.northDeg).
+function NorthNudge({ value, onStep }: { value: number; onStep: (step: number) => void }) {
+  const repeat = useRef<{ timer?: ReturnType<typeof setTimeout> }>({});
+  const stop = () => clearTimeout(repeat.current.timer);
+  const start = (step: number) => {
+    stop();
+    onStep(step);
+    const again = (delay: number) => {
+      repeat.current.timer = setTimeout(() => {
+        onStep(step);
+        again(70);
+      }, delay);
+    };
+    again(400);
+  };
+  useEffect(() => stop, []);
+  const button = (step: number, label: string, glyph: string) => (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onPointerDown={() => start(step)}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onStep(step);
+      }}
+      className="no-press flex h-9 w-9 items-center justify-center rounded-full text-[18px] font-medium hover:bg-[var(--control-fill-hover)]"
+    >
+      {glyph}
+    </button>
+  );
+  return (
+    <div
+      onPointerDown={(e) => e.stopPropagation()}
+      className="pop-in absolute right-3 top-[150px] z-20 flex origin-top-right items-center gap-1 rounded-full border border-border glass-material p-1 shadow-[var(--shadow-float)]"
+    >
+      {/* A larger north turns the plan the other way round, anticlockwise. */}
+      {button(1, "Plan 1° gegen den Uhrzeigersinn drehen", "↺")}
+      <span className="min-w-[88px] text-center text-[13px] font-medium tabular-nums">Nord {value}°</span>
+      {button(-1, "Plan 1° im Uhrzeigersinn drehen", "↻")}
     </div>
   );
 }
