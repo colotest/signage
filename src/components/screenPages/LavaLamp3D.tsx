@@ -70,54 +70,54 @@ export const LAVA_3D_TUNING = {
   // How round the neck between two blobs gets as they run together: the
   // fillet's radius once they're well merged, as a fraction of the smaller
   // one's.
-  merge: 0.7,
+  merge: 1.5,
   // How far two joined blobs draw out after each other before letting go,
   // as a fraction of the smaller one's radius.
-  pinch: 0.5,
+  pinch: 1.08,
   // How hard a blob springs back when it lets go, how long one wobble
   // takes, and how long the wobbling takes to die away (both seconds).
   bounce: 1,
   wobble: 1.4,
-  damping: 1.1,
+  damping: 2,
   // How deep the lamp is, as a fraction of the screen's short side: how
   // far apart in depth the blobs can lie.
-  depth: 0.35,
+  depth: 0,
   // How thick the liquid is: how far distant wax sinks into its colour.
-  haze: 1.4,
+  haze: 0,
   // How soft an edge is, and how much softer it gets in the distance.
-  softness: 0.05,
+  softness: 0.005,
   // The bulb: how strong, how far its light carries (as a fraction of the
   // screen's height), and how far below the bottom edge it sits (percent
   // of the height).
-  bulb: 4.5,
-  bulbReach: 0.42,
-  lightDrop: 10,
+  bulb: 1.3,
+  bulbReach: 2,
+  lightDrop: 7,
   // How far the light wraps round the wax past the line where it would
   // stop on something opaque.
-  wrap: 0.5,
+  wrap: 0.82,
   // How much light thick wax swallows, and how strongly thin wax and
   // edges glow with what gets through.
-  absorb: 4,
-  glow: 0.9,
+  absorb: 0,
+  glow: 1.05,
   // Light from nowhere in particular, so the shaded tops of blobs aren't
   // black.
-  ambient: 0.04,
+  ambient: 0,
   // The highlights: how strong, and how tight (higher is glossier).
-  shine: 0.12,
-  gloss: 30,
+  shine: 0.05,
+  gloss: 5,
   // The softer light from over the top.
-  topLight: 0,
+  topLight: 0.05,
   // The glow hot wax throws into the liquid just around it.
-  halo: 0.35,
+  halo: 0.1,
   // How brightly the wax is exposed; past 1 it rolls off rather than
   // clipping.
-  exposure: 1.25,
+  exposure: 1.05,
   // The wax's colour, as the flat lamp has it.
   waxHue: LAVA_TUNING.waxHue,
   waxSaturation: LAVA_TUNING.waxSaturation,
   waxLightness: LAVA_TUNING.waxLightness,
   // The liquid's darkening towards the top, as the flat lamp's.
-  rampDepth: LAVA_TUNING.rampDepth,
+  rampDepth: 0.85,
   rampStart: LAVA_TUNING.rampStart,
   // How many of the device's pixels the shader works in, and frames a
   // second at most.
