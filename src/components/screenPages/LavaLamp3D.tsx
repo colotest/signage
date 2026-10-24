@@ -112,10 +112,10 @@ export const LAVA_3D_TUNING = {
   // How brightly the wax is exposed; past 1 it rolls off rather than
   // clipping.
   exposure: 1.05,
-  // The wax's colour, as the flat lamp has it.
-  waxHue: LAVA_TUNING.waxHue,
-  waxSaturation: LAVA_TUNING.waxSaturation,
-  waxLightness: LAVA_TUNING.waxLightness,
+  // The wax's colour.
+  waxHue: 348,
+  waxSaturation: 100,
+  waxLightness: 53,
   // The liquid's darkening towards the top, as the flat lamp's.
   rampDepth: 0.85,
   rampStart: LAVA_TUNING.rampStart,

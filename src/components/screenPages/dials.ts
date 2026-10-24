@@ -18,6 +18,8 @@ export const LAVA_DIALS: Dial<LavaTuning>[] = [
   { key: "rimStrength", label: "Light strength", min: 0, max: 14, step: 0.2, note: "How bright the lit edges are, top and bottom together." },
   { key: "rimFocus", label: "Gloss focus", min: 0.6, max: 3, step: 0.05, note: "Above 1 concentrates the light into a sheen; 1 is a flat band." },
   { key: "topLight", label: "Light from above", min: 0, max: 1.5, step: 0.05, note: "The upper light, as a fraction of the one below it." },
+  { key: "lightHue", label: "Light hue", min: 0, max: 360, step: 1, note: "The colour of the light from below, on the undersides." },
+  { key: "topLightHue", label: "Light from above hue", min: 0, max: 360, step: 1, note: "The colour of the light from above, on the tops." },
   { key: "haloStrength", label: "Translucence", min: 0, max: 1, step: 0.02, note: "The glow outside the edge and the light inside it, together." },
   { key: "density", label: "Wax density", min: 0, max: 1.6, step: 0.05, note: "How much thick wax swallows light — the dark through a blob's middle." },
   { key: "speed", label: "Slowness", min: 0.3, max: 3, step: 0.05, note: "Multiplies every drift's duration. Above 1 is slower." },

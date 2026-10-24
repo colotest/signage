@@ -76,14 +76,15 @@ const PROFILE_STOPS = 32;
 // is pushed out well past the union of the two outlines, and the mass that
 // results is nearer the sum of them. Opaque blobs can only ever make a
 // union, which is always less wax than went into it.
-const BLOB_ALPHA = 0.69;
-// The cut is ALPHA_BIAS / ALPHA_GAIN of the way up the field — a quarter,
-// which is half of one blob's own height, and what makes a merge grow.
+const BLOB_ALPHA = 0.48;
+// The cut is ALPHA_BIAS / ALPHA_GAIN of the way up the field — a little
+// under two fifths of one blob's own height, which leaves the edge just
+// outside where the blob is drawn, and is what makes a merge grow.
 // The gain itself only decides how many pixels the edge takes to go from
 // nothing to solid: the higher it is, the harder the edge. Soft edges were
 // reading as fog rather than as wax.
 const ALPHA_GAIN = 60;
-const ALPHA_BIAS = -14.4;
+const ALPHA_BIAS = -10.8;
 // All of the shading reads off the pooled field — the blurred sum of the
 // blobs, before it is cut into a silhouette. It already stands high where
 // the wax is thick, passes through the cut at the edge and falls away
@@ -104,20 +105,24 @@ const LIFT_RATIO = 0.079;
 const DENSITY = [0.81, 0.96, 1] as const;
 // The lit underside, as a colour and how hard it is carried. Taking it off
 // the merged shape rather than off each blob is what carries the bevel
-// unbroken across a join.
-const RIM_COLOUR = [1, 0.93, 0.78] as const;
-const RIM_STRENGTH = 0.4;
+// unbroken across a join. Held as a hue (see lightHue) on a pale, warm
+// cream, the same for the light below and the one above unless tuned
+// apart.
+const RIM_HUE = 41;
+const RIM_SATURATION = 1;
+const RIM_LIGHTNESS = 0.89;
+const RIM_STRENGTH = 0.6;
 // Gloss is light concentrated, not merely more of it. Curving the band
 // rather than scaling it flat pushes the weak tail — the part that spreads
 // a highlight into a wash — down towards nothing, while the peak right at
 // the edge keeps the lot. Above 1 it sharpens; at 1 it is the plain slope
 // this used to be.
 const RIM_FOCUS = 1.05;
-// A second light, over the vessel, at half the strength of the bulb under
-// it. It needs no shift of its own: the same two images that give the
+// A second light, over the vessel, at a fraction of the strength of the
+// bulb under it. It needs no shift of its own: the same two images that give the
 // underside give the top edge with the operands the other way round, so
 // this costs two sums and nothing else.
-const TOP_LIGHT = 0.15;
+const TOP_LIGHT = 0.25;
 // Translucence: the light that gets into the wax near its edge, where there
 // is least of it to cross, and the glow it throws just beyond. Both come
 // off one band read across the pooled field, straddling the cut — strongest
@@ -136,7 +141,14 @@ const TOP_LIGHT = 0.15;
 // merge reads brighter than either blob — which is not what thin wax does.
 const HALO_BAND = [0, 0.14, 0.82, 0.86, 0.1, 0, 0, 0, 0, 0, 0];
 const HALO_COLOUR = [1, 0.45, 0.2] as const;
-const HALO_STRENGTH = 0.16;
+const HALO_STRENGTH = 0.12;
+// How wide that band is depends on the blob: read off each blob's mound
+// stretched by its size against one this big (a radius, as a fraction of
+// the short side, about the average), so a big blob glows over a broad
+// edge and a small one over a tight one. The shader only: the canvas
+// renderer reads the band off the one pooled field, whose falloff is the
+// same width for every blob.
+const HALO_REFERENCE = 0.13;
 
 
 // The lamp's own vessel. Deliberately not the screen's black/white
@@ -165,9 +177,9 @@ export const GROUND = "#17031a";
 // where the glow in the deep end of the vessel comes from.
 // Held as hue, saturation and lightness so the tuner can move them: this
 // is #ff6a12, the orange it has been since the neon pass.
-const WAX_HUE = 348;
+const WAX_HUE = 340;
 const WAX_SATURATION = 100;
-const WAX_LIGHTNESS = 53;
+const WAX_LIGHTNESS = 51;
 // Where the darkening starts, as a fraction of the way up, and the stops
 // from there to the top: each is how far along that span it sits, the
 // colour it lays over, and how much of it.
@@ -424,10 +436,13 @@ export const LAVA_TUNING = {
   lift: LIFT_RATIO,
   // One dial over the three channels, keeping their ratio: blue falls
   // fastest, which is what keeps a thick blob's middle warm.
-  density: 1,
+  density: 0.9,
   rimStrength: RIM_STRENGTH,
   rimFocus: RIM_FOCUS,
   topLight: TOP_LIGHT,
+  // The colours of the light from below and the light from above.
+  lightHue: RIM_HUE,
+  topLightHue: RIM_HUE,
   haloStrength: HALO_STRENGTH,
   // A multiplier on every drift's duration: above 1 is slower.
   speed: 1,
@@ -523,6 +538,8 @@ export function LavaLamp({
   // sharpening an edge never moves it.
   const alphaBias = -t.cut * t.alphaGain;
   const wax = hslToRgb(t.waxHue, t.waxSaturation / 100, t.waxLightness / 100);
+  const rimBelow = rimColour(t.lightHue);
+  const rimAbove = rimColour(t.topLightHue);
 
   // The canvas variant's painter: one bitmap, a quarter of the box on each
   // side, redrawn every frame and stretched up by the browser. Building the
@@ -687,26 +704,26 @@ export function LavaLamp({
                 the top of the wax, where the other one clamped away: the
                 light above, carried at TOP_LIGHT of the one below. */}
             <feComposite in="SourceGraphic" in2="lowered" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0" result="topside" />
-            <feComposite
-              in="underside"
-              in2="topside"
-              operator="arithmetic"
-              k1="0"
-              k2="1"
-              k3={t.topLight}
-              k4="0"
-              result="lights"
-            />
-            {/* Flat amber at the strength of that difference: constant
-                colour out of a slope of nought, alpha straight off the
-                difference, screened onto the body in premultiplied space,
+            {/* Each light's colour at the strength of its difference:
+                constant colour out of a slope of nought, alpha straight off
+                the difference — the light above at its fraction of the one
+                below, which the gamma's amplitude carries — then the two
+                added, which never overlap, since a surface faces either up
+                or down. Screened onto the body in premultiplied space,
                 which is one pass rather than a blend. */}
-            <feComponentTransfer in="lights" result="rim">
-              <feFuncR type="linear" slope="0" intercept={RIM_COLOUR[0]} />
-              <feFuncG type="linear" slope="0" intercept={RIM_COLOUR[1]} />
-              <feFuncB type="linear" slope="0" intercept={RIM_COLOUR[2]} />
+            <feComponentTransfer in="underside" result="rimBelow">
+              <feFuncR type="linear" slope="0" intercept={rimBelow[0]} />
+              <feFuncG type="linear" slope="0" intercept={rimBelow[1]} />
+              <feFuncB type="linear" slope="0" intercept={rimBelow[2]} />
               <feFuncA type="gamma" amplitude={t.rimStrength} exponent={t.rimFocus} offset="0" />
             </feComponentTransfer>
+            <feComponentTransfer in="topside" result="rimAbove">
+              <feFuncR type="linear" slope="0" intercept={rimAbove[0]} />
+              <feFuncG type="linear" slope="0" intercept={rimAbove[1]} />
+              <feFuncB type="linear" slope="0" intercept={rimAbove[2]} />
+              <feFuncA type="gamma" amplitude={t.rimStrength * t.topLight ** t.rimFocus} exponent={t.rimFocus} offset="0" />
+            </feComponentTransfer>
+            <feComposite in="rimBelow" in2="rimAbove" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="rim" />
             {/* The pooled field reaches past the wax, so the difference
                 does too; without this the light spills off every blob as a
                 bright band of its own, outside the shape. */}
@@ -909,6 +926,7 @@ function placeBlob(blob: Blob, seconds: number, t: LavaTuning, width: number, he
     // round profile.
     unstretchX: squash / pose.sx,
     unstretchY: squash / pose.sy,
+    body,
     outer: body + PROFILE_REACH * reach,
     profile: profileFor(body / reach),
   };
@@ -932,7 +950,8 @@ uniform vec2 uCanvas;
 uniform float uScale;
 // Each blob's centre, and how much to undo its stretch along each axis.
 uniform vec4 uBlobs[${BLOBS.length}];
-uniform float uOuter[${BLOBS.length}];
+// Each blob's outer edge and body, in CSS pixels.
+uniform vec2 uRadii[${BLOBS.length}];
 uniform sampler2D uProfiles;
 uniform sampler2D uLight;
 uniform float uBlobAlpha;
@@ -942,7 +961,9 @@ uniform float uLift;
 uniform vec3 uDensity;
 // Rim strength, rim focus, light from above.
 uniform vec3 uRim;
-uniform vec3 uRimColour;
+uniform vec3 uRimBelow;
+uniform vec3 uRimAbove;
+uniform float uHaloReference;
 uniform vec3 uHaloColour;
 uniform float uHalo[11];
 uniform vec3 uWax;
@@ -953,11 +974,26 @@ float field(vec2 at) {
   float sum = 0.0;
   for (int i = 0; i < ${BLOBS.length}; i++) {
     vec2 off = (at - uBlobs[i].xy) * uBlobs[i].zw;
-    float r = length(off) / uOuter[i];
+    float r = length(off) / uRadii[i].x;
     float stop = min(r, 1.0) * ${(PROFILE_STOPS - 1) / PROFILE_STOPS} + ${0.5 / PROFILE_STOPS};
     sum += texture2D(uProfiles, vec2(stop, (float(i) + 0.5) / ${PROFILE_ROWS}.0)).a * step(r, 1.0);
   }
   return sum * uBlobAlpha;
+}
+
+// The same field with each blob's falloff stretched by its size against
+// the reference one, about its body's edge: what the translucence band is
+// read across, so it spans more of a big blob's edge than a small one's.
+float sized(vec2 at) {
+  float sum = 0.0;
+  for (int i = 0; i < ${BLOBS.length}; i++) {
+    vec2 off = (at - uBlobs[i].xy) * uBlobs[i].zw;
+    float body = uRadii[i].y;
+    float r = max(body + (length(off) - body) * uHaloReference / body, 0.0) / uRadii[i].x;
+    float stop = min(r, 1.0) * ${(PROFILE_STOPS - 1) / PROFILE_STOPS} + ${0.5 / PROFILE_STOPS};
+    sum += texture2D(uProfiles, vec2(stop, (float(i) + 0.5) / ${PROFILE_ROWS}.0)).a * step(r, 1.0);
+  }
+  return min(sum * uBlobAlpha, 1.0);
 }
 
 vec3 toLinear(vec3 c) {
@@ -998,11 +1034,14 @@ void main() {
   float waxAlpha = clamp(uGain * (a - uCut), 0.0, 1.0);
   vec4 dense = vec4(source * (1.0 - uDensity * a) * waxAlpha, waxAlpha);
 
-  float lights = clamp(max(above - a, 0.0) + uRim.z * max(a - above, 0.0), 0.0, 1.0);
+  // A surface faces up or down, so only one light falls on it.
+  float below = max(above - a, 0.0);
+  float lights = clamp(below + uRim.z * max(a - above, 0.0), 0.0, 1.0);
   float rimAlpha = lights > 0.0 ? clamp(uRim.x * pow(lights, uRim.y), 0.0, 1.0) * waxAlpha : 0.0;
-  vec4 shaded = screen(vec4(uRimColour * rimAlpha, rimAlpha), dense);
+  vec3 rimColour = below > 0.0 ? uRimBelow : uRimAbove;
+  vec4 shaded = screen(vec4(rimColour * rimAlpha, rimAlpha), dense);
 
-  float haloAlpha = clamp(halo(a), 0.0, 1.0);
+  float haloAlpha = clamp(halo(sized(at)), 0.0, 1.0);
   vec4 lit = screen(vec4(uHaloColour * haloAlpha, haloAlpha), shaded);
 
   vec3 colour = lit.a > 0.0 ? toSrgb(lit.rgb / lit.a) : vec3(0.0);
@@ -1014,8 +1053,8 @@ void main() {
 
 function createShader(canvas: HTMLCanvasElement) {
   const pass = createPass(canvas, "Lava Lamp", FRAGMENT, [
-    "uCanvas", "uScale", "uBlobs", "uOuter", "uProfiles", "uLight", "uBlobAlpha", "uGain", "uCut", "uLift",
-    "uDensity", "uRim", "uRimColour", "uHaloColour", "uHalo", "uWax", "uGround",
+    "uCanvas", "uScale", "uBlobs", "uRadii", "uProfiles", "uLight", "uBlobAlpha", "uGain", "uCut", "uLift",
+    "uDensity", "uRim", "uRimBelow", "uRimAbove", "uHaloReference", "uHaloColour", "uHalo", "uWax", "uGround",
   ] as const);
   if (!pass) return null;
   const { gl, at } = pass;
@@ -1048,12 +1087,11 @@ function createShader(canvas: HTMLCanvasElement) {
 
   gl.uniform1i(at.uProfiles, 0);
   gl.uniform1i(at.uLight, 1);
-  gl.uniform3f(at.uRimColour, ...RIM_COLOUR);
   gl.uniform3f(at.uHaloColour, ...HALO_COLOUR);
   gl.uniform3f(at.uGround, ...hexChannels(GROUND));
 
   const blobs = new Float32Array(BLOBS.length * 4);
-  const outers = new Float32Array(BLOBS.length);
+  const radii = new Float32Array(BLOBS.length * 2);
 
   return {
     draw(width: number, height: number, cssWidth: number, cssHeight: number, seconds: number, t: LavaTuning) {
@@ -1063,7 +1101,7 @@ function createShader(canvas: HTMLCanvasElement) {
       BLOBS.forEach((blob, i) => {
         const placed = placeBlob(blob, seconds, t, cssWidth, cssHeight);
         blobs.set([placed.x, placed.y, placed.unstretchX, placed.unstretchY], i * 4);
-        outers[i] = placed.outer;
+        radii.set([placed.outer, placed.body], i * 2);
         if (shown[i] !== placed.profile) {
           shown[i] = placed.profile;
           placed.profile.forEach((value, stop) => (profileBytes[i * PROFILE_STOPS + stop] = Math.round(value * 255)));
@@ -1094,7 +1132,10 @@ function createShader(canvas: HTMLCanvasElement) {
       gl.uniform2f(at.uCanvas, width, height);
       gl.uniform1f(at.uScale, width / cssWidth);
       gl.uniform4fv(at.uBlobs, blobs);
-      gl.uniform1fv(at.uOuter, outers);
+      gl.uniform2fv(at.uRadii, radii);
+      gl.uniform1f(at.uHaloReference, short * HALO_REFERENCE);
+      gl.uniform3f(at.uRimBelow, ...rimColour(t.lightHue));
+      gl.uniform3f(at.uRimAbove, ...rimColour(t.topLightHue));
       gl.uniform1f(at.uBlobAlpha, t.blobAlpha);
       gl.uniform1f(at.uGain, t.alphaGain);
       gl.uniform1f(at.uCut, t.cut);
@@ -1111,6 +1152,12 @@ function createShader(canvas: HTMLCanvasElement) {
       pass.dispose();
     },
   };
+}
+
+// A light's colour on the rim's pale cream, as 0–1 channels: the filter
+// takes them as they are, in its own linear light.
+function rimColour(hue: number) {
+  return rgbChannels(hslToRgb(hue, RIM_SATURATION, RIM_LIGHTNESS));
 }
 
 // "r, g, b" (see hslToRgb) and "#rrggbb", as 0–1 channels.
