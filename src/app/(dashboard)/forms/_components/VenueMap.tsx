@@ -115,10 +115,6 @@ export function VenueMap({
   const followingRef = useRef(false);
   const headingRef = useRef<number | null>(null);
   const stopCompassRef = useRef<(() => void) | null>(null);
-  // A nudge to the plan's north, set by hand while following the compass to
-  // line the plan up with the room — the sum is the northDeg to keep.
-  const [northNudge, setNorthNudge] = useState(0);
-  const northRef = useRef(plan.northDeg);
   const [notice, setNotice] = useState<string | null>(null);
 
   const spotsRef = useRef(spots);
@@ -126,7 +122,6 @@ export function VenueMap({
   useEffect(() => {
     spotsRef.current = spots;
     onBackgroundTapRef.current = onBackgroundTap;
-    northRef.current = plan.northDeg + northNudge;
   });
 
   // --- geometry -----------------------------------------------------------
@@ -159,7 +154,7 @@ export function VenueMap({
       if (el) placeSpot(el, spot);
     }
     if (needleRef.current) {
-      needleRef.current.style.transform = `rotate(${v.r + (northRef.current * Math.PI) / 180}rad)`;
+      needleRef.current.style.transform = `rotate(${v.r + (plan.northDeg * Math.PI) / 180}rad)`;
     }
   }
 
@@ -394,10 +389,7 @@ export function VenueMap({
       const cx = g.clientX - rect.left, cy = g.clientY - rect.top;
       let next = zoomAbout(v, cx, cy, g.scale / last.scale);
       const da = ((g.rotation - last.rotation) * Math.PI) / 180;
-      if (da) {
-        stopFollowing();
-        next = rotateAbout(next, cx, cy, da);
-      }
+      if (da && !followingRef.current) next = rotateAbout(next, cx, cy, da);
       last = { scale: g.scale, rotation: g.rotation };
       commit(next);
     };
@@ -484,11 +476,10 @@ export function VenueMap({
     g.moved = true;
 
     if (pointers.size === 1) {
-      if (g.rotateMode) {
+      if (g.rotateMode && !followingRef.current) {
         const { w, h } = sizeRef.current;
         const a0 = Math.atan2(prev.y - h / 2, prev.x - w / 2);
         const a1 = Math.atan2(p.y - h / 2, p.x - w / 2);
-        stopFollowing();
         commit(rotateAbout(v, w / 2, h / 2, a1 - a0));
       } else {
         commit({ ...v, x: v.x + p.x - prev.x, y: v.y + p.y - prev.y });
@@ -521,10 +512,7 @@ export function VenueMap({
           da = g.rotAccum;
         }
       }
-      if (g.rotating) {
-        stopFollowing();
-        next = rotateAbout(next, c1.x, c1.y, da);
-      }
+      if (g.rotating && !followingRef.current) next = rotateAbout(next, c1.x, c1.y, da);
       commit(next);
     }
     pointers.set(e.pointerId, p);
@@ -616,7 +604,7 @@ export function VenueMap({
     const v = viewRef.current;
     const heading = headingRef.current;
     if (v && heading !== null && pointersRef.current.size === 0) {
-      const target = (-(heading + northRef.current) * Math.PI) / 180;
+      const target = (-(heading + plan.northDeg) * Math.PI) / 180;
       let da = (target - v.r) % (2 * Math.PI);
       if (da > Math.PI) da -= 2 * Math.PI;
       if (da < -Math.PI) da += 2 * Math.PI;
@@ -635,8 +623,10 @@ export function VenueMap({
   }
 
   // The compass button: starts turning the map with the device, so what's
-  // ahead on the plan is ahead in the room. Pressed again — or on a device
-  // without a compass — it stands the plan back upright.
+  // ahead on the plan is ahead in the room. While it does, the map can still
+  // be slid and zoomed but not turned by hand: only this button turns it
+  // off. Pressed again — or on a device without a compass — it stands the
+  // plan back upright.
   function onCompassPress() {
     if (followingRef.current) {
       stopFollowing();
@@ -778,13 +768,6 @@ export function VenueMap({
         </button>
       </div>
 
-      {following && (
-        <NorthNudge
-          value={normalizeDeg(plan.northDeg + northNudge)}
-          onStep={(step) => setNorthNudge((n) => n + step)}
-        />
-      )}
-
       {notice && (
         <div
           role="status"
@@ -793,60 +776,6 @@ export function VenueMap({
           {notice}
         </div>
       )}
-    </div>
-  );
-}
-
-// -180 < degrees ≤ 180.
-function normalizeDeg(degrees: number) {
-  const d = ((degrees % 360) + 360) % 360;
-  return d > 180 ? d - 360 : d;
-}
-
-// While following the compass: the plan's north, a degree at a time (held,
-// it keeps going), to line the plan up with the room by eye. The number
-// shown is the north to write into the plan (FloorPlan.northDeg).
-function NorthNudge({ value, onStep }: { value: number; onStep: (step: number) => void }) {
-  const repeat = useRef<{ timer?: ReturnType<typeof setTimeout> }>({});
-  const stop = () => clearTimeout(repeat.current.timer);
-  const start = (step: number) => {
-    stop();
-    onStep(step);
-    const again = (delay: number) => {
-      repeat.current.timer = setTimeout(() => {
-        onStep(step);
-        again(70);
-      }, delay);
-    };
-    again(400);
-  };
-  useEffect(() => stop, []);
-  const button = (step: number, label: string, glyph: string) => (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onPointerDown={() => start(step)}
-      onPointerUp={stop}
-      onPointerLeave={stop}
-      onPointerCancel={stop}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onStep(step);
-      }}
-      className="no-press flex h-9 w-9 items-center justify-center rounded-full text-[18px] font-medium hover:bg-[var(--control-fill-hover)]"
-    >
-      {glyph}
-    </button>
-  );
-  return (
-    <div
-      onPointerDown={(e) => e.stopPropagation()}
-      className="pop-in absolute right-3 top-[150px] z-20 flex origin-top-right items-center gap-1 rounded-full border border-border glass-material p-1 shadow-[var(--shadow-float)]"
-    >
-      {/* A larger north turns the plan the other way round, anticlockwise. */}
-      {button(1, "Plan 1° gegen den Uhrzeigersinn drehen", "↺")}
-      <span className="min-w-[88px] text-center text-[13px] font-medium tabular-nums">Nord {value}°</span>
-      {button(-1, "Plan 1° im Uhrzeigersinn drehen", "↻")}
     </div>
   );
 }

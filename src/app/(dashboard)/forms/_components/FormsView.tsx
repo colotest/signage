@@ -27,10 +27,10 @@ const PLAN_KINDS: { value: PlanKind; label: string }[] = [
   { value: "pixel", label: "Pixel" },
 ];
 const PLAN_KEY = "forms.venuePlan"; // which one, remembered on this device
-// True north points 95° anticlockwise of the plan's top edge — to its left
-// edge, and 5° on past it — so facing north with the compass on, the plan
-// sits turned 95° clockwise, its own north straight up. (Checked on site.)
-const NORTH_DEG = -95;
+// True north points 11° clockwise of the plan's top edge, so facing north
+// with the compass on, the plan sits turned 11° anticlockwise. (Lined up by
+// eye on site, with the compass on.)
+const NORTH_DEG = 11;
 const COLOSSEUM_EG: Record<PlanKind, FloorPlan> = {
   vektor: { src: "/venues/colosseum-eg.svg", width: 9519, height: 5253, vector: true, northDeg: NORTH_DEG },
   pixel: {
