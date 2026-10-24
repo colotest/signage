@@ -35,7 +35,7 @@ import { createPass, webglUsable } from "./webgl";
 // let go — and then each springs back, past round into a flattened shape
 // and back again, settling over a second or two, as surface tension
 // pulls it in. That needs memory of what was joined to what, so it is
-// worked out a frame at a time on the CPU (see Pairs) and handed to the
+// worked out a frame at a time on the CPU (see settle) and handed to the
 // shader as each blob's stretch.
 //
 // Every pixel looks into the lamp along its own line of sight: it finds
@@ -307,12 +307,24 @@ float join(float a, float b, float k) {
 }
 
 // The wax, as the distance to it, from just the blobs on this line.
+//
+// The blobs come grouped: each group is blobs joined to one another, in
+// the order they're joined, each with the fillet of its own join to the
+// group so far; a negative fillet starts the next group. A group's blobs
+// are joined smoothly, and the groups only side by side — so a fillet
+// grown between two well-merged blobs never reaches out to a third that
+// hasn't touched either yet.
 float wax(vec3 at, bool on[${BLOBS.length}]) {
-  float d = 1e5;
+  float all = 1e5;
+  float group = 1e5;
   for (int i = 0; i < ${BLOBS.length}; i++) {
-    if (on[i]) d = join(d, blob(at, uBlobA[i], uBlobB[i], uBlobC[i]), uBlobC[i].w);
+    if (uBlobC[i].w < 0.0) {
+      all = min(all, group);
+      group = 1e5;
+    }
+    if (on[i]) group = join(group, blob(at, uBlobA[i], uBlobB[i], uBlobC[i]), max(uBlobC[i].w, 0.0));
   }
-  return d;
+  return min(all, group);
 }
 
 vec3 toLinear(vec3 c) {
@@ -377,17 +389,23 @@ void main() {
   // that blob: taking the nearest one's outright would jump, in a straight
   // line, wherever two are equally near.
   float passes = 1e5;
+  float passing = 1e5;
   float weights = 0.0;
   float depths = 0.0;
   for (int i = 0; i < ${BLOBS.length}; i++) {
+    if (uBlobC[i].w < 0.0) {
+      passes = min(passes, passing);
+      passing = 1e5;
+    }
     if (on[i]) {
       float d = blob(vec3(at, uBlobA[i].z), uBlobA[i], uBlobB[i], uBlobC[i]);
       float weight = exp(-max(d, 0.0) / uDepth.w);
       weights += weight;
       depths += weight * uBlobA[i].z;
-      passes = join(passes, d, uBlobC[i].w);
+      passing = join(passing, d, max(uBlobC[i].w, 0.0));
     }
   }
+  passes = min(passes, passing);
   float passesZ = weights > 0.0 ? depths / weights : 0.0;
 
   // Only lines that reach the wax step into it: from the front, each step
@@ -461,13 +479,171 @@ void main() {
 // frame to the next, since whether two drifting apart are still holding
 // on depends on whether they were joined a moment ago.
 type Release = { at: number; axis: [number, number, number]; amount: number };
+type Vec3 = [number, number, number];
+type Placed = { x: number; y: number; z: number; r: number; axis: Vec3; tip: number };
 
 function createPairs(count: number) {
-  // Joined pairs, by "i j" with i < j.
-  const joined = new Set<string>();
+  // Joined pairs, by "i j" with i < j, and the furthest they've run into
+  // each other since joining (their least gap, negative).
+  const joined = new Map<string, number>();
   // Each blob's last letting go, for its wobble.
   const released: (Release | null)[] = Array.from({ length: count }, () => null);
   return { joined, released };
+}
+
+// One frame of the joins: which pairs are joined, which of those are
+// holding on as they drift apart and how far each blob is drawn out by it,
+// which let go — and the blobs in the order the shader joins them, with
+// each one's fillet to its group (negative: starts a group).
+function settle(placed: Placed[], pairs: ReturnType<typeof createPairs>, seconds: number, t: Lava3DTuning) {
+  const n = placed.length;
+  const keyOf = (i: number, j: number) => `${i} ${j}`;
+  const geometry = (i: number, j: number) => {
+    const p = placed[i];
+    const q = placed[j];
+    const d: Vec3 = [q.x - p.x, q.y - p.y, q.z - p.z];
+    const apart = Math.hypot(...d) || 1;
+    const smaller = Math.min(p.r, q.r);
+    return {
+      gap: apart - (p.r + q.r),
+      smaller,
+      // How far apart, past touching, they can drift and still hold on.
+      hold: Math.max(t.pinch * smaller, 0.001),
+      axis: [d[0] / apart, d[1] / apart, d[2] / apart] as Vec3,
+    };
+  };
+
+  // Touching joins them; joined, the furthest in they've gone is kept.
+  // A blob that joins another stops wobbling: it's part of something now.
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const { gap } = geometry(i, j);
+      const key = keyOf(i, j);
+      const deepest = pairs.joined.get(key);
+      if (deepest !== undefined) pairs.joined.set(key, Math.min(deepest, gap));
+      else if (gap < 0) {
+        pairs.joined.set(key, gap);
+        pairs.released[i] = pairs.released[j] = null;
+      }
+    }
+  }
+
+  // Whether i and j are joined some other way than directly — through
+  // the rest of the blob they're both part of.
+  const linkedWithout = (from: number, to: number, skip: string) => {
+    const seen = new Set([from]);
+    const queue = [from];
+    while (queue.length) {
+      const at = queue.shift()!;
+      for (let other = 0; other < n; other++) {
+        if (seen.has(other)) continue;
+        const key = keyOf(Math.min(at, other), Math.max(at, other));
+        if (key === skip || !pairs.joined.has(key)) continue;
+        if (other === to) return true;
+        seen.add(other);
+        queue.push(other);
+      }
+    }
+    return false;
+  };
+
+  // Each join, as it stands: a fillet for the shader, and for one that
+  // holds two parts together alone, the drawing-out as they part — or the
+  // letting go, once they've drifted past holding. A join that isn't all
+  // that holds them together just lapses when they drift apart: the blob
+  // stays whole, and nothing in it bounces.
+  const fillets = new Map<string, number>();
+  for (const [key, deepest] of [...pairs.joined]) {
+    const [i, j] = key.split(" ").map(Number);
+    const { gap, smaller, hold, axis } = geometry(i, j);
+    const alone = !linkedWithout(i, j, key);
+    if (gap >= hold) {
+      pairs.joined.delete(key);
+      if (alone) {
+        // They let go, each springing back from as far as it was drawn
+        // out, which by now is the whole gap between them.
+        const share = (r: number) => (gap * r) / (placed[i].r + placed[j].r) / (2 * r);
+        pairs.released[i] = { at: seconds, axis, amount: share(placed[i].r) * t.bounce };
+        pairs.released[j] = { at: seconds, axis: [-axis[0], -axis[1], -axis[2]], amount: share(placed[j].r) * t.bounce };
+      }
+      continue;
+    }
+    // Drawing out begins the moment they start to part, not once they're
+    // clear of each other, and is sized to reach right across the gap
+    // just as they let go: the neck thins all the way to a thread.
+    let drawn = 0;
+    if (alone) {
+      const parted = Math.max(gap - deepest, 0);
+      drawn = (parted * hold) / (hold - deepest);
+      const total = placed[i].r + placed[j].r;
+      const tipI = (drawn * 2 * placed[i].r) / total / 2;
+      const tipJ = (drawn * 2 * placed[j].r) / total / 2;
+      if (tipI > placed[i].tip) {
+        placed[i].tip = tipI;
+        placed[i].axis = axis;
+      }
+      if (tipJ > placed[j].tip) {
+        placed[j].tip = tipJ;
+        placed[j].axis = [-axis[0], -axis[1], -axis[2]];
+      }
+    }
+    // The fillet grows from nothing at first touch with how far in they
+    // are — counting what they're drawn out by — and so shrinks back to
+    // nothing as they part.
+    const into = Math.min(Math.max(drawn - gap, 0) / (0.6 * smaller), 1);
+    fillets.set(key, t.merge * smaller * into * into * (3 - 2 * into));
+  }
+
+  // The order the shader joins them in: a group at a time, starting from
+  // its most merged pair, then adding whichever blob has the roundest
+  // join to what's there already, with that join's fillet. Every blob
+  // then meets its group with the fillet of a join it actually has.
+  const order: { index: number; fillet: number }[] = [];
+  const done = new Set<number>();
+  while (done.size < n) {
+    let start = -1;
+    let best = -1;
+    for (const [key, fillet] of fillets) {
+      const [i, j] = key.split(" ").map(Number);
+      if (!done.has(i) && !done.has(j) && fillet > best) {
+        best = fillet;
+        start = i;
+      }
+    }
+    if (start < 0) start = [...Array(n).keys()].find((i) => !done.has(i))!;
+    order.push({ index: start, fillet: -1 });
+    done.add(start);
+    for (;;) {
+      let next = -1;
+      let fillet = -1;
+      for (const [key, value] of fillets) {
+        const [i, j] = key.split(" ").map(Number);
+        const inside = done.has(i) ? i : done.has(j) ? j : -1;
+        const outside = inside === i ? j : i;
+        if (inside < 0 || done.has(outside) || !order.some((o) => o.index === inside)) continue;
+        if (value > fillet) {
+          fillet = value;
+          next = outside;
+        }
+      }
+      // Joined pairs whose fillet is still nothing (just touched) are in
+      // the group too, with a fillet of nothing.
+      if (next < 0) {
+        for (const key of pairs.joined.keys()) {
+          const [i, j] = key.split(" ").map(Number);
+          if (done.has(i) !== done.has(j) && order.some((o) => o.index === (done.has(i) ? i : j))) {
+            next = done.has(i) ? j : i;
+            fillet = 0;
+            break;
+          }
+        }
+      }
+      if (next < 0) break;
+      order.push({ index: next, fillet: Math.max(fillet, 0) });
+      done.add(next);
+    }
+  }
+  return order;
 }
 
 function createShader(canvas: HTMLCanvasElement) {
@@ -516,68 +692,23 @@ function createShader(canvas: HTMLCanvasElement) {
           r: (short * blob.size * squash) / 2,
           unsquashX: squash / pose.sx,
           unsquashY: squash / pose.sy,
-          // What the pairs below make of it.
-          axis: [0, 0, 1] as [number, number, number],
+          // What its joins make of it (see settle).
+          axis: [0, 0, 1] as Vec3,
           tip: 0,
-          fillet: 0,
         };
       });
 
-      // Every pair, for whether it's run together, is holding on as it
-      // drifts apart, or has just let go.
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          const p = placed[i];
-          const q = placed[j];
-          const dx = q.x - p.x;
-          const dy = q.y - p.y;
-          const dz = q.z - p.z;
-          const apart = Math.hypot(dx, dy, dz) || 1;
-          const gap = apart - (p.r + q.r);
-          const smaller = Math.min(p.r, q.r);
-          const key = `${i} ${j}`;
-          const axis: [number, number, number] = [dx / apart, dy / apart, dz / apart];
+      const order = settle(placed, pairs, seconds, t);
 
-          if (gap < 0) {
-            // Run together: the fillet rounds as they go further in.
-            pairs.joined.add(key);
-            const into = Math.min(-gap / (0.6 * smaller), 1);
-            const fillet = t.merge * smaller * (0.45 + 0.55 * into * into * (3 - 2 * into));
-            p.fillet = Math.max(p.fillet, fillet);
-            q.fillet = Math.max(q.fillet, fillet);
-          } else if (pairs.joined.has(key) && gap < t.pinch * smaller) {
-            // Drifting apart but holding on: each draws out after the
-            // other, the tips meeting in a thin neck.
-            const reach = gap * 0.55;
-            const fillet = t.merge * smaller * 0.25 * (1 - gap / (t.pinch * smaller));
-            if (reach * (p.r / (p.r + q.r)) * 2 > p.tip) {
-              p.tip = reach * ((2 * p.r) / (p.r + q.r));
-              p.axis = axis;
-            }
-            if (reach * (q.r / (p.r + q.r)) * 2 > q.tip) {
-              q.tip = reach * ((2 * q.r) / (p.r + q.r));
-              q.axis = [-axis[0], -axis[1], -axis[2]];
-            }
-            p.fillet = Math.max(p.fillet, fillet);
-            q.fillet = Math.max(q.fillet, fillet);
-          } else if (pairs.joined.has(key)) {
-            // Let go: each springs back from as far as it was drawn out.
-            pairs.joined.delete(key);
-            const drawn = (t.pinch * smaller * 0.55 * 2) / (p.r + q.r);
-            pairs.released[i] = { at: seconds, axis, amount: drawn * t.bounce };
-            pairs.released[j] = { at: seconds, axis: [-axis[0], -axis[1], -axis[2]], amount: drawn * t.bounce };
-          }
-        }
-      }
-
-      placed.forEach((p, i) => {
+      order.forEach(({ index, fillet }, slot) => {
+        const p = placed[index];
         // The wobble after letting go: drawn out at first, then past round
         // into a flattened shape and back, dying away.
         let stretch = 1;
-        const release = pairs.released[i];
+        const release = pairs.released[index];
         if (release && p.tip === 0) {
           const since = seconds - release.at;
-          if (since > t.damping * 6) pairs.released[i] = null;
+          if (since > t.damping * 6) pairs.released[index] = null;
           else {
             stretch = Math.max(
               0.55,
@@ -586,9 +717,9 @@ function createShader(canvas: HTMLCanvasElement) {
             p.axis = release.axis;
           }
         }
-        a.set([p.x, p.y, p.z, p.r], i * 4);
-        b.set([...p.axis, p.tip], i * 4);
-        c.set([p.unsquashX, p.unsquashY, stretch, p.fillet], i * 4);
+        a.set([p.x, p.y, p.z, p.r], slot * 4);
+        b.set([...p.axis, p.tip], slot * 4);
+        c.set([p.unsquashX, p.unsquashY, stretch, fillet], slot * 4);
       });
 
       const key = [cssWidth, cssHeight, t.rampStart, t.rampDepth, t.lightDrop].join(" ");
