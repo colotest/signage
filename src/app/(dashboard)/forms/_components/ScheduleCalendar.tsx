@@ -7,13 +7,14 @@ import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
 import { eventTitle, useIsClient } from "./eventFormat";
 
-// One week row: the day's number, then room for two events' bars and a
-// "+n" for any more.
-const ROW = 78;
+// A week row: the day's number, then a lane for each event bar that runs
+// through the week at once — as many as it needs, and none for a week
+// without any.
 const DAY_NUMBER = 28;
 const LANE = 18;
-const LANES = 2;
+const ROW_PAD = 6;
 const WINDOW_WEEKS = 3;
+const rowHeight = (lanes: number) => DAY_NUMBER + lanes * LANE + ROW_PAD;
 // How far the weeks run past today and past the first and last events.
 const RANGE_WEEKS = 26;
 const DAY_MS = 86_400_000;
@@ -77,50 +78,50 @@ function weekSegments(week: Date, spans: Span[]) {
 
 // The Events list's calendar: every event with a date, as bars across its
 // days, in the event pages' calendar style — a window of three weeks that
-// scrolls on through the months (the month's name following along), with
-// today in the accent colour.
+// scrolls on through the months (the month's name following along; "Now"
+// beside it scrolls back to this week), with today circled in the accent
+// colour. Each week is only as tall as the bars running through it need,
+// and the window eases to fit the three in view.
 //
-// Scrubbing through it previews an event on the venue map: with a mouse,
+// Scrubbing through it previews the day on the venue map: with a mouse,
 // whichever day the pointer is over; on a touchscreen, dragging sideways
 // along the weeks (up and down still scrolls them), the last day touched
-// staying previewed until a tap on an empty stretch. A day with an event
-// shows that event — the one already showing, if it's among them — and a
-// day without, nothing. Tapping a bar opens its event, as its list entry
-// does.
+// staying previewed until a tap on an empty stretch. Every event on that
+// day shows at once — set up, they never claim the same thing — and a day
+// without any, nothing. Hovering a bar lights up its card in the list;
+// tapping it opens its event, as the card does.
 //
 // On an iPad or a desktop it stays at the top of the list while the events
 // scroll under it; on a phone, where the list is short of room, it scrolls
 // away with them.
-export function ScheduleCalendar({
-  events,
-  previewId,
-  onPreview,
-  onOpen,
-}: {
+export function ScheduleCalendar(props: {
   events: EventSummary[];
-  previewId: string | null;
-  onPreview: (id: string | null) => void;
+  previewIds: string[];
+  onPreview: (ids: string[]) => void;
   onOpen: (id: string) => void;
+  onHighlight: (id: string | null) => void;
 }) {
   const isClient = useIsClient();
   if (!isClient) {
     // Local dates, so only drawn in the browser (the server's in UTC); the
     // space is held meanwhile.
-    return <div style={{ height: 34 + 20 + WINDOW_WEEKS * ROW + 12 }} />;
+    return <div style={{ height: 34 + 20 + WINDOW_WEEKS * rowHeight(1) }} />;
   }
-  return <ScheduleGrid events={events} previewId={previewId} onPreview={onPreview} onOpen={onOpen} />;
+  return <ScheduleGrid {...props} />;
 }
 
 function ScheduleGrid({
   events,
-  previewId,
+  previewIds,
   onPreview,
   onOpen,
+  onHighlight,
 }: {
   events: EventSummary[];
-  previewId: string | null;
-  onPreview: (id: string | null) => void;
+  previewIds: string[];
+  onPreview: (ids: string[]) => void;
   onOpen: (id: string) => void;
+  onHighlight: (id: string | null) => void;
 }) {
   const firstDay = useMemo(() => weekStartsOn(), []);
   const weekOf = (d: Date) => addDays(d, -((d.getDay() - firstDay + 7) % 7));
@@ -140,28 +141,66 @@ function ScheduleGrid({
   const to = lastEvent && weekOf(lastEvent) > toBase ? addDays(weekOf(lastEvent), 7 * 4) : toBase;
   const fromTime = from.getTime();
   const toTime = to.getTime();
-  const weeks = useMemo(() => {
-    const list: Date[] = [];
-    for (let w = new Date(fromTime); w.getTime() <= toTime; w = addDays(w, 7)) list.push(w);
-    return list;
-  }, [fromTime, toTime]);
-  const rowOf = (week: Date) => Math.round(daysBetween(from, week) / 7);
 
-  // Opens with this week in the middle of the window.
+  // Each week with its bars, how tall it is, and where it starts.
+  const rows = useMemo(() => {
+    let top = 0;
+    const list: { week: Date; segments: Segment[]; height: number; top: number }[] = [];
+    for (let w = new Date(fromTime); w.getTime() <= toTime; w = addDays(w, 7)) {
+      const segments = weekSegments(w, spans);
+      const lanes = segments.reduce((n, seg) => Math.max(n, seg.lane + 1), 0);
+      const height = rowHeight(lanes);
+      list.push({ week: w, segments, height, top });
+      top += height;
+    }
+    return list;
+  }, [fromTime, toTime, spans]);
+  const todayRow = Math.round(daysBetween(from, thisWeek) / 7);
+
+  // The row at a height in the scrolled weeks.
+  function rowAt(y: number) {
+    let lo = 0;
+    let hi = rows.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (rows[mid].top <= y) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  // The window: the three weeks from the one at its top, however tall they
+  // are; scrolled to put a week in its middle.
+  const windowFrom = (top: number) => {
+    const first = Math.max(0, Math.min(top, rows.length - WINDOW_WEEKS));
+    return rows.slice(first, first + WINDOW_WEEKS).reduce((h, r) => h + r.height, 0);
+  };
+  const [topRow, setTopRow] = useState(() => Math.max(0, todayRow - 1));
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+
+  // "Now": this week back in the middle.
+  function backToToday() {
+    const first = Math.max(0, todayRow - 1);
+    scrollerRef.current?.scrollTo({ top: rows[first].top, behavior: "smooth" });
+    setTopRow(first);
+  }
+
+  // Opens with this week in the middle of the window (topRow starts there).
   useLayoutEffect(() => {
     const el = scrollerRef.current;
-    if (el) el.scrollTop = (rowOf(thisWeek) - (WINDOW_WEEKS - 1) / 2) * ROW;
+    if (el) el.scrollTop = rows[Math.max(0, todayRow - 1)].top;
     // Only on first showing — after that, it's wherever it's been scrolled.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The month's name follows the middle week.
+  // The month's name follows the middle week, and the window fits the
+  // three weeks it's come to.
   function handleScroll() {
     const el = scrollerRef.current;
     if (!el) return;
-    const row = Math.min(weeks.length - 1, Math.max(0, Math.round(el.scrollTop / ROW + (WINDOW_WEEKS - 1) / 2)));
-    const middle = addDays(weeks[row], 3);
+    const top = rowAt(el.scrollTop + 2);
+    if (top !== topRow) setTopRow(top);
+    const middle = addDays(rows[Math.min(rows.length - 1, top + 1)].week, 3);
     if (middle.getMonth() !== month.getMonth() || middle.getFullYear() !== month.getFullYear()) {
       setMonth(new Date(middle.getFullYear(), middle.getMonth(), 1));
     }
@@ -179,20 +218,20 @@ function ScheduleGrid({
     const el = scrollerRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    const row = Math.floor((clientY - rect.top + el.scrollTop) / ROW);
+    const y = clientY - rect.top + el.scrollTop;
     const col = Math.floor(((clientX - rect.left) / rect.width) * 7);
-    if (row < 0 || row >= weeks.length || col < 0 || col > 6) return null;
-    return addDays(weeks[row], col);
+    if (y < 0 || col < 0 || col > 6) return null;
+    const row = rows[rowAt(y)];
+    if (y >= row.top + row.height) return null;
+    return addDays(row.week, col);
   }
 
   function preview(day: Date | null) {
     setScrubDay(day);
-    if (!day) {
-      onPreview(null);
-      return;
-    }
-    const on = spans.filter((s) => s.start <= day && s.end >= day).sort((a, b) => a.start.getTime() - b.start.getTime());
-    onPreview(on.find((s) => s.event.id === previewId)?.event.id ?? on[0]?.event.id ?? null);
+    const on = day
+      ? spans.filter((s) => s.start <= day && s.end >= day).sort((a, b) => a.start.getTime() - b.start.getTime())
+      : [];
+    onPreview(on.map((s) => s.event.id));
   }
 
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
@@ -245,10 +284,18 @@ function ScheduleGrid({
     // own padding) hides the cards passing under it, and a blurred fade
     // below eases them in and out.
     <div className="relative z-10 -mx-4 mb-4 bg-background px-4 md:sticky md:top-0 md:-mx-5 md:px-5 md:pt-1">
-      <div className="flex items-center px-1" style={{ height: 34 }}>
+      <div className="flex items-center gap-2 px-1" style={{ height: 34 }}>
         <span className="text-[17px] font-semibold">
           {monthName(month.getMonth())} {month.getFullYear()}
         </span>
+        <button
+          type="button"
+          onClick={backToToday}
+          title="Back to this week"
+          className="no-press rounded-full bg-accent/15 px-2.5 py-0.5 text-[13px] font-semibold text-accent hover:bg-accent/25"
+        >
+          Now
+        </button>
       </div>
       <div aria-hidden className="grid grid-cols-7 text-center text-[11px] font-semibold text-muted" style={{ height: 20 }}>
         {weekdays.map((d, i) => (
@@ -268,93 +315,81 @@ function ScheduleGrid({
         }}
         className="no-scrollbar relative snap-y snap-mandatory overflow-y-auto overscroll-contain"
         style={{
-          height: WINDOW_WEEKS * ROW,
+          height: windowFrom(topRow),
+          transition: "height 300ms var(--ease-spring)",
           // Up and down scrolls; sideways is ours, to scrub.
           touchAction: "pan-y",
-          maskImage: "linear-gradient(to bottom, transparent, black 12px, black calc(100% - 12px), transparent)",
+          maskImage: "linear-gradient(to bottom, transparent, black 10px, black calc(100% - 10px), transparent)",
         }}
       >
-        {weeks.map((week) => {
-          const segments = weekSegments(week, spans);
-          const hidden = Array.from({ length: 7 }, (_, col) =>
-            segments.filter((s) => s.lane >= LANES && s.col <= col && s.col + s.length > col).length,
-          );
-          return (
-            <div
-              key={week.getTime()}
-              className="relative grid snap-start grid-cols-7"
-              style={{ height: ROW }}
-              // A tap on an empty stretch (not a bar) lets go of a preview.
-              onClick={() => {
-                if (!justScrubbed.current) preview(null);
-              }}
-            >
-              {Array.from({ length: 7 }, (_, col) => {
-                const day = addDays(week, col);
-                const isToday = sameDay(day, today);
-                const weekend = day.getDay() === 0 || day.getDay() === 6;
-                const scrubbed = !!scrubDay && sameDay(day, scrubDay);
-                return (
-                  <div key={col} className={cn("relative flex flex-col items-center rounded-[10px]", scrubbed && "bg-foreground/[.07]")}>
-                    <span
-                      className={cn(
-                        "mt-1 flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1 text-[14px] tabular-nums",
-                        isToday
-                          ? "bg-accent font-semibold text-accent-contrast"
-                          : day.getMonth() !== month.getMonth()
-                            ? "text-muted/60"
-                            : "text-foreground",
-                        weekend && !isToday && "font-semibold",
-                      )}
-                    >
-                      {day.getDate()}
-                    </span>
-                    {hidden[col] > 0 && (
-                      <span
-                        className="absolute text-[10px] font-semibold leading-none text-muted"
-                        style={{ top: DAY_NUMBER + LANES * LANE + 2 }}
-                      >
-                        +{hidden[col]}
-                      </span>
+        {rows.map(({ week, segments, height }) => (
+          <div
+            key={week.getTime()}
+            className="relative grid snap-start grid-cols-7"
+            style={{ height }}
+            // A tap on an empty stretch (not a bar) lets go of a preview.
+            onClick={() => {
+              if (!justScrubbed.current) preview(null);
+            }}
+          >
+            {Array.from({ length: 7 }, (_, col) => {
+              const day = addDays(week, col);
+              const isToday = sameDay(day, today);
+              const weekend = day.getDay() === 0 || day.getDay() === 6;
+              const scrubbed = !!scrubDay && sameDay(day, scrubDay);
+              return (
+                <div key={col} className={cn("relative flex flex-col items-center rounded-[10px]", scrubbed && "bg-foreground/[.07]")}>
+                  <span
+                    className={cn(
+                      "mt-[3px] flex h-6 w-6 items-center justify-center rounded-full text-[14px] tabular-nums",
+                      isToday
+                        ? "bg-accent font-semibold text-accent-contrast"
+                        : day.getMonth() !== month.getMonth()
+                          ? "text-muted/60"
+                          : "text-foreground",
+                      weekend && !isToday && "font-semibold",
                     )}
-                  </div>
-                );
-              })}
+                  >
+                    {day.getDate()}
+                  </span>
+                </div>
+              );
+            })}
 
-              {segments
-                .filter((s) => s.lane < LANES)
-                .map((s) => {
-                  const shown = s.span.event.id === previewId;
-                  return (
-                    <button
-                      key={s.span.event.id}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (justScrubbed.current) return;
-                        onOpen(s.span.event.id);
-                      }}
-                      title={eventTitle(s.span.event)}
-                      className={cn(
-                        "no-press absolute truncate px-1.5 text-left text-[11px] font-semibold leading-[16px] transition-colors",
-                        s.fromBefore ? "rounded-l-none" : "rounded-l-full",
-                        s.onAfter ? "rounded-r-none" : "rounded-r-full",
-                        shown ? "bg-accent text-accent-contrast" : "bg-accent/24 text-accent hover:bg-accent/35",
-                      )}
-                      style={{
-                        top: DAY_NUMBER + s.lane * LANE,
-                        height: 16,
-                        left: `calc(${(s.col / 7) * 100}% + ${s.fromBefore ? 0 : 2}px)`,
-                        width: `calc(${(s.length / 7) * 100}% - ${(s.fromBefore ? 0 : 2) + (s.onAfter ? 0 : 2)}px)`,
-                      }}
-                    >
-                      {eventTitle(s.span.event)}
-                    </button>
-                  );
-                })}
-            </div>
-          );
-        })}
+            {segments.map((seg) => {
+              const id = seg.span.event.id;
+              const shown = previewIds.includes(id);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (justScrubbed.current) return;
+                    onOpen(id);
+                  }}
+                  onMouseEnter={() => onHighlight(id)}
+                  onMouseLeave={() => onHighlight(null)}
+                  title={eventTitle(seg.span.event)}
+                  className={cn(
+                    "no-press absolute truncate px-1.5 text-left text-[11px] font-semibold leading-[16px] transition-colors",
+                    seg.fromBefore ? "rounded-l-none" : "rounded-l-full",
+                    seg.onAfter ? "rounded-r-none" : "rounded-r-full",
+                    shown ? "bg-accent text-accent-contrast" : "bg-accent/24 text-accent hover:bg-accent/35",
+                  )}
+                  style={{
+                    top: DAY_NUMBER + seg.lane * LANE,
+                    height: 16,
+                    left: `calc(${(seg.col / 7) * 100}% + ${seg.fromBefore ? 0 : 2}px)`,
+                    width: `calc(${(seg.length / 7) * 100}% - ${(seg.fromBefore ? 0 : 2) + (seg.onAfter ? 0 : 2)}px)`,
+                  }}
+                >
+                  {eventTitle(seg.span.event)}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
       {/* The fade the list's cards pass under, on an iPad or desktop. */}

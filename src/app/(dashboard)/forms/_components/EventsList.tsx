@@ -76,17 +76,19 @@ export function EventsList({
   archived,
   onToggleArchived,
   onOpen,
-  previewId,
+  previewIds,
   onPreview,
 }: {
   events: EventSummary[];
   archived: boolean;
   onToggleArchived: () => void;
   onOpen: (id: string) => void;
-  // The event the calendar is showing on the map, while scrubbing through it.
-  previewId: string | null;
-  onPreview: (id: string | null) => void;
+  // The events the calendar is showing on the map, while scrubbing through it.
+  previewIds: string[];
+  onPreview: (ids: string[]) => void;
 }) {
+  // The card of the event whose bar the pointer's over on the calendar.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("start");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -167,8 +169,9 @@ export function EventsList({
       {!archived && (
         <ScheduleCalendar
           events={inList}
-          previewId={previewId}
+          previewIds={previewIds}
           onPreview={onPreview}
+          onHighlight={setHighlightId}
           onOpen={onOpen}
         />
       )}
@@ -193,6 +196,7 @@ export function EventsList({
             key={event.id}
             event={event}
             isExpanded={expanded.has(event.id)}
+            lit={event.id === highlightId}
             onToggle={() => toggle(event.id)}
             onOpen={() => onOpen(event.id)}
           />
@@ -278,11 +282,14 @@ export function ArchiveIcon({ className }: { className?: string }) {
 function EventRow({
   event,
   isExpanded,
+  lit,
   onToggle,
   onOpen,
 }: {
   event: EventSummary;
   isExpanded: boolean;
+  // Its bar on the calendar is being hovered.
+  lit: boolean;
   onToggle: () => void;
   onOpen: () => void;
 }) {
@@ -300,7 +307,10 @@ function EventRow({
         if ((e.target as Element).closest("a, [data-no-open]")) return;
         onOpen();
       }}
-      className="cursor-pointer rounded-[var(--radius-md)] border border-border bg-surface p-3 hover:bg-black/[.015] dark:hover:bg-white/[.02]"
+      className={cn(
+        "cursor-pointer rounded-[var(--radius-md)] border bg-surface p-3 transition-[border-color,box-shadow,background-color] duration-200 hover:bg-black/[.015] dark:hover:bg-white/[.02]",
+        lit ? "border-accent bg-accent/[.06] ring-1 ring-inset ring-accent" : "border-border",
+      )}
     >
       <div className="flex items-center gap-3">
         <button

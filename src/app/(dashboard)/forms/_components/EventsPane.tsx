@@ -23,14 +23,14 @@ type Route = { eventId: string | null; view: EventViewKey | null; archived: bool
 export function EventsPane({
   events,
   people,
-  previewId,
+  previewIds,
   onPreview,
 }: {
   events: EventSummary[];
   people: EventPerson[];
-  // The event the list's calendar is showing on the map (see ScheduleCalendar).
-  previewId: string | null;
-  onPreview: (id: string | null) => void;
+  // The events the list's calendar is showing on the map (see ScheduleCalendar).
+  previewIds: string[];
+  onPreview: (ids: string[]) => void;
 }) {
   const params = useSearchParams();
   const route: Route = {
@@ -62,10 +62,10 @@ export function EventsPane({
           onToggleArchived={() => setRoute({ archived: !archived })}
           onOpen={(eventId) => {
             // Opened, it's the event the map shows anyway.
-            onPreview(null);
+            onPreview([]);
             setRoute({ eventId, view: null });
           }}
-          previewId={previewId}
+          previewIds={previewIds}
           onPreview={onPreview}
         />
       ),

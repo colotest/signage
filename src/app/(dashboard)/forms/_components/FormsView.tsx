@@ -73,23 +73,33 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   // The open event, from the URL (where EventsPane keeps it).
   const eventId = useSearchParams().get("event");
   const event = eventId ? events.find((e) => e.id === eventId) : undefined;
-  // An event the Events list's calendar is being scrubbed over: shown on the
-  // map as it would be open — its pins, its Checkliste on the standing pins
-  // — but only to look at, and only while no event is open.
-  const [previewId, setPreviewId] = useState<string | null>(null);
-  const previewEvent = !event && previewId ? events.find((e) => e.id === previewId) : undefined;
+  // The events on the day the Events list's calendar is being scrubbed
+  // over: shown on the map as if open — their pins, their Checkliste on
+  // the standing pins — but only to look at, and only while no event is
+  // open. Several on one day show together, combined: set up, they never
+  // claim the same thing (the venue has one of each), so whichever has an
+  // answer for something gives it.
+  const [previewIds, setPreviewIds] = useState<string[]>([]);
+  const previewEvents = event
+    ? []
+    : previewIds.map((id) => events.find((e) => e.id === id)).filter((e): e is EventSummary => !!e);
 
   // Pins as changed here, ahead of the server (which catches up on the
   // next render of the page), by event.
   const [pinEdits, setPinEdits] = useState<Record<string, MapPin[]>>({});
-  const pins = event ? (pinEdits[event.id] ?? event.mapPins) : (previewEvent?.mapPins ?? []);
+  const pins = event ? (pinEdits[event.id] ?? event.mapPins) : previewEvents.flatMap((e) => e.mapPins);
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [editing, setEditing] = useState(false);
   // The open event's Checkliste, shared by its setup page and the pins.
   const checklist = useChecklistState(event);
-  const previewChecklist: ChecklistState | null = previewEvent
-    ? { answer: (key) => previewEvent.checklist[key] ?? null, save: () => {}, error: null }
-    : null;
+  const previewChecklist: ChecklistState | null =
+    previewEvents.length > 0
+      ? {
+          answer: (key) => previewEvents.map((e) => e.checklist[key]).find((a) => a !== null && a !== undefined) ?? null,
+          save: () => {},
+          error: null,
+        }
+      : null;
   const [message, setMessage] = useState<string | null>(null);
   const [planKind, setPlanKind] = useState<PlanKind>("pixel");
   // Saves go one after another, so an older list can't land after a newer.
@@ -250,7 +260,12 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
           half scrolls or pans on its own instead. */}
       <div className="-mx-5 -my-6 flex h-[calc(100%+3rem)] flex-col md:flex-row">
         <div className="min-h-0 flex-1 border-b border-border md:w-[420px] md:flex-none md:border-b-0 md:border-r lg:w-[460px]">
-          <EventsPane events={events} people={people} previewId={previewEvent ? previewId : null} onPreview={setPreviewId} />
+          <EventsPane
+            events={events}
+            people={people}
+            previewIds={previewEvents.map((e) => e.id)}
+            onPreview={setPreviewIds}
+          />
         </div>
 
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -328,14 +343,16 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
                 </button>
               </>
             )}
-            {previewEvent && (
+            {previewEvents.length > 0 && (
               // Which event the map's showing, scrubbed to on the calendar.
               <div className="pop-in pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
                 <span className="text-muted">Vorschau</span>
-                <span className="min-w-0 truncate font-semibold">{previewEvent.title?.trim() || "Untitled Event"}</span>
+                <span className="min-w-0 truncate font-semibold">
+                  {previewEvents.map((e) => e.title?.trim() || "Untitled Event").join(" + ")}
+                </span>
                 <button
                   type="button"
-                  onClick={() => setPreviewId(null)}
+                  onClick={() => setPreviewIds([])}
                   aria-label="Vorschau schließen"
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:text-foreground"
                 >
