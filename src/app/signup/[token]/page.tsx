@@ -14,7 +14,8 @@ export default async function SignupPage({ params }: { params: Promise<{ token: 
   const admin = createAdminClient();
   const { data: invite, error } = await admin
     .from("signup_invites")
-    .select("used_at, expires_at, nickname")
+    // "*": email isn't there before 0042.
+    .select("*")
     .eq("token_hash", hashInviteToken(token))
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -35,7 +36,7 @@ export default async function SignupPage({ params }: { params: Promise<{ token: 
             ) : (
               <p className="mt-1 text-sm text-muted">Create your account.</p>
             )}
-            <SignupForm token={token} />
+            <SignupForm token={token} email={invite.email ?? undefined} />
           </>
         ) : (
           <p className="mt-1 text-sm text-muted">

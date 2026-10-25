@@ -21,7 +21,7 @@ export type {
 
 // A user as the app hands them around — never with their password hash
 // (nor the unused legacy role column).
-export type User = Omit<Database["public"]["Tables"]["users"]["Row"], "password_hash" | "role">;
+export type User = Omit<Database["public"]["Tables"]["users"]["Row"], "password_hash" | "role" | "password_changed_at">;
 export type Role = Database["public"]["Tables"]["roles"]["Row"];
 export type ActivityEntry = Database["public"]["Tables"]["activity_log"]["Row"];
 

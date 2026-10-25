@@ -1,10 +1,13 @@
 "use server";
 
-import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { quote, recordActivity } from "@/lib/activity";
+import { isEmail, normalizeEmail } from "@/lib/auth/credentials";
 import { hashInviteToken, newInviteToken } from "@/lib/auth/invites";
 import { requireUsersPermission, type CurrentUser } from "@/lib/auth/session";
+import { sendEmail } from "@/lib/email/send";
+import { signupInviteEmail } from "@/lib/email/templates";
+import { appOrigin } from "@/lib/origin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { displayNameOf } from "@/lib/uploads/uploaders";
 import type { ActivityEntry } from "@/types/domain";
@@ -45,11 +48,7 @@ export async function createSignupLink(): Promise<{ url: string; token: string }
     .insert({ token_hash: hashInviteToken(token), created_by: user.id });
   if (error) throw new Error(error.message);
   recordActivity(user, { action: "user.invite", summary: "Created a signup link" });
-
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? "https";
-  return { url: `${protocol}://${host}/signup/${token}`, token };
+  return { url: `${await appOrigin()}/signup/${token}`, token };
 }
 
 // The new user's nickname and first roles, set in the signup popup. Only
@@ -67,6 +66,37 @@ export async function updateSignupInvite(token: string, nickname: string, roleId
     .select("token_hash");
   if (error) throw new Error(error.message);
   if (!data?.length) throw new Error("That signup link has already been used.");
+}
+
+// Sends a link of one's own, not yet used, to the person it's for, greeted
+// by the nickname set on it. Their signup form starts with that address.
+// Resolves to an error message to show, or null once it's sent.
+export async function emailSignupLink(token: string, to: string): Promise<string | null> {
+  const user = await requireUsersPermission("signups");
+  const email = normalizeEmail(to);
+  if (!isEmail(email)) return "Enter a valid email address.";
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("signup_invites")
+    .update({ email })
+    .eq("token_hash", hashInviteToken(token))
+    .eq("created_by", user.id)
+    .is("used_at", null)
+    .select("nickname");
+  if (error) throw new Error(error.message);
+  if (!data?.length) return "That signup link has already been used.";
+
+  try {
+    await sendEmail({
+      to: email,
+      replyTo: user.email,
+      ...signupInviteEmail(`${await appOrigin()}/signup/${token}`, displayNameOf(user), data[0].nickname),
+    });
+  } catch (err) {
+    return err instanceof Error ? err.message : "Couldn't send the email.";
+  }
+  recordActivity(user, { action: "user.invite_email", summary: `Emailed a signup link to ${quote(email)}` });
+  return null;
 }
 
 // Never one's own account, and never the super admin's.

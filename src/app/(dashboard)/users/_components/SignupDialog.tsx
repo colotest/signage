@@ -5,7 +5,7 @@ import { CheckIcon } from "@/components/icons/PlaybackIcons";
 import { RoleDot } from "@/components/RoleDot";
 import { POPUP_BLUE_BUTTON, Popup } from "@/components/ui/Popup";
 import { Spinner } from "@/components/ui/Spinner";
-import { createSignupLink, updateSignupInvite } from "@/lib/actions/users";
+import { createSignupLink, emailSignupLink, updateSignupInvite } from "@/lib/actions/users";
 import { useViewer } from "@/lib/auth/ViewerContext";
 import { cn } from "@/lib/utils/cn";
 
@@ -39,7 +39,8 @@ export function startSignup(): PendingSignup {
 // by hand if copying didn't take (or for anyone who'd rather), and above
 // it the new user's nickname and roles — the viewer's own roles only.
 // Those go onto the link as they're set, so whoever opens it is greeted
-// by name and starts out with those roles.
+// by name and starts out with those roles. Or the link can be emailed to
+// them straight from here.
 export function SignupDialog({ pending, onClose }: { pending: PendingSignup | null; onClose: () => void }) {
   // Kept after closing so the content doesn't blank out mid-animation.
   const [shown, setShown] = useState(pending);
@@ -69,6 +70,8 @@ function SignupForm({ pending }: { pending: PendingSignup }) {
   const [nickname, setNickname] = useState("");
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [emailState, setEmailState] = useState<{ status: "idle" | "sending" | "error"; message?: string } | { status: "sent"; to: string }>({ status: "idle" });
 
   useEffect(() => {
     let live = true;
@@ -119,6 +122,24 @@ function SignupForm({ pending }: { pending: PendingSignup }) {
   function toggleRole(id: string) {
     markDirty();
     setRoleIds((current) => (current.includes(id) ? current.filter((r) => r !== id) : [...current, id]));
+  }
+
+  async function sendEmail() {
+    if (!link || !email.trim()) return;
+    setEmailState({ status: "sending" });
+    // Whatever's waiting to go onto the link goes first, so the email
+    // greets them by the nickname as typed.
+    if (latest.current.dirty) {
+      latest.current.dirty = false;
+      await updateSignupInvite(link.token, nickname, roleIds).catch(() => {});
+    }
+    const to = email.trim();
+    try {
+      const problem = await emailSignupLink(link.token, to);
+      setEmailState(problem ? { status: "error", message: problem } : { status: "sent", to });
+    } catch (err) {
+      setEmailState({ status: "error", message: err instanceof Error ? err.message : "Couldn't send the email" });
+    }
   }
 
   async function copyAgain() {
@@ -177,6 +198,39 @@ function SignupForm({ pending }: { pending: PendingSignup }) {
           </div>
         </div>
       )}
+
+      <form
+        className="flex flex-col gap-1.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          sendEmail();
+        }}
+      >
+        <span className="text-[12px] text-muted">Email it to</span>
+        <div className="flex gap-2">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (emailState.status !== "sending") setEmailState({ status: "idle" });
+            }}
+            autoCapitalize="none"
+            autoComplete="off"
+            placeholder="name@example.com"
+            className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-border bg-transparent px-3 py-2 text-[15px] outline-none focus:border-accent"
+          />
+          <button
+            type="submit"
+            disabled={!link || !email.trim() || emailState.status === "sending"}
+            className="shrink-0 rounded-full bg-accent px-4 text-[14px] font-medium text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90 disabled:opacity-40"
+          >
+            {emailState.status === "sending" ? <Spinner /> : "Send"}
+          </button>
+        </div>
+        {emailState.status === "sent" && <p className="text-[12px] text-success">Sent to {emailState.to} ✓</p>}
+        {emailState.status === "error" && <p className="text-[12px] text-danger">{emailState.message}</p>}
+      </form>
 
       <div className="flex flex-col gap-1.5">
         <span className="flex items-center justify-between text-[12px] text-muted">

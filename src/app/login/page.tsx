@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { loginAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/Button";
@@ -43,6 +44,9 @@ export default function LoginPage() {
             {pending ? "Checking…" : "Log In"}
           </Button>
         </form>
+        <Link href="/forgot" className="mt-4 block text-center text-[13px] text-accent hover:underline">
+          Forgot password?
+        </Link>
       </Card>
     </div>
   );

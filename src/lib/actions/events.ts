@@ -7,7 +7,10 @@ import { EVENT_TYPES } from "@/lib/eventTypes";
 import { fetchLeadCandidates } from "@/lib/events";
 import { parsePins, type MapPin } from "@/lib/eventPins";
 import { cleanAnswer, exclusiveWith, parseChecklist } from "@/lib/checkliste";
+import { sendEmail } from "@/lib/email/send";
+import { checklistEmail } from "@/lib/email/templates";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { displayNameOf } from "@/lib/uploads/uploaders";
 import type { Database } from "@/types/database.types";
 
 // What the Events list's "+ Create" starts an event with: the fields' own
@@ -194,6 +197,54 @@ export async function updateChecklist(id: string, patch: Record<string, true | s
     return null;
   } catch (err) {
     return err instanceof Error ? err.message : "Couldn't save the Checkliste";
+  }
+}
+
+// The Checkliste's share button: emails it, as filled in on the sender's
+// screen (unsaved changes and all), to people picked from Events
+// Management. Only to them — the addresses are looked up here rather than
+// taken from the browser, so this can't mail anyone else. `when` is the
+// event's dates as the sender's page shows them, in the venue's own time
+// (a server would only have UTC). Replies go to the sender. Resolves to an
+// error message to show, or null once sent.
+export async function emailChecklist(
+  id: string,
+  recipientIds: string[],
+  answers: Record<string, true | string>,
+  when: string | null,
+): Promise<string | null> {
+  try {
+    const user = await requirePage("forms");
+    const admin = createAdminClient();
+    const { data: event, error } = await admin.from("events").select("title").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!event) throw new Error("That event no longer exists.");
+
+    const wanted = new Set(recipientIds);
+    const to = (await fetchLeadCandidates(admin, user))
+      .filter((p) => p.management && wanted.has(p.id))
+      .map((p) => p.email);
+    if (to.length === 0) throw new Error("Pick someone from Events Management to send it to.");
+
+    const clean = parseChecklist(answers);
+    const title = event.title?.trim() || "Untitled Event";
+    await sendEmail({
+      to,
+      replyTo: user.email,
+      ...checklistEmail({
+        title,
+        when: when ? when.slice(0, MAX_TEXT) : null,
+        sender: displayNameOf(user),
+        answer: (key) => clean[key] ?? null,
+      }),
+    });
+    recordActivity(user, {
+      action: "event.checklist_email",
+      summary: `Emailed the Checkliste of ${quote(title)} to ${to.length === 1 ? quote(to[0]) : `${to.length} people`}`,
+    });
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : "Couldn't send the Checkliste";
   }
 }
 

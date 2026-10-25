@@ -5,7 +5,8 @@ import { signupAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { AuthField } from "../../_components/AuthField";
 
-export function SignupForm({ token }: { token: string }) {
+// `email`: the address the link was emailed to, if it was.
+export function SignupForm({ token, email }: { token: string; email?: string }) {
   const [state, action, pending] = useActionState(signupAction, undefined);
 
   return (
@@ -19,7 +20,7 @@ export function SignupForm({ token }: { token: string }) {
         autoComplete="username"
         autoCapitalize="none"
         placeholder="Email"
-        defaultValue={state?.email}
+        defaultValue={state?.email ?? email}
         required
       />
       <AuthField type="password" name="password" autoComplete="new-password" placeholder="Password" minLength={8} required />

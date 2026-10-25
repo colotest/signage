@@ -3,12 +3,16 @@
 import { useRef, useState } from "react";
 import { Menu } from "@/components/ui/Menu";
 import { POPUP_WHITE_BUTTON } from "@/components/ui/Popup";
+import { Spinner } from "@/components/ui/Spinner";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
-import { checklistText } from "@/lib/checkliste";
+import { emailChecklist } from "@/lib/actions/events";
+import { CHECKLISTE } from "@/lib/checkliste";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
 import { useChecklist } from "./checklistState";
-import { eventTitle, formatEventRange } from "./eventFormat";
+import { formatEventRange } from "./eventFormat";
+
+const FIELD_KEYS = CHECKLISTE.flatMap((c) => c.sections.flatMap((s) => s.fields.map((f) => f.key)));
 
 function ShareIcon({ className }: { className?: string }) {
   return (
@@ -20,12 +24,15 @@ function ShareIcon({ className }: { className?: string }) {
 }
 
 // The Checkliste's share button: pick people from Events Management, and
-// Continue opens an email to them in the mail app, with the Checkliste as
-// filled in so far (as it shows here, unsaved changes and all) as its body.
+// Send emails them the Checkliste as filled in so far (as it shows here,
+// unsaved changes and all), from the app itself, with replies going to
+// whoever sent it.
 export function ShareChecklist({ event, people }: { event: EventSummary; people: EventPerson[] }) {
   const { answer } = useChecklist();
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [sending, setSending] = useState<"idle" | "sending" | "sent">("idle");
+  const [error, setError] = useState<string | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const team = people.filter((p) => p.management && p.email);
   const allPicked = team.length > 0 && team.every((p) => picked.has(p.id));
@@ -39,16 +46,29 @@ export function ShareChecklist({ event, people }: { event: EventSummary; people:
     });
   }
 
-  function send() {
-    const to = team.filter((p) => picked.has(p.id)).map((p) => p.email);
-    const title = eventTitle(event);
-    const when = event.startsAt ? formatEventRange(event) : null;
-    const body = [`Checkliste – ${title}`, when, "", checklistText(answer)].filter((l) => l !== null).join("\n");
-    const url = `mailto:${to.map(encodeURIComponent).join(",")}?subject=${encodeURIComponent(
-      `Checkliste – ${title}`,
-    )}&body=${encodeURIComponent(body)}`;
-    setOpen(false);
-    window.location.href = url;
+  async function send() {
+    const answers: Record<string, true | string> = {};
+    for (const key of FIELD_KEYS) {
+      const value = answer(key);
+      if (value !== null && value !== "") answers[key] = value;
+    }
+    setSending("sending");
+    setError(null);
+    const problem = await emailChecklist(event.id, [...picked], answers, formatEventRange(event)).catch((err: unknown) =>
+      err instanceof Error ? err.message : "Couldn't send the Checkliste",
+    );
+    if (problem) {
+      setSending("idle");
+      setError(problem);
+      return;
+    }
+    setSending("sent");
+    // A moment to see it went, then out of the way.
+    setTimeout(() => {
+      setOpen(false);
+      setSending("idle");
+      setPicked(new Set());
+    }, 900);
   }
 
   return (
@@ -117,13 +137,14 @@ export function ShareChecklist({ event, people }: { event: EventSummary; people:
             ))}
           </ul>
         )}
+        {error && <p className="px-2 pt-2 text-[12px] text-danger">{error}</p>}
         <button
           type="button"
           onClick={send}
-          disabled={picked.size === 0}
-          className="mt-2 w-full rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
+          disabled={picked.size === 0 || sending !== "idle"}
+          className="mt-2 flex w-full items-center justify-center rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast hover:opacity-90 disabled:opacity-40"
         >
-          Continue
+          {sending === "sending" ? <Spinner className="my-[3px]" /> : sending === "sent" ? "Sent ✓" : "Send"}
         </button>
       </Menu>
     </div>

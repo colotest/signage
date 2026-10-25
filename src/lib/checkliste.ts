@@ -290,28 +290,53 @@ export function cleanAnswer(key: string, value: unknown): true | string | null {
   return text.trim() ? text : null;
 }
 
-// The Checkliste as filled in, as plain text (an email's body): each
-// category with what's been ticked or written under its sections, leaving
-// out whatever's still blank.
-export function checklistText(answer: (key: string) => true | string | null): string {
-  const blocks: string[] = [];
+export type FilledLine = { kind: "check" | "text" | "date" | "textarea"; text: string };
+export type FilledCategory = { title: string; sections: { title: string; lines: FilledLine[] }[] };
+
+// The Checkliste as filled in: each category with what's been ticked or
+// written under its sections, leaving out whatever's still blank.
+export function filledChecklist(answer: (key: string) => true | string | null): FilledCategory[] {
+  const categories: FilledCategory[] = [];
   for (const category of CHECKLISTE) {
-    const sections: string[] = [];
+    const sections: FilledCategory["sections"] = [];
     for (const section of category.sections) {
-      const lines: string[] = [];
+      const lines: FilledLine[] = [];
       for (const field of section.fields) {
         const value = answer(field.key);
         if (value === null || value === "") continue;
-        if (field.kind === "check") lines.push(`  • ${field.label}`);
-        else if (field.kind === "date") lines.push(`  ${new Date(`${value}T00:00:00`).toLocaleDateString("de-DE")}`);
-        else if (field.kind === "textarea") lines.push(...String(value).split("\n").map((l) => `  ${l}`));
-        else lines.push(`  ${field.label}: ${value}`);
+        if (field.kind === "check") lines.push({ kind: "check", text: field.label });
+        else if (field.kind === "date") {
+          // Formatted from its parts, not a Date: a server runs in UTC.
+          const [y, m, d] = String(value).split("-");
+          lines.push({ kind: "date", text: `${d}.${m}.${y}` });
+        } else if (field.kind === "textarea") lines.push({ kind: "textarea", text: String(value) });
+        else lines.push({ kind: "text", text: `${field.label}: ${value}` });
       }
-      if (lines.length) sections.push(`${section.title}\n${lines.join("\n")}`);
+      if (lines.length) sections.push({ title: section.title, lines });
     }
-    if (sections.length) blocks.push(`${category.title.toUpperCase()}\n\n${sections.join("\n\n")}`);
+    if (sections.length) categories.push({ title: category.title, sections });
   }
-  return blocks.length ? blocks.join("\n\n\n") : "Noch nichts ausgefüllt.";
+  return categories;
+}
+
+export const EMPTY_CHECKLIST = "Noch nichts ausgefüllt.";
+
+// The same as plain text (an email's body).
+export function checklistText(answer: (key: string) => true | string | null): string {
+  const blocks = filledChecklist(answer).map(
+    (category) =>
+      `${category.title.toUpperCase()}\n\n${category.sections
+        .map((section) => {
+          const lines = section.lines.flatMap((line) =>
+            line.kind === "check"
+              ? [`  • ${line.text}`]
+              : line.text.split("\n").map((l) => `  ${l}`),
+          );
+          return `${section.title}\n${lines.join("\n")}`;
+        })
+        .join("\n\n")}`,
+  );
+  return blocks.length ? blocks.join("\n\n\n") : EMPTY_CHECKLIST;
 }
 
 // Whatever's stored, as answers: unknown keys and malformed values dropped.

@@ -45,18 +45,27 @@ export async function setSessionCookie(userId: string) {
   });
 }
 
-// The signed-in user's id, from the cookie alone — no database round trip,
-// so the proxy can call it on every request. A cookie from before
-// per-user logins (no subject) counts as signed out.
-export async function verifySession(token: string | undefined): Promise<string | null> {
+// The signed-in user's id and when their cookie was issued (in seconds),
+// from the cookie alone — no database round trip, so the proxy can call it
+// on every request. A cookie from before per-user logins (no subject)
+// counts as signed out.
+async function readSession(token: string | undefined): Promise<{ userId: string; issuedAt: number } | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
-    return payload.sub ?? null;
+    return payload.sub ? { userId: payload.sub, issuedAt: payload.iat ?? 0 } : null;
   } catch {
     return null;
   }
 }
+
+export async function verifySession(token: string | undefined): Promise<string | null> {
+  return (await readSession(token))?.userId ?? null;
+}
+
+// A couple of seconds' grace: the cookie's time is the server's, in whole
+// seconds, and the password's change the database's.
+const CLOCK_GRACE_SECONDS = 2;
 
 // The signed-in user, with their roles and what those add up to.
 export type CurrentUser = User & {
@@ -66,20 +75,22 @@ export type CurrentUser = User & {
 };
 
 // The user behind this request, looked up fresh (once per request) so a
-// deleted account or a changed role takes effect immediately rather than
-// whenever its cookie runs out.
+// deleted account, a changed role or a changed password takes effect
+// immediately rather than whenever its cookie runs out.
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const cookieStore = await cookies();
-  const userId = await verifySession(cookieStore.get(SESSION_COOKIE_NAME)?.value);
-  if (!userId) return null;
+  const session = await readSession(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+  if (!session) return null;
   const admin = createAdminClient();
-  const { data: user, error } = await admin
-    .from("users")
-    .select("id, email, nickname, is_super_admin, created_at")
-    .eq("id", userId)
-    .maybeSingle();
+  // "*" rather than a list: password_changed_at doesn't exist before 0042,
+  // and naming it would fail every page until that migration has run.
+  const { data: row, error } = await admin.from("users").select("*").eq("id", session.userId).maybeSingle();
   if (error) throw new Error(error.message);
-  if (!user) return null;
+  if (!row) return null;
+  // Signed in before the password last changed (on this device or another).
+  const changedAt = row.password_changed_at ? Date.parse(row.password_changed_at) / 1000 : null;
+  if (changedAt !== null && session.issuedAt < changedAt - CLOCK_GRACE_SECONDS) return null;
+  const user = { id: row.id, email: row.email, nickname: row.nickname, is_super_admin: row.is_super_admin, created_at: row.created_at };
 
   // The super admin holds every role, including ones made after them.
   const { data: roleRows, error: rolesError } = user.is_super_admin

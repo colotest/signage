@@ -9,7 +9,7 @@ A free (at base scale) web-based digital signage system for a single event venue
 - **Dashboard** (`/dashboard`, `/library`, `/users`) — login-gated. Register screens, manage the media library, assign content to screens.
 - **Playback Menus and setups** — each screen's Playback Menu edits that screen's *setup*: its Now Playing list plus background, transition, speed and slide direction. Nothing reaches the TV until the menu's blue checkmark commits it; the white ✕ (or swiping the menu away) closes it and keeps the setup saved for later, leaving what's on air alone.
 - **Groups** — **+ New Group** (admins) picks screens and names the group. A group's tile has the same card as a screen's, acting on every screen in it, above a grid of small monitors showing each member's live picture, which admins can drag into place (grid size and Edit Group are in its wrench menu). A group has its own setup, so a screen can be set up one way on its own and another way in a group; whichever was committed last is what it shows, and a member whose screen is showing something other than the group's setup has its name fade in and out. Timed playback (alarm clocks, Calendar) stays per screen.
-- **Users and roles** — everyone signs in with their own email and password, and every change they make is recorded against them. What each person can reach comes from their **roles** (Users page → ⋯ → **New Role**): each role switches pages on (Screens, Media, Forms, Users) and, inside Screens and Users, ticks individual screens and groups, the wrench menus, reordering, and each of the Users page's options. Roles add up; someone with no role sees only the header. Media comes with Screens. Each role has a coloured dot that flags what it applies to, shown only to its own members. Owners can limit editing of their own files and folders to roles they hold (the file's ⋯ → **Limit to …**). The **super admin** can do everything and holds every role. Signup links (⋯ → **New Signup**) are single-use, last 7 days, and can carry the new user's nickname and roles. The Server Actions enforce all of this themselves; hiding the controls is just the UI side.
+- **Users and roles** — everyone signs in with their own email and password, and every change they make is recorded against them. What each person can reach comes from their **roles** (Users page → ⋯ → **New Role**): each role switches pages on (Screens, Media, Forms, Users) and, inside Screens and Users, ticks individual screens and groups, the wrench menus, reordering, and each of the Users page's options. Roles add up; someone with no role sees only the header. Media comes with Screens. Each role has a coloured dot that flags what it applies to, shown only to its own members. Owners can limit editing of their own files and folders to roles they hold (the file's ⋯ → **Limit to …**). The **super admin** can do everything and holds every role. Signup links (⋯ → **New Signup**) are single-use, last 7 days, can carry the new user's nickname and roles, and can be emailed to them from the same popup. Everyone can change their own password and login email from the account menu, and reset a forgotten password from the login page (see **Email** below). The Server Actions enforce all of this themselves; hiding the controls is just the UI side.
 - **Player** (`/screen/{id}`) — no login, meant to be opened fullscreen on a TV/Fire Stick/kiosk browser. Subscribes to Supabase Realtime so playlist changes appear within about a second, and caches its last-known content so it keeps showing something if the network drops. It reports what it's showing (on every change, plus a 20-second heartbeat) to `screen_status`, which is where each dashboard tile's live preview and Online/Offline dot come from — a screen that stops reporting for 75 seconds (power cut, network gone) shows as Offline.
 - **Supabase** holds all persistent data (`screens`, `folders`, `media_items`, `playlist_items`) and the `media` storage bucket. Row-Level Security allows public reads (needed by the unauthenticated player) but denies all writes — every mutation goes through a Server Action using the `service_role` key, which checks the dashboard's session cookie itself first.
 
@@ -39,6 +39,9 @@ NEXT_PUBLIC_SUPABASE_URL=       # Project URL from step 4 above
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon / publishable key
 SUPABASE_SERVICE_ROLE_KEY=      # service_role / secret key — never expose this to the client
 SESSION_SECRET=                 # random string, e.g. `openssl rand -base64 32`
+RESEND_API_KEY=                 # optional locally — see Email below
+EMAIL_FROM=                     # e.g. Colo Cloud <noreply@example.com>
+APP_URL=                        # e.g. https://signage.example.com (production)
 ```
 
 ```bash
@@ -47,11 +50,21 @@ npm run dev
 
 Open `http://localhost:3000` — it redirects to `/login`. After logging in you land on `/dashboard`.
 
+## Email
+
+The app sends its own email through [Resend](https://resend.com) (free for 3,000 a month): password reset links ("Forgot password?" on the login page), a link to confirm a new login email, a heads-up to the account whenever its password or email changes, signup links from **New Signup**, and the Checkliste from its share button (to people in Events Management, with replies going to whoever sent it). Changing or resetting a password signs out every other device.
+
+1. Run [`supabase/migrations/0042_account_emails.sql`](supabase/migrations/0042_account_emails.sql) in the SQL Editor.
+2. Sign up at resend.com → **Domains** → add a domain you own and add the DNS records it shows. Until a domain is verified, Resend only sends to the email its own account was made with.
+3. **API Keys** → create one with sending access → `RESEND_API_KEY`. Set `EMAIL_FROM` to an address on the verified domain, and `APP_URL` to the dashboard's address — emailed links are built from it rather than from the request, which whoever asks for a reset could otherwise tamper with.
+
+Without `RESEND_API_KEY`, `npm run dev` prints each email (links included) to the terminal instead of sending it, so every flow can be tried locally; a production deploy without it shows an error rather than pretending it sent.
+
 ## Deploying (free)
 
 1. Push this repo to GitHub.
 2. Import it into [Vercel](https://vercel.com/new) (free tier).
-3. In the Vercel project's **Settings → Environment Variables**, add the same four variables as above (for Production and Preview).
+3. In the Vercel project's **Settings → Environment Variables**, add the same variables as above (for Production and Preview).
    - Server functions are pinned to Frankfurt (`fra1`) in `vercel.json` so they sit next to the Supabase project. If your Supabase project lives elsewhere, change that region to match — every dashboard page load makes several database round trips, so a cross-region hop adds up fast.
 4. Deploy. Every push to `main` redeploys automatically.
 

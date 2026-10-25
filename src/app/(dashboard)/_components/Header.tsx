@@ -13,6 +13,7 @@ import { PAGES } from "@/lib/auth/access";
 import { RoleDot } from "@/components/RoleDot";
 import { brandFont } from "@/lib/fonts";
 import { cn } from "@/lib/utils/cn";
+import { AccountDialog, type AccountChange } from "./AccountDialog";
 
 // Users lives in the account menu rather than here (see UserMenu).
 const NAV_PAGES = PAGES.filter((page) => page.key !== "users");
@@ -108,7 +109,12 @@ function UserMenu() {
     setOpen(false);
   }
   const anchorRef = useRef<HTMLButtonElement>(null);
+  const [change, setChange] = useState<AccountChange | null>(null);
 
+  function startChange(next: AccountChange) {
+    setOpen(false);
+    setChange(next);
+  }
 
   return (
     <div className="relative shrink-0">
@@ -154,6 +160,22 @@ function UserMenu() {
             Users
           </Link>
         )}
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => startChange("password")}
+          className="press-ghost-fit mt-1 block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+        >
+          Change Password…
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => startChange("email")}
+          className="press-ghost-fit block w-full rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] font-medium hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+        >
+          Change Email…
+        </button>
         <PowerSavingItem />
         {/* The scroll-edge tuning panel — a design tool, so the super
             admin's only. */}
@@ -180,6 +202,7 @@ function UserMenu() {
           </button>
         </form>
       </Menu>
+      <AccountDialog change={change} onClose={() => setChange(null)} />
     </div>
   );
 }

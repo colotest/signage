@@ -503,6 +503,8 @@ export type Database = {
           is_super_admin: boolean;
           nickname: string | null;
           created_at: string;
+          // When the password last changed; older sessions are turned away (0042).
+          password_changed_at: string | null;
         };
         Insert: {
           id?: string;
@@ -512,6 +514,7 @@ export type Database = {
           is_super_admin?: boolean;
           nickname?: string | null;
           created_at?: string;
+          password_changed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -521,6 +524,7 @@ export type Database = {
           is_super_admin?: boolean;
           nickname?: string | null;
           created_at?: string;
+          password_changed_at?: string | null;
         };
         Relationships: [];
       };
@@ -534,6 +538,8 @@ export type Database = {
           used_by: string | null;
           nickname: string | null;
           role_ids: string[];
+          // Who it was emailed to, if anyone (0042).
+          email: string | null;
         };
         Insert: {
           token_hash: string;
@@ -544,6 +550,7 @@ export type Database = {
           used_by?: string | null;
           nickname?: string | null;
           role_ids?: string[];
+          email?: string | null;
         };
         Update: {
           token_hash?: string;
@@ -554,6 +561,60 @@ export type Database = {
           used_by?: string | null;
           nickname?: string | null;
           role_ids?: string[];
+          email?: string | null;
+        };
+        Relationships: [];
+      };
+      // "Forgot password?" links, by their token's sha256 (0042).
+      password_resets: {
+        Row: {
+          token_hash: string;
+          user_id: string;
+          created_at: string;
+          expires_at: string;
+          used_at: string | null;
+        };
+        Insert: {
+          token_hash: string;
+          user_id: string;
+          created_at?: string;
+          expires_at?: string;
+          used_at?: string | null;
+        };
+        Update: {
+          token_hash?: string;
+          user_id?: string;
+          created_at?: string;
+          expires_at?: string;
+          used_at?: string | null;
+        };
+        Relationships: [];
+      };
+      // Changes of login email waiting on the link sent to the new address (0042).
+      email_changes: {
+        Row: {
+          token_hash: string;
+          user_id: string;
+          new_email: string;
+          created_at: string;
+          expires_at: string;
+          used_at: string | null;
+        };
+        Insert: {
+          token_hash: string;
+          user_id: string;
+          new_email: string;
+          created_at?: string;
+          expires_at?: string;
+          used_at?: string | null;
+        };
+        Update: {
+          token_hash?: string;
+          user_id?: string;
+          new_email?: string;
+          created_at?: string;
+          expires_at?: string;
+          used_at?: string | null;
         };
         Relationships: [];
       };
@@ -890,6 +951,14 @@ export type Database = {
       };
       redeem_signup_invite: {
         Args: { p_token_hash: string; p_email: string; p_password_hash: string };
+        Returns: string | null;
+      };
+      redeem_password_reset: {
+        Args: { p_token_hash: string; p_password_hash: string };
+        Returns: string | null;
+      };
+      confirm_email_change: {
+        Args: { p_token_hash: string };
         Returns: string | null;
       };
       server_now: {

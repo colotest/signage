@@ -10,6 +10,8 @@ import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth/session";
 // must load their player URL with no login step. /signup/* is open too:
 // that's how someone without an account gets one. So is /upload/*: a
 // folder's upload link, whose token is checked by the page and its actions.
+// /forgot, /reset/* and /confirm-email/* too: forgetting a password, or
+// opening an emailed link on a device that isn't signed in.
 // And /tv.apk, the Fire TV app, fetched by a stick's Downloader with no
 // session (see android/).
 export async function proxy(request: NextRequest) {
@@ -37,6 +39,6 @@ export const config = {
     // The Home Screen files are fetched by iOS itself, which doesn't carry
     // the session cookie — gated, they came back as a redirect to /login,
     // so the web app got no icon at all and no manifest to install from.
-    "/((?!screen|signup|upload/|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|tv.apk).*)",
+    "/((?!screen|signup|upload/|forgot|reset/|confirm-email/|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|tv.apk).*)",
   ],
 };
