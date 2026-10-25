@@ -20,7 +20,18 @@ type Route = { eventId: string | null; view: EventViewKey | null; archived: bool
 // on the same page instead of the Events list, and the browser's back and
 // forward step through the pages too. Changed with history.pushState, which
 // Next picks up in useSearchParams without asking the server for anything.
-export function EventsPane({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
+export function EventsPane({
+  events,
+  people,
+  previewId,
+  onPreview,
+}: {
+  events: EventSummary[];
+  people: EventPerson[];
+  // The event the list's calendar is showing on the map (see ScheduleCalendar).
+  previewId: string | null;
+  onPreview: (id: string | null) => void;
+}) {
   const params = useSearchParams();
   const route: Route = {
     eventId: params.get("event"),
@@ -49,7 +60,13 @@ export function EventsPane({ events, people }: { events: EventSummary[]; people:
           events={events}
           archived={archived}
           onToggleArchived={() => setRoute({ archived: !archived })}
-          onOpen={(eventId) => setRoute({ eventId, view: null })}
+          onOpen={(eventId) => {
+            // Opened, it's the event the map shows anyway.
+            onPreview(null);
+            setRoute({ eventId, view: null });
+          }}
+          previewId={previewId}
+          onPreview={onPreview}
         />
       ),
     },

@@ -6,7 +6,7 @@ import { setEventPins } from "@/lib/actions/events";
 import { cn } from "@/lib/utils/cn";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
 import type { EventPerson, EventSummary } from "@/lib/events";
-import { ChecklistStateContext, useChecklistState } from "./checklistState";
+import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
 import { EventsPane } from "./EventsPane";
 import { LinkedPinCard } from "./PinMenus";
 import { SegmentedSlider } from "./SegmentedSlider";
@@ -73,15 +73,23 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   // The open event, from the URL (where EventsPane keeps it).
   const eventId = useSearchParams().get("event");
   const event = eventId ? events.find((e) => e.id === eventId) : undefined;
+  // An event the Events list's calendar is being scrubbed over: shown on the
+  // map as it would be open — its pins, its Checkliste on the standing pins
+  // — but only to look at, and only while no event is open.
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewEvent = !event && previewId ? events.find((e) => e.id === previewId) : undefined;
 
   // Pins as changed here, ahead of the server (which catches up on the
   // next render of the page), by event.
   const [pinEdits, setPinEdits] = useState<Record<string, MapPin[]>>({});
-  const pins = event ? (pinEdits[event.id] ?? event.mapPins) : [];
+  const pins = event ? (pinEdits[event.id] ?? event.mapPins) : (previewEvent?.mapPins ?? []);
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [editing, setEditing] = useState(false);
   // The open event's Checkliste, shared by its setup page and the pins.
   const checklist = useChecklistState(event);
+  const previewChecklist: ChecklistState | null = previewEvent
+    ? { answer: (key) => previewEvent.checklist[key] ?? null, save: () => {}, error: null }
+    : null;
   const [message, setMessage] = useState<string | null>(null);
   const [planKind, setPlanKind] = useState<PlanKind>("pixel");
   // Saves go one after another, so an older list can't land after a newer.
@@ -196,7 +204,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
         <LinkedPinCard
           pin={pin}
           // While editing, the standing pins are only names.
-          state={event && !editing ? checklist : null}
+          state={event && !editing ? checklist : previewChecklist}
           open={openSpot === pin.id}
           onToggle={() => setOpenSpot((s) => (s === pin.id ? null : pin.id))}
           onShowCategory={showChecklistCategory}
@@ -242,7 +250,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
           half scrolls or pans on its own instead. */}
       <div className="-mx-5 -my-6 flex h-[calc(100%+3rem)] flex-col md:flex-row">
         <div className="min-h-0 flex-1 border-b border-border md:w-[420px] md:flex-none md:border-b-0 md:border-r lg:w-[460px]">
-          <EventsPane events={events} people={people} />
+          <EventsPane events={events} people={people} previewId={previewEvent ? previewId : null} onPreview={setPreviewId} />
         </div>
 
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -319,6 +327,21 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
                   Fertig
                 </button>
               </>
+            )}
+            {previewEvent && (
+              // Which event the map's showing, scrubbed to on the calendar.
+              <div className="pop-in pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                <span className="text-muted">Vorschau</span>
+                <span className="min-w-0 truncate font-semibold">{previewEvent.title?.trim() || "Untitled Event"}</span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewId(null)}
+                  aria-label="Vorschau schließen"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:text-foreground"
+                >
+                  ✕
+                </button>
+              </div>
             )}
             {checklist.error && (
               <p role="alert" className="pointer-events-auto rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium text-danger shadow-[var(--shadow-float)]">

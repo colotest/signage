@@ -1,11 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { Menu } from "@/components/ui/Menu";
 import { createPresetEvent } from "@/lib/actions/events";
 import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
 import { SearchField } from "../../library/_components/SearchField";
+import { ThreeDotIcon } from "../../library/_components/FileTree";
+import { ScheduleCalendar } from "./ScheduleCalendar";
 import { eventTitle, formatEventDate, formatRuntime, useIsClient } from "./eventFormat";
 
 // Lower-case and without accents, so "prämiere" finds "Premiere" and
@@ -25,24 +28,67 @@ function matches(event: EventSummary, query: string) {
   return words.every((word) => haystack.includes(word));
 }
 
+type SortKey = "start" | "title" | "customer" | "pax";
+type SortDir = "asc" | "desc";
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: "start", label: "Start Date" },
+  { key: "title", label: "Title" },
+  { key: "customer", label: "Customer" },
+  { key: "pax", label: "PAX" },
+];
+
+// In the order picked — except that an event without the value sorted by
+// (no date, no customer, no PAX) always goes last, whichever way.
+function sortEvents(events: EventSummary[], key: SortKey, dir: SortDir) {
+  const value = (e: EventSummary): string | number | null => {
+    switch (key) {
+      case "start":
+        return e.startsAt ? new Date(e.startsAt).getTime() : null;
+      case "title":
+        return fold(eventTitle(e));
+      case "customer":
+        return e.customer?.trim() ? fold(e.customer) : null;
+      case "pax":
+        return e.pax;
+    }
+  };
+  return [...events].sort((a, b) => {
+    const av = value(a);
+    const bv = value(b);
+    if (av === null || bv === null) return av === null ? (bv === null ? 0 : 1) : -1;
+    const cmp = typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number);
+    return dir === "asc" ? cmp : -cmp;
+  });
+}
+
 // The Forms page's first page: every event, as cards in the Playlists
 // list's style. The arrowhead opens a card in place to show who's on it;
 // anywhere else on the card goes on to the event's own page. "+ Create" at
 // the top, as in the Playlists list, adds an event filled in with its
 // fields' names and opens it to be written over. The archive glyph
-// switches the list over to archived events (and back); the search, as in
-// the Media list, narrows whichever list is showing.
+// switches the list over to archived events (and back), and the "⋯" beside
+// it sorts them (by start date, unless picked otherwise); the search, as in
+// the Media list, narrows whichever list is showing. Above the current
+// events, a calendar of them all (see ScheduleCalendar).
 export function EventsList({
   events,
   archived,
   onToggleArchived,
   onOpen,
+  previewId,
+  onPreview,
 }: {
   events: EventSummary[];
   archived: boolean;
   onToggleArchived: () => void;
   onOpen: (id: string) => void;
+  // The event the calendar is showing on the map, while scrubbing through it.
+  previewId: string | null;
+  onPreview: (id: string | null) => void;
 }) {
+  const [sortKey, setSortKey] = useState<SortKey>("start");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const router = useRouter();
@@ -67,21 +113,25 @@ export function EventsList({
   }
 
   const inList = events.filter((e) => (e.archivedAt !== null) === archived);
-  const shown = inList.filter((e) => matches(e, query));
+  const shown = sortEvents(
+    inList.filter((e) => matches(e, query)),
+    sortKey,
+    sortDir,
+  );
 
   return (
     <div className="px-4 pb-10 pt-5 md:px-5 md:pt-6">
       {/* search-row: the search opens from just after the title into the
           row's spare width, the buttons staying against the right edge —
           and on a phone the archive button dissolves to make room, as
-          Upload does in the Media list (see SearchField, globals.css). The
-          right offset there allows for one round button after it; here
-          it's the last, so it's set back to the edge. */}
+          Upload does in the Media list (see SearchField, globals.css) —
+          its offset there allows for the one round button after it, here
+          the sort "⋯". */}
       <div className="search-row relative mb-4 flex min-h-[var(--title-action)] items-center gap-3">
         <h1 className="shrink-0 text-[28px] font-semibold tracking-tight">{archived ? "Archive" : "Events"}</h1>
         <SearchField onQueryChange={setQuery} label="Search events" />
         <div className="relative ml-auto flex shrink-0 items-center gap-3">
-          <span className="search-yields shrink-0" style={{ right: 0 }}>
+          <span className="search-yields shrink-0">
             <button
               type="button"
               onClick={onToggleArchived}
@@ -98,8 +148,30 @@ export function EventsList({
               <ArchiveIcon className="title-action-glyph" />
             </button>
           </span>
+          <SortMenuButton
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onPick={(key) => {
+              // The same one again turns it round; another starts its own
+              // natural way (soonest, A–Z, smallest).
+              if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+              else {
+                setSortKey(key);
+                setSortDir("asc");
+              }
+            }}
+          />
         </div>
       </div>
+
+      {!archived && (
+        <ScheduleCalendar
+          events={inList}
+          previewId={previewId}
+          onPreview={onPreview}
+          onOpen={onOpen}
+        />
+      )}
 
       <ul className="flex flex-col gap-3">
         {/* Only among current events — nothing's made straight into the
@@ -139,6 +211,56 @@ export function EventsList({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// The "⋯" beside the Archive button: what the list is sorted by. Picking the
+// one in use again turns it round. Stays open, as the Playlists' does, to
+// try a few.
+function SortMenuButton({
+  sortKey,
+  sortDir,
+  onPick,
+}: {
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onPick: (key: SortKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Sort events"
+        aria-expanded={open}
+        className="title-action-round shrink-0 bg-black/[.05] text-muted shadow-[var(--shadow-control)] transition-colors hover:bg-black/[.08] hover:text-foreground dark:bg-white/[.08] dark:hover:bg-white/[.12]"
+      >
+        <ThreeDotIcon className="title-action-glyph" />
+      </button>
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="w-44 p-1">
+        <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Sort by</div>
+        {SORTS.map((sort) => {
+          const active = sort.key === sortKey;
+          return (
+            <button
+              key={sort.key}
+              type="button"
+              onClick={() => onPick(sort.key)}
+              className={cn(
+                "press-ghost-fit flex w-full items-center justify-between rounded-[calc(var(--radius-md)-4px)] px-2.5 py-1.5 text-left text-[13px] hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+                active ? "font-medium text-foreground" : "text-muted",
+              )}
+            >
+              {sort.label}
+              {active && <span className="text-[10px]">{sortDir === "asc" ? "▲" : "▼"}</span>}
+            </button>
+          );
+        })}
+      </Menu>
     </div>
   );
 }
