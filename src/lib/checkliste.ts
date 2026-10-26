@@ -10,9 +10,11 @@
 //   _Label:                  → a one-line text field
 //   _Datum                   → a date
 //   _Text                    → a free-text box
+//   @eins                    → the section takes only one answer
+//   @wenn <field key>        → the section shows only while that's ticked
 //
-// A section whose options include Ja and Nein takes only one answer: ticking
-// one unticks the rest.
+// A section whose options include Ja and Nein takes only one answer too:
+// ticking one unticks the rest.
 //
 // Each field's key (what an event stores, 0039) is made from its section's
 // title and its own label, so renaming either starts that field afresh;
@@ -52,6 +54,7 @@ VIP Bereich
 Pressebereich
 Workshopräume
 Breakout Räume
+Catering-/Lagerfläche
 
 ##Technik
 #Welche Technik wird benötigt?
@@ -85,6 +88,12 @@ Colosseum Catering
 Externes Catering
 Noch unklar
 Kein Catering geplant
+
+#Gastroflächen
+@eins
+Küche
+Mainbar
+Mainbar Seitlich
 
 #Cateringform
 Frühstück / Coffee Break
@@ -123,18 +132,34 @@ besondere Bar
 Noch unklar
 
 ##Logistik und Service
+#Eingang
+@eins
+Gleimstr.
+Schönhauser
+#Barrierefreiheit
+Barrierefrei
 #Garderobe benötigt
 Ja
 Nein
 Noch unklar
+#Garderobe
+@eins
+@wenn garderobe-benoetigt/ja
+Gestellt
+Selbstständig
 #Parkplatzsperrung / Ladezone benötigt
-Ja
-Nein
+@eins
+Seite Biocompany
+Seite Kino
 Noch unklar
 #Security / Ordner benötigt
 Ja
 Nein
 Noch unklar
+#WC Positionen
+@eins
+WC Unten
+WC Wagenhalle
 #WC Service / Reinigung während Event
 Ja
 Nein
@@ -173,8 +198,10 @@ export type ChecklistSection = {
   key: string;
   title: string;
   note: string | null;
-  // Only one of its options can be ticked (a Ja / Nein question).
+  // Only one of its options can be ticked (a Ja / Nein question, or @eins).
   single: boolean;
+  // Shown only while this field is ticked (@wenn).
+  when: string | null;
   fields: ChecklistField[];
 };
 export type ChecklistCategory = { key: string; title: string; sections: ChecklistSection[] };
@@ -216,10 +243,14 @@ function parse(source: string): ChecklistCategory[] {
       section = null;
     } else if (line.startsWith("#")) {
       const title = line.slice(1).trim();
-      section = { key: slug(title), title, note: null, single: false, fields: [] };
+      section = { key: slug(title), title, note: null, single: false, when: null, fields: [] };
       categories[categories.length - 1].sections.push(section);
     } else if (!section) {
       throw new Error(`Checkliste: "${line}" comes before any section`);
+    } else if (line === "@eins") {
+      section.single = true;
+    } else if (line.startsWith("@wenn ")) {
+      section.when = line.slice(6).trim();
     } else if (line.startsWith("(")) {
       const text = line.slice(1);
       if (text.endsWith(")")) section.note = text.slice(0, -1);
@@ -234,7 +265,7 @@ function parse(source: string): ChecklistCategory[] {
   }
   for (const s of categories.flatMap((c) => c.sections)) {
     const labels = s.fields.map((f) => f.label);
-    s.single = labels.includes("Ja") && labels.includes("Nein");
+    if (labels.includes("Ja") && labels.includes("Nein")) s.single = true;
   }
   return categories;
 }
@@ -257,6 +288,18 @@ export function exclusiveWith(key: string): string[] {
   return section.fields.filter((f) => f.key !== key && f.kind === "check").map((f) => f.key);
 }
 
+// Fields other parts of the page work with by name.
+export const AREAS_SECTION = "welche-flaechen-sind-interessant";
+export const WAGENHALLE_EXKLUSIV = `${AREAS_SECTION}/wagenhalle-exklusiv`;
+export const WAGENHALLE_NICHT_EXKLUSIV = `${AREAS_SECTION}/wagenhalle-nicht-exklusiv`;
+export const BARRIEREFREI = "barrierefreiheit/barrierefrei";
+export const WC_POSITIONS = "wc-positionen";
+export const WC_UNTEN = `${WC_POSITIONS}/wc-unten`;
+export const WC_WAGENHALLE = `${WC_POSITIONS}/wc-wagenhalle`;
+export const WC_SERVICE = "wc-service-reinigung-waehrend-event";
+// The WC Wagenhalle isn't step-free: with Barrierefrei ticked, it's flagged.
+export const NOT_STEP_FREE = new Set([WC_WAGENHALLE]);
+
 // The venue map's room pins (see PinMenus) keep a pick of their own of the
 // room requirements, stored alongside the list's answers as
 // "pin:<pin>:<field>"; the list's own option is ticked while any room has
@@ -268,6 +311,47 @@ export const ROOM_PINS = ["kino-2", "kino-3", "kino-4", "kino-5", ...WAGENHALLE_
 
 export function pinKey(pinId: string, part: string) {
   return `pin:${pinId}:${part}`;
+}
+
+// The room pins' names, as on the map — for the list to say which rooms
+// asked for one of its room requirements.
+export const ROOM_PIN_NAMES: Record<string, string> = {
+  "kino-2": "Kino 2",
+  "kino-3": "Kino 3",
+  "kino-4": "Kino 4",
+  "kino-5": "Kino 5",
+  "wagenhalle-kino": "Wagenhalle 'Kino'",
+  "wagenhalle-event": "Wagenhalle 'Event'",
+};
+
+// The rooms (pins) that picked a room requirement for themselves.
+export function roomsWith(fieldKey: string, answer: (key: string) => true | string | null): string[] {
+  return ROOM_PINS.filter((id) => answer(pinKey(id, fieldKey)) === true).map((id) => ROOM_PIN_NAMES[id]);
+}
+
+// Kino 2 and 3 sit in the Wagenhalle's cinema half: ticking either ticks
+// Wagenhalle 'Kino' too.
+const OPENS_WAGENHALLE_KINO = [`${AREAS_SECTION}/saal-2`, `${AREAS_SECTION}/saal-3`];
+
+// A change as it's to be saved, with what follows from it: a Wagenhalle
+// hall's tick sets exklusiv (both halls) or nicht exklusiv (one) in the
+// list; ticking Kino 2 or 3 ticks Wagenhalle 'Kino'.
+export function withConsequences(
+  patch: Record<string, true | string | null>,
+  answer: (key: string) => true | string | null,
+): Record<string, true | string | null> {
+  const full = { ...patch };
+  const kinoHall = pinKey("wagenhalle-kino", "selected");
+  if (OPENS_WAGENHALLE_KINO.some((key) => full[key] === true) && answer(kinoHall) !== true && !(kinoHall in full)) {
+    full[kinoHall] = true;
+  }
+  const hallKeys = WAGENHALLE_PINS.map((id) => pinKey(id, "selected"));
+  if (hallKeys.some((key) => key in full)) {
+    const count = hallKeys.filter((key) => (key in full ? full[key] === true : answer(key) === true)).length;
+    full[WAGENHALLE_EXKLUSIV] = count === 2 || null;
+    full[WAGENHALLE_NICHT_EXKLUSIV] = count === 1 || null;
+  }
+  return full;
 }
 
 function isPinKey(key: string) {

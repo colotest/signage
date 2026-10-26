@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useRef, useState } from "react";
 import { updateChecklist } from "@/lib/actions/events";
-import { exclusiveWith } from "@/lib/checkliste";
+import { exclusiveWith, withConsequences } from "@/lib/checkliste";
 import type { EventSummary } from "@/lib/events";
 
 export type Answer = true | string | null;
@@ -40,12 +40,16 @@ export function useChecklistState(event: EventSummary | undefined): ChecklistSta
   // Saves go one after another, so an older answer can't land after a newer.
   const saveChain = useRef(Promise.resolve());
 
+  const answer = (key: string): Answer => (key in edits ? edits[key] : (event?.checklist[key] ?? null));
   return {
-    answer: (key) => (key in edits ? edits[key] : (event?.checklist[key] ?? null)),
-    save: (patch) => {
+    answer,
+    save: (change) => {
       if (!event) return;
       const id = event.id;
-      // In a Ja / Nein section a tick takes the others' away (the server
+      // With what follows from it (Kino 2 or 3 bringing Wagenhalle 'Kino',
+      // the halls deciding exklusiv) — saved as one change.
+      const patch = withConsequences(change, answer);
+      // In a one-answer section a tick takes the others' away (the server
       // does the same; this shows it at once).
       const full = { ...patch };
       for (const [key, value] of Object.entries(patch)) {

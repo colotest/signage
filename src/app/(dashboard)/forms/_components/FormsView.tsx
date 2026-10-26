@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { setEventAreas, setEventPins } from "@/lib/actions/events";
 import { cn } from "@/lib/utils/cn";
 import { areaContains, MAX_AREA_POINTS, MAX_AREAS, type AreaPoint, type MapArea } from "@/lib/eventAreas";
+import { linkedAreas } from "@/lib/venueAreas";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
@@ -108,6 +109,9 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
           error: null,
         }
       : null;
+  // With the venue's own areas whose option is ticked for what's on show
+  // (the Wagenhalle's halls — see venueAreas), beneath the event's own.
+  const shownAreas = [...linkedAreas(event ? checklist.answer : (previewChecklist?.answer ?? null)), ...areas];
   const [message, setMessage] = useState<string | null>(null);
   const [planKind, setPlanKind] = useState<PlanKind>("pixel");
   // Saves go one after another, so an older list can't land after a newer.
@@ -322,7 +326,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
             focus={null}
             onBackgroundTap={onMapTap}
             spots={spots}
-            areas={areas}
+            areas={shownAreas}
             selectedArea={editing ? selectedArea : null}
             draft={draft}
           />

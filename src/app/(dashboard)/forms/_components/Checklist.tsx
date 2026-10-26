@@ -2,13 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  BARRIEREFREI,
   CHECKLISTE,
   MAX_CHECKLIST_TEXT,
+  NOT_STEP_FREE,
+  ROOM_REQUIREMENTS,
+  roomsWith,
   type ChecklistField,
   type ChecklistSection,
 } from "@/lib/checkliste";
 import { cn } from "@/lib/utils/cn";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
+import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
 import { useChecklist, type Answer } from "./checklistState";
 
 // How long typing in a text field rests before it's saved (leaving the
@@ -52,6 +57,9 @@ function Section({
   answer: (key: string) => Answer;
   onSave: (key: string, value: Answer) => void;
 }) {
+  // A follow-up question (@wenn), only once what it follows is ticked.
+  if (section.when && answer(section.when) !== true) return null;
+  const stepFree = answer(BARRIEREFREI) === true;
   return (
     <div>
       <h3 className="mb-1.5 px-1 text-[15px] font-semibold">{section.title}</h3>
@@ -69,6 +77,10 @@ function Section({
                 single={section.single}
                 checked={answer(field.key) === true}
                 onChange={(on) => onSave(field.key, on || null)}
+                // Which rooms on the map asked for this one, for the room
+                // requirements.
+                aside={section.key === ROOM_REQUIREMENTS ? roomsWith(field.key, answer).join(", ") || null : null}
+                notStepFree={stepFree && NOT_STEP_FREE.has(field.key)}
               />
             ) : (
               <TextRow field={field} value={(answer(field.key) as string | null) ?? ""} onSave={(text) => onSave(field.key, text || null)} />
@@ -99,17 +111,23 @@ function Note({ text }: { text: string }) {
 }
 
 // A box to tick — or, in a one-answer section, a round option (tapping the
-// picked one again clears it, as everything here is optional).
+// picked one again clears it, as everything here is optional). aside: a
+// greyed note after the label; notStepFree: a red wheelchair, where the
+// option doesn't go with Barrierefrei.
 function CheckRow({
   field,
   single,
   checked,
   onChange,
+  aside = null,
+  notStepFree = false,
 }: {
   field: ChecklistField;
   single: boolean;
   checked: boolean;
   onChange: (on: boolean) => void;
+  aside?: string | null;
+  notStepFree?: boolean;
 }) {
   return (
     <button
@@ -129,7 +147,16 @@ function CheckRow({
       >
         {checked && <CheckIcon className="h-3.5 w-3.5" />}
       </span>
-      <span className="min-w-0 flex-1">{field.label}</span>
+      <span className="min-w-0 flex-1">
+        {field.label}
+        {aside && <span className="ml-2 text-[13px] text-muted">{aside}</span>}
+      </span>
+      {notStepFree && (
+        <span title="Nicht barrierefrei" className="shrink-0 text-danger">
+          <WheelchairIcon className="h-5 w-5" />
+          <span className="sr-only">Nicht barrierefrei</span>
+        </span>
+      )}
     </button>
   );
 }

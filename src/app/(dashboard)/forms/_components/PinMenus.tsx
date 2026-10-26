@@ -1,9 +1,19 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ROOM_PINS, ROOM_REQUIREMENTS, WAGENHALLE_PINS, pinKey, sectionByKey } from "@/lib/checkliste";
+import {
+  AREAS_SECTION,
+  BARRIEREFREI,
+  NOT_STEP_FREE,
+  ROOM_PINS,
+  ROOM_REQUIREMENTS,
+  WC_SERVICE,
+  pinKey,
+  sectionByKey,
+} from "@/lib/checkliste";
 import { cn } from "@/lib/utils/cn";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
+import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
 import type { ChecklistState } from "./checklistState";
 import { MapCard } from "./VenueMap";
 
@@ -11,22 +21,31 @@ import { MapCard } from "./VenueMap";
 // - A Kino: its title ticks the like-numbered Saal under "Welche Flächen
 //   sind interessant?" (the box beside it shows that same answer).
 // - A Wagenhalle hall: its title ticks the hall; both ticked is
-//   "Wagenhalle exklusiv", one alone "Wagenhalle nicht exklusiv".
+//   "Wagenhalle exklusiv", one alone "Wagenhalle nicht exklusiv" (worked
+//   out wherever a hall's ticked — see withConsequences, which also has
+//   Kino 2 and 3 bring Wagenhalle 'Kino' along).
 // - Either, opened: the room requirements, picked per room — the list's own
 //   option is ticked while any room has it.
 // - Gastro, opened: "Catering geplant", one to one; its title scrolls the
 //   Checkliste to "Catering und Getränke".
-// - Garderobe, Parken, Sicherheit: a switch for Ja / Nein on their
-//   question, and opened, a way back to no answer at all.
+// - Garderobe, Sicherheit: a switch for Ja / Nein on their question, and
+//   opened, a way back to no answer at all — and for the Garderobe, once
+//   it's on, its follow-up (Gestellt / Selbstständig).
+// - Parken: opened, which side to close off (one of the question's
+//   options).
+// - A WC: a switch that makes it the event's WC (under "WC Positionen";
+//   the other's goes off), and opened, "Service" for its cleaning during
+//   the event. The Wagenhalle's carries a red wheelchair while
+//   Barrierefrei is ticked: it isn't step-free.
 type PinLink =
   | { kind: "saal"; field: string }
   | { kind: "wagenhalle" }
   | { kind: "options"; section: string; category: string }
-  | { kind: "switch"; section: string };
+  | { kind: "switch"; section: string; followUp?: string }
+  | { kind: "pick"; section: string }
+  | { kind: "wc"; field: string };
 
-const AREAS = "welche-flaechen-sind-interessant";
-const EXKLUSIV = `${AREAS}/wagenhalle-exklusiv`;
-const NICHT_EXKLUSIV = `${AREAS}/wagenhalle-nicht-exklusiv`;
+const AREAS = AREAS_SECTION;
 
 const PIN_LINKS: Record<string, PinLink> = {
   "kino-2": { kind: "saal", field: `${AREAS}/saal-2` },
@@ -36,8 +55,10 @@ const PIN_LINKS: Record<string, PinLink> = {
   "wagenhalle-kino": { kind: "wagenhalle" },
   "wagenhalle-event": { kind: "wagenhalle" },
   gastro: { kind: "options", section: "catering-geplant", category: "catering-und-getraenke" },
-  garderobe: { kind: "switch", section: "garderobe-benoetigt" },
-  parken: { kind: "switch", section: "parkplatzsperrung-ladezone-benoetigt" },
+  garderobe: { kind: "switch", section: "garderobe-benoetigt", followUp: "garderobe" },
+  parken: { kind: "pick", section: "parkplatzsperrung-ladezone-benoetigt" },
+  "wc-unten": { kind: "wc", field: "wc-positionen/wc-unten" },
+  "wc-wagenhalle": { kind: "wc", field: "wc-positionen/wc-wagenhalle" },
   sicherheit: { kind: "switch", section: "security-ordner-benoetigt" },
 };
 
@@ -70,12 +91,7 @@ export function LinkedPinCard({
 
   if (link.kind === "saal" || link.kind === "wagenhalle") {
     const selectedKey = link.kind === "saal" ? link.field : pinKey(pin.id, "selected");
-    const toggleSelected = () => {
-      if (link.kind === "saal") return save({ [link.field]: ticked(link.field) ? null : true });
-      const on = !ticked(selectedKey);
-      const count = WAGENHALLE_PINS.filter((id) => (id === pin.id ? on : ticked(pinKey(id, "selected")))).length;
-      save({ [selectedKey]: on || null, [EXKLUSIV]: count === 2 || null, [NICHT_EXKLUSIV]: count === 1 || null });
-    };
+    const toggleSelected = () => save({ [selectedKey]: ticked(selectedKey) ? null : true });
     const requirements = sectionByKey(ROOM_REQUIREMENTS)?.fields ?? [];
     return (
       <MapCard
@@ -101,8 +117,63 @@ export function LinkedPinCard({
     );
   }
 
+  if (link.kind === "wc") {
+    const service = sectionByKey(WC_SERVICE)?.fields.find((f) => f.label === "Ja");
+    const flagged = ticked(BARRIEREFREI) && NOT_STEP_FREE.has(link.field);
+    return (
+      <MapCard
+        title={pin.title}
+        open={open}
+        onToggle={onToggle}
+        adornment={
+          flagged ? (
+            <span title="Nicht barrierefrei" className="text-danger">
+              <WheelchairIcon className="h-[18px] w-[18px]" />
+            </span>
+          ) : undefined
+        }
+        control={
+          <Switch
+            label={`${pin.title} als WC-Position`}
+            value={ticked(link.field) ? true : null}
+            onChange={(on) => save({ [link.field]: on || null })}
+          />
+        }
+      >
+        {service && (
+          <OptionList
+            options={[
+              {
+                key: service.key,
+                label: "Service",
+                checked: ticked(service.key),
+                onToggle: () => save({ [service.key]: ticked(service.key) ? null : true }),
+              },
+            ]}
+          />
+        )}
+      </MapCard>
+    );
+  }
+
   const section = sectionByKey(link.section);
   if (!section) return <MapCard title={pin.title} open={false} onToggle={onToggle} />;
+
+  if (link.kind === "pick") {
+    return (
+      <MapCard title={pin.title} open={open} onToggle={onToggle}>
+        <OptionList
+          round
+          options={section.fields.map((field) => ({
+            key: field.key,
+            label: field.label,
+            checked: ticked(field.key),
+            onToggle: () => save({ [field.key]: ticked(field.key) ? null : true }),
+          }))}
+        />
+      </MapCard>
+    );
+  }
 
   if (link.kind === "options") {
     return (
@@ -137,6 +208,9 @@ export function LinkedPinCard({
         />
       }
     >
+      {link.followUp && value === true && (
+        <FollowUp section={link.followUp} ticked={ticked} save={save} />
+      )}
       <button
         type="button"
         onClick={() => save(Object.fromEntries(section.fields.map((f) => [f.key, null])))}
@@ -149,12 +223,40 @@ export function LinkedPinCard({
   );
 }
 
-function TickBox({ checked, className }: { checked: boolean; className?: string }) {
+// A question's follow-up, picked inside its pin's card (one answer).
+function FollowUp({
+  section: key,
+  ticked,
+  save,
+}: {
+  section: string;
+  ticked: (key: string) => boolean;
+  save: ChecklistState["save"];
+}) {
+  const section = sectionByKey(key);
+  if (!section) return null;
+  return (
+    <div className="mb-2">
+      <OptionList
+        round
+        options={section.fields.map((field) => ({
+          key: field.key,
+          label: field.label,
+          checked: ticked(field.key),
+          onToggle: () => save({ [field.key]: ticked(field.key) ? null : true }),
+        }))}
+      />
+    </div>
+  );
+}
+
+function TickBox({ checked, round = false, className }: { checked: boolean; round?: boolean; className?: string }) {
   return (
     <span
       aria-hidden
       className={cn(
-        "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-2 transition-colors",
+        "flex h-[18px] w-[18px] shrink-0 items-center justify-center border-2 transition-colors",
+        round ? "rounded-full" : "rounded-[5px]",
         checked ? "border-accent bg-accent text-accent-contrast" : "border-muted/50",
         className,
       )}
@@ -164,10 +266,13 @@ function TickBox({ checked, className }: { checked: boolean; className?: string 
   );
 }
 
+// round: one answer only (the options are radios).
 function OptionList({
   options,
+  round = false,
 }: {
   options: { key: string; label: ReactNode; checked: boolean; onToggle: () => void }[];
+  round?: boolean;
 }) {
   return (
     <ul className="-mx-1 flex flex-col">
@@ -175,12 +280,12 @@ function OptionList({
         <li key={option.key}>
           <button
             type="button"
-            role="checkbox"
+            role={round ? "radio" : "checkbox"}
             aria-checked={option.checked}
             onClick={option.onToggle}
             className="press-ghost-fit flex w-full items-center gap-2.5 rounded-[var(--radius-sm,8px)] px-1 py-1.5 text-left text-[14px]"
           >
-            <TickBox checked={option.checked} />
+            <TickBox checked={option.checked} round={round} />
             <span className="min-w-0 flex-1">{option.label}</span>
           </button>
         </li>
