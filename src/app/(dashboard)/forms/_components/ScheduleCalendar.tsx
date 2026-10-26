@@ -5,7 +5,7 @@ import { EdgeBand } from "@/components/EdgeBand";
 import { sameDay, weekStartsOn } from "@/components/MonthCalendar";
 import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
-import { eventTitle, useIsClient } from "./eventFormat";
+import { eventTitle, formatEventRange, useIsClient } from "./eventFormat";
 
 // A week row: the day's circle, sized and set as on the event pages'
 // calendar (see EventCalendar), then — clear of the circle's edge — a lane
@@ -373,7 +373,9 @@ function ScheduleGrid({
                   }}
                   onMouseEnter={() => onHighlight(id)}
                   onMouseLeave={() => onHighlight(null)}
-                  title={eventTitle(seg.span.event)}
+                  // Its name is on the bar already; the tooltip gives when —
+                  // "03/11/2026, 18:00 Tu – 23:00".
+                  title={formatEventRange(seg.span.event) ?? eventTitle(seg.span.event)}
                   className={cn(
                     "no-press absolute truncate px-1.5 text-left text-[11px] font-semibold leading-[16px] transition-colors",
                     seg.fromBefore ? "rounded-l-none" : "rounded-l-full",
