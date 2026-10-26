@@ -196,7 +196,9 @@ export function EventsList({
             key={event.id}
             event={event}
             isExpanded={expanded.has(event.id)}
-            lit={event.id === highlightId}
+            // Lit while its bar is hovered, or while the calendar's showing
+            // it on the map — every event on the day under the pointer.
+            lit={event.id === highlightId || previewIds.includes(event.id)}
             onToggle={() => toggle(event.id)}
             onOpen={() => onOpen(event.id)}
           />
@@ -309,7 +311,7 @@ function EventRow({
       }}
       className={cn(
         "cursor-pointer rounded-[var(--radius-md)] border bg-surface p-3 transition-[border-color,box-shadow,background-color] duration-200 hover:bg-black/[.015] dark:hover:bg-white/[.02]",
-        lit ? "border-accent bg-accent/[.06] ring-1 ring-inset ring-accent" : "border-border",
+        lit ? "border-border bg-accent/[.12] dark:bg-accent/[.16]" : "border-border",
       )}
     >
       <div className="flex items-center gap-3">

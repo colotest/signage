@@ -17,7 +17,9 @@ const DAY_NUMBER = CIRCLE_TOP + CIRCLE + 3;
 const LANE = 18;
 const ROW_PAD = 6;
 const WINDOW_WEEKS = 3;
-const rowHeight = (lanes: number) => DAY_NUMBER + lanes * LANE + ROW_PAD;
+// A week without events as tall as one on the event pages' calendar.
+const EMPTY_ROW = 52;
+const rowHeight = (lanes: number) => Math.max(EMPTY_ROW, DAY_NUMBER + lanes * LANE + ROW_PAD);
 // How far the weeks run past today and past the first and last events.
 const RANGE_WEEKS = 26;
 const DAY_MS = 86_400_000;
