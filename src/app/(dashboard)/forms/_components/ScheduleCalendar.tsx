@@ -7,10 +7,13 @@ import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
 import { eventTitle, useIsClient } from "./eventFormat";
 
-// A week row: the day's number, then a lane for each event bar that runs
-// through the week at once — as many as it needs, and none for a week
-// without any.
-const DAY_NUMBER = 28;
+// A week row: the day's circle, sized and set as on the event pages'
+// calendar (see EventCalendar), then — clear of the circle's edge — a lane
+// for each event bar that runs through the week at once: as many as it
+// needs, and none for a week without any.
+const CIRCLE = 34;
+const CIRCLE_TOP = 2;
+const DAY_NUMBER = CIRCLE_TOP + CIRCLE + 3;
 const LANE = 18;
 const ROW_PAD = 6;
 const WINDOW_WEEKS = 3;
@@ -341,14 +344,12 @@ function ScheduleGrid({
                 <div key={col} className={cn("relative flex flex-col items-center rounded-[10px]", scrubbed && "bg-foreground/[.07]")}>
                   <span
                     className={cn(
-                      "mt-[3px] flex h-6 w-6 items-center justify-center rounded-full text-[14px] tabular-nums",
+                      "flex shrink-0 items-center justify-center rounded-full text-[16px] tabular-nums",
                       isToday
-                        ? "bg-accent font-semibold text-accent-contrast"
-                        : day.getMonth() !== month.getMonth()
-                          ? "text-muted/60"
-                          : "text-foreground",
-                      weekend && !isToday && "font-semibold",
+                        ? cn("bg-accent text-accent-contrast", weekend ? "font-bold" : "font-semibold")
+                        : cn(day.getMonth() !== month.getMonth() ? "text-muted/60" : "text-foreground", weekend && "font-semibold"),
                     )}
+                    style={{ marginTop: CIRCLE_TOP, height: CIRCLE, width: CIRCLE }}
                   >
                     {day.getDate()}
                   </span>
