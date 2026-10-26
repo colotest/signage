@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
     // copy expire after the 4h default.)
     minimumCacheTTL: 2678400, // 31 days
   },
+  // The brand font, as emails load it (src/lib/email/templates.ts): from
+  // whatever origin a webmail shows it on, which fonts need leave for.
+  async headers() {
+    return [{ source: "/email/:path*", headers: [{ key: "Access-Control-Allow-Origin", value: "*" }] }];
+  },
 };
 
 export default nextConfig;
