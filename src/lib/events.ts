@@ -2,6 +2,7 @@ import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { displayNameOf } from "@/lib/uploads/uploaders";
 import type { EventRecord } from "@/types/domain";
+import { parseAreas, type MapArea } from "@/lib/eventAreas";
 import { parsePins, type MapPin } from "@/lib/eventPins";
 import { parseChecklist, type ChecklistAnswers } from "@/lib/checkliste";
 
@@ -45,6 +46,8 @@ export type EventSummary = {
   leadRoleIds: string[];
   // Its own pins on the venue map (0038).
   mapPins: MapPin[];
+  // Its highlighted areas on the venue map (0043).
+  mapAreas: MapArea[];
   // Its Checkliste as filled in so far (0039).
   checklist: ChecklistAnswers;
 };
@@ -140,6 +143,8 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     leadRoleIds: e.lead_id ? (leadRoles.get(e.lead_id) ?? []) : [],
     // Read as none before 0038 has added the column.
     mapPins: parsePins(e.map_pins),
+    // Likewise none before 0043.
+    mapAreas: parseAreas(e.map_areas),
     // Likewise empty before 0039.
     checklist: parseChecklist(e.checklist),
   }));

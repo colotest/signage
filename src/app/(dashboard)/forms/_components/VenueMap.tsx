@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Spinner } from "@/components/ui/Spinner";
+import type { AreaPoint, MapArea } from "@/lib/eventAreas";
 import { cn } from "@/lib/utils/cn";
 import { startCompass } from "./compass";
 import { createWheelClassifier } from "./wheelKind";
@@ -66,12 +67,20 @@ type Pointer = { x: number; y: number; t: number };
 export function VenueMap({
   plan,
   spots,
+  areas = [],
+  selectedArea = null,
+  draft = null,
   focus,
   onBackgroundTap,
   className,
 }: {
   plan: FloorPlan;
   spots: MapSpot[];
+  // Highlighted areas, drawn on the plan beneath the spots (see PlanAreas);
+  // the selected one outlined, and an area being drawn as far as it's got.
+  areas?: MapArea[];
+  selectedArea?: string | null;
+  draft?: AreaPoint[] | null;
   // Bump the nonce to bring a spot into view (and the id to pick which).
   focus: { id: string; nonce: number } | null;
   // A tap on the map itself (not on a spot or a control), and where on the
@@ -705,6 +714,7 @@ export function VenueMap({
             loaded ? "opacity-100" : "opacity-0",
           )}
         />
+        {loaded && <PlanAreas plan={plan} areas={areas} selected={selectedArea} draft={draft} />}
       </div>
 
       {!loaded && (
@@ -777,6 +787,92 @@ export function VenueMap({
         </div>
       )}
     </div>
+  );
+}
+
+// Areas soften out at their edges over about this many of the plan's units
+// (the blur's standard deviation) — wider zoomed in, as the plan is.
+const AREA_SOFTNESS = 70;
+
+// The areas, drawn in the plan's own units over the picture, so they slide,
+// zoom and turn with it: each a blue fill blurred at its edges, the
+// selected one outlined too. An area being drawn shows as a line through
+// its corners so far, filled in faintly once there are three.
+function PlanAreas({
+  plan,
+  areas,
+  selected,
+  draft,
+}: {
+  plan: FloorPlan;
+  areas: MapArea[];
+  selected: string | null;
+  draft: AreaPoint[] | null;
+}) {
+  if (areas.length === 0 && !draft?.length) return null;
+  const toPoints = (pts: AreaPoint[]) => pts.map((p) => `${p.u * plan.width},${p.v * plan.height}`).join(" ");
+  const pad = AREA_SOFTNESS * 3;
+  return (
+    <svg
+      viewBox={`0 0 ${plan.width} ${plan.height}`}
+      preserveAspectRatio="none"
+      aria-hidden
+      className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+    >
+      <defs>
+        {/* One blur per area, its region just around that area: one across
+            the whole plan would have the browser blur all of it. */}
+        {areas.map((area) => {
+          const xs = area.points.map((p) => p.u * plan.width), ys = area.points.map((p) => p.v * plan.height);
+          const x = Math.min(...xs) - pad, y = Math.min(...ys) - pad;
+          return (
+            <filter
+              key={area.id}
+              id={`area-soft-${area.id}`}
+              filterUnits="userSpaceOnUse"
+              x={x}
+              y={y}
+              width={Math.max(...xs) + pad - x}
+              height={Math.max(...ys) + pad - y}
+            >
+              <feGaussianBlur stdDeviation={AREA_SOFTNESS} />
+            </filter>
+          );
+        })}
+      </defs>
+      {areas.map((area) => (
+        <polygon
+          key={area.id}
+          points={toPoints(area.points)}
+          filter={`url(#area-soft-${area.id})`}
+          style={{ fill: "var(--accent)", fillOpacity: 0.4 }}
+        />
+      ))}
+      {areas
+        .filter((area) => area.id === selected)
+        .map((area) => (
+          <polygon
+            key={area.id}
+            points={toPoints(area.points)}
+            vectorEffect="non-scaling-stroke"
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            style={{ fill: "none", stroke: "var(--accent)" }}
+          />
+        ))}
+      {draft && draft.length > 0 && (
+        <>
+          {draft.length >= 3 && <polygon points={toPoints(draft)} style={{ fill: "var(--accent)", fillOpacity: 0.15 }} />}
+          <polyline
+            points={toPoints(draft)}
+            vectorEffect="non-scaling-stroke"
+            strokeWidth={2}
+            strokeLinejoin="round"
+            style={{ fill: "none", stroke: "var(--accent)" }}
+          />
+        </>
+      )}
+    </svg>
   );
 }
 

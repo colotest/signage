@@ -2,8 +2,9 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { setEventPins } from "@/lib/actions/events";
+import { setEventAreas, setEventPins } from "@/lib/actions/events";
 import { cn } from "@/lib/utils/cn";
+import { areaContains, MAX_AREA_POINTS, MAX_AREAS, type AreaPoint, type MapArea } from "@/lib/eventAreas";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
@@ -60,14 +61,17 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number }[] = [
   { id: "parken", title: "Parken", u: 0.8867, v: 0.9893 },
 ];
 
-// What the next tap on the map does: drop a new pin, or move one there.
-type Placing = { kind: "new" } | { kind: "move"; id: string };
+// What the next tap on the map does: drop a new pin, move one there, or add
+// a corner to the area being drawn (its corners so far).
+type Placing = { kind: "new" } | { kind: "move"; id: string } | { kind: "area"; points: AreaPoint[] };
 
 // The Forms page: the events on one side (top on a phone, left on an iPad
 // or desktop), each opening into its own setup pages, and the venue map on
-// the other — with the open event's own pins on it. The standing pins work
-// the open event's Checkliste (see PinMenus); its own pins are named,
-// moved and placed in edit mode ("Bearbeiten").
+// the other — with the open event's own pins and highlighted areas on it.
+// The standing pins work the open event's Checkliste (see PinMenus); its
+// own pins are named, moved and placed in edit mode ("Bearbeiten"), and its
+// areas drawn there corner by corner (tapping the first corner again closes
+// one) or picked out with a tap to be deleted.
 export function FormsView({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
   const [openSpot, setOpenSpot] = useState<string | null>(null);
   // The open event, from the URL (where EventsPane keeps it).
@@ -88,6 +92,10 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   // next render of the page), by event.
   const [pinEdits, setPinEdits] = useState<Record<string, MapPin[]>>({});
   const pins = event ? (pinEdits[event.id] ?? event.mapPins) : previewEvents.flatMap((e) => e.mapPins);
+  // Areas likewise.
+  const [areaEdits, setAreaEdits] = useState<Record<string, MapArea[]>>({});
+  const areas = event ? (areaEdits[event.id] ?? event.mapAreas) : previewEvents.flatMap((e) => e.mapAreas);
+  const [selectedArea, setSelectedArea] = useState<string | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [editing, setEditing] = useState(false);
   // The open event's Checkliste, shared by its setup page and the pins.
@@ -138,6 +146,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
     setPlacing(null);
     setOpenSpot(null);
     setEditing(false);
+    setSelectedArea(null);
   }
 
   // Opens the event's Checkliste (if it isn't already) at this category.
@@ -171,14 +180,42 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
       .catch(() => setMessage("Pins konnten nicht gespeichert werden"));
   }
 
+  function saveAreas(next: MapArea[]) {
+    if (!event) return;
+    const id = event.id;
+    setAreaEdits((all) => ({ ...all, [id]: next }));
+    saveChain.current = saveChain.current
+      .then(async () => {
+        const error = await setEventAreas(id, next);
+        if (error) setMessage(error);
+      })
+      .catch(() => setMessage("Flächen konnten nicht gespeichert werden"));
+  }
+
+  // The area being drawn, closed (on its first corner) and kept.
+  function closeArea() {
+    if (placing?.kind !== "area" || placing.points.length < 3) return;
+    const area: MapArea = { id: crypto.randomUUID(), points: placing.points };
+    saveAreas([...areas, area]);
+    setPlacing(null);
+    setSelectedArea(null);
+  }
+
   function onMapTap(at: { u: number; v: number } | null) {
     if (!placing) {
       setOpenSpot(null);
+      // While editing, a tap on an area picks it out (the topmost, where
+      // they overlap); anywhere else lets it go.
+      if (editing) setSelectedArea((at && [...areas].reverse().find((a) => areaContains(a, at))?.id) ?? null);
       return;
     }
     if (!at || at.u < 0 || at.u > 1 || at.v < 0 || at.v > 1) return; // off the plan: keep waiting
     const u = Math.round(at.u * 10000) / 10000;
     const v = Math.round(at.v * 10000) / 10000;
+    if (placing.kind === "area") {
+      if (placing.points.length < MAX_AREA_POINTS) setPlacing({ kind: "area", points: [...placing.points, { u, v }] });
+      return;
+    }
     if (placing.kind === "new") {
       const pin: MapPin = { id: crypto.randomUUID(), title: `Pin ${pins.length + 1}`, u, v };
       savePins([...pins, pin]);
@@ -204,6 +241,8 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
       window.prompt("Pins kopieren:", text);
     }
   }
+
+  const draft = placing?.kind === "area" ? placing.points : null;
 
   const spots: MapSpot[] = [
     ...DEFAULT_PINS.map((pin) => ({
@@ -252,6 +291,14 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
         ),
       };
     }),
+    // The corners of the area being drawn: the first one a ring to tap to
+    // close it, once there are enough corners for an area.
+    ...(draft ?? []).map((point, i) => ({
+      id: `corner:${i}`,
+      u: point.u,
+      v: point.v,
+      node: i === 0 ? <FirstCorner canClose={draft!.length >= 3} onClose={closeArea} /> : <Corner />,
+    })),
   ];
 
   return (
@@ -275,6 +322,9 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
             focus={null}
             onBackgroundTap={onMapTap}
             spots={spots}
+            areas={areas}
+            selectedArea={editing ? selectedArea : null}
+            draft={draft}
           />
 
           {/* Vektor or Pixel: swaps the plan under the map as it is, so the
@@ -284,8 +334,9 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
           </div>
 
           {/* Along the map's bottom, with an event open: "Bearbeiten" — and
-              while editing, "+ Pin" (or what a tap on the map is about to
-              do), for now copying the pins out, and "Fertig". */}
+              while editing, "+ Pin" and "+ Fläche" (or what a tap on the map
+              is about to do), deleting the area picked out, for now copying
+              the pins out, and "Fertig". */}
           <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex flex-wrap items-end gap-2">
             {event && !editing && (
               <button
@@ -301,7 +352,30 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
             )}
             {event && editing && (
               <>
-                {placing ? (
+                {placing?.kind === "area" ? (
+                  <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                    <span>
+                      {placing.points.length < 3
+                        ? "Tippe die Ecken der Fläche auf den Plan"
+                        : "Weiter Ecken setzen – oder auf die erste tippen, um zu schließen"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPlacing({ kind: "area", points: placing.points.slice(0, -1) })}
+                      disabled={placing.points.length === 0}
+                      className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)] disabled:opacity-40"
+                    >
+                      Zurück
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlacing(null)}
+                      className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)]"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                ) : placing ? (
                   <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
                     <span>{placing.kind === "new" ? "Tippe auf den Plan, um den Pin zu setzen" : "Tippe auf die neue Stelle"}</span>
                     <button
@@ -313,18 +387,49 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
                     </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpenSpot(null);
-                      setPlacing({ kind: "new" });
-                    }}
-                    disabled={pins.length >= MAX_PINS}
-                    title={`Pin für ${event.title ?? "dieses Event"} setzen`}
-                    className="pointer-events-auto rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-float)] hover:opacity-90 disabled:opacity-40"
-                  >
-                    + Pin
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenSpot(null);
+                        setSelectedArea(null);
+                        setPlacing({ kind: "new" });
+                      }}
+                      disabled={pins.length >= MAX_PINS}
+                      title={`Pin für ${event.title ?? "dieses Event"} setzen`}
+                      className={ADD_BUTTON}
+                    >
+                      + Pin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenSpot(null);
+                        setSelectedArea(null);
+                        setPlacing({ kind: "area", points: [] });
+                      }}
+                      disabled={areas.length >= MAX_AREAS}
+                      title={`Fläche für ${event.title ?? "dieses Event"} markieren`}
+                      className={ADD_BUTTON}
+                    >
+                      + Fläche
+                    </button>
+                    {selectedArea && (
+                      <div className="pop-in pointer-events-auto flex items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                        <span>Fläche</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            saveAreas(areas.filter((a) => a.id !== selectedArea));
+                            setSelectedArea(null);
+                          }}
+                          className="rounded-full bg-danger/10 px-3 py-1.5 font-medium text-danger hover:bg-danger/15"
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
                 {/* TEMPORARY: see copyPins. */}
                 <button type="button" onClick={copyPins} className={PILL}>
@@ -336,6 +441,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
                     setEditing(false);
                     setPlacing(null);
                     setOpenSpot(null);
+                    setSelectedArea(null);
                   }}
                   className={cn(PILL, "font-semibold text-accent")}
                 >
@@ -383,6 +489,40 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
 
 const PILL =
   "pointer-events-auto rounded-full border border-border glass-material px-4 py-2 text-[15px] font-medium shadow-[var(--shadow-float)]";
+const ADD_BUTTON =
+  "pointer-events-auto rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-float)] hover:opacity-90 disabled:opacity-40";
+
+// The first corner of an area being drawn: a ring, tapped to close the area
+// once it has three corners or more. The tap target is bigger than the ring.
+function FirstCorner({ canClose, onClose }: { canClose: boolean; onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      disabled={!canClose}
+      aria-label="Fläche schließen"
+      title={canClose ? "Fläche schließen" : undefined}
+      className="group absolute left-0 top-0 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center disabled:cursor-default"
+    >
+      <span
+        className={cn(
+          "block rounded-full border-[3px] border-accent bg-surface shadow-[0_1px_4px_var(--shadow-ambient-strong)] transition-[width,height]",
+          canClose ? "h-5 w-5 group-hover:h-6 group-hover:w-6" : "h-3.5 w-3.5",
+        )}
+      />
+    </button>
+  );
+}
+
+// Any other corner of an area being drawn.
+function Corner() {
+  return (
+    <span
+      aria-hidden
+      className="absolute left-0 top-0 block h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_0_2px_var(--surface)]"
+    />
+  );
+}
 
 // An event pin's card: its name (saved when you're done typing — on Enter
 // or leaving the field), moving it, and taking it off the map.

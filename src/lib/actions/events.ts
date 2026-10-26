@@ -5,6 +5,7 @@ import { quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
 import { EVENT_TYPES } from "@/lib/eventTypes";
 import { fetchLeadCandidates } from "@/lib/events";
+import { parseAreas, type MapArea } from "@/lib/eventAreas";
 import { parsePins, type MapPin } from "@/lib/eventPins";
 import { cleanAnswer, exclusiveWith, parseChecklist } from "@/lib/checkliste";
 import { sendEmail } from "@/lib/email/send";
@@ -164,6 +165,27 @@ export async function setEventPins(id: string, pins: MapPin[]): Promise<string |
     return null;
   } catch (err) {
     return err instanceof Error ? err.message : "Couldn't save the pins";
+  }
+}
+
+// Replaces an event's highlighted areas on the venue map, as setEventPins
+// does its pins.
+export async function setEventAreas(id: string, areas: MapArea[]): Promise<string | null> {
+  try {
+    const user = await requirePage("forms");
+    const admin = createAdminClient();
+    const { title } = await eventTitleFor(admin, id);
+    const { error } = await admin.from("events").update({ map_areas: parseAreas(areas) }).eq("id", id);
+    if (error) throw new Error(error.message);
+    recordActivity(user, {
+      action: "event.edit",
+      target: `event:${id}`,
+      summary: title ? `Edited the event ${quote(title)}` : "Edited an untitled event",
+    });
+    revalidatePath("/forms");
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : "Couldn't save the areas";
   }
 }
 
