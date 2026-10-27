@@ -5,6 +5,9 @@
 // Usage: node scripts/flatten-floorplan.mjs in.svg out.svg [precision]
 // (SW=5 sets the line width, in the plan's own units; see WIDTHS). Prints
 // the viewBox to put in the FloorPlan (width/height) on the Forms page.
+// SCALE=100 keeps the export's own viewBox as the frame, scaled up that
+// much, instead of fitting one around the drawing: floors exported in the
+// same frame then line up with each other.
 import fs from "node:fs";
 
 const [, , inPath, outPath, precArg] = process.argv;
@@ -22,7 +25,8 @@ const mul = (a, b) => [
 const ID = [1, 0, 0, 1, 0, 0];
 const f = 10 ** PREC;
 
-const stack = [ID];
+const SCALE = process.env.SCALE ? Number(process.env.SCALE) : null;
+const stack = [SCALE ? [SCALE, 0, 0, SCALE, 0, 0] : ID];
 const buckets = new Map(); // key -> [{ d, x, y }], x/y where the part starts
 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
@@ -88,7 +92,7 @@ function addPath(d, style, m) {
   buckets.get(key).push({ d: out.join(""), x: x0, y: y0 });
 }
 
-const tagRe = /<(\/?)(g|path|rect|text)\b([^>]*?)(\/?)>/g;
+const tagRe = /<(\/?)(g|path|rect|circle|text)\b([^>]*?)(\/?)>/g;
 let mt;
 while ((mt = tagRe.exec(src))) {
   const [, close, name, attrs, selfClose] = mt;
@@ -111,6 +115,17 @@ while ((mt = tagRe.exec(src))) {
   else if (name === "rect") {
     const x = +attr("x"), y = +attr("y"), w = +attr("width"), h = +attr("height");
     addPath(`M${x},${y}L${x + w},${y}L${x + w},${y + h}L${x},${y + h}Z`, style, m);
+  } else if (name === "circle") {
+    // Four quarter arcs, as Béziers.
+    const x = +attr("cx"), y = +attr("cy"), r = +attr("r"), k = r * 0.5523;
+    addPath(
+      `M${x + r},${y}C${x + r},${y + k},${x + k},${y + r},${x},${y + r}` +
+        `C${x - k},${y + r},${x - r},${y + k},${x - r},${y}` +
+        `C${x - r},${y - k},${x - k},${y - r},${x},${y - r}` +
+        `C${x + k},${y - r},${x + r},${y - k},${x + r},${y}Z`,
+      style,
+      m,
+    );
   }
   // <text>: three stray "F" labels at sub-pixel size — dropped.
 }
@@ -119,7 +134,8 @@ console.error("bounds", { minX, minY, maxX, maxY });
 for (const [k, v] of buckets) console.error(k, v.length);
 
 const pad = 40;
-const vb = [minX - pad, minY - pad, maxX - minX + 2 * pad, maxY - minY + 2 * pad].map((v) => Math.round(v));
+const frame = SCALE && src.match(/<svg\b[^>]*\sviewBox="([^"]+)"/)?.[1].split(/[\s,]+/).map((v) => Number(v) * SCALE);
+const vb = (frame ?? [minX - pad, minY - pad, maxX - minX + 2 * pad, maxY - minY + 2 * pad]).map((v) => Math.round(v));
 const COLORS = {
   black: "#1c1c1e",
   "rgb(127,127,127)": "#8e8e93",

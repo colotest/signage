@@ -7,22 +7,22 @@ import { cn } from "@/lib/utils/cn";
 import { areaContains, MAX_AREA_POINTS, MAX_AREAS, type AreaPoint, type MapArea } from "@/lib/eventAreas";
 import { linkedAreas } from "@/lib/venueAreas";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
+import { floorOf, FLOORS, type Floor } from "@/lib/venueFloors";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
 import { EventsPane } from "./EventsPane";
 import { LinkedPinCard } from "./PinMenus";
 import { SegmentedSlider } from "./SegmentedSlider";
-import { MapCard, VenueMap, type FloorPlan, type MapSpot } from "./VenueMap";
+import { MapCard, VenueMap, type MapFloor, type MapSpot } from "./VenueMap";
 
-// Colosseum Berlin, ground floor, two ways — to see which moves better on
-// an iPad, the map has a switch between them (see PLAN_KEY):
-// - "vektor": the architects' drawing as vectors, slimmed down by
-//   scripts/flatten-floorplan.mjs. Its viewBox is the plan's frame.
-// - "pixel": their PNG export, about one pixel per unit of the drawing
-//   (lossless WebP — the same pixels as the PNG at a third of the size). It
-//   sits inside the same frame, in the drawing's 40-unit margin, so the
-//   pins placed on the plan, here and on events, land in the same spot on
-//   either.
+// Colosseum Berlin, the floors we serve, each two ways — to see which moves
+// better on an iPad, the map has a switch between them (see PLAN_KEY):
+// - "vektor": the drawing as vectors, slimmed down by
+//   scripts/flatten-floorplan.mjs (SCALE=100: all three were exported in
+//   one 101 × 53 frame, which they keep, so they line up).
+// - "pixel": the same drawn as a picture by scripts/rasterize-floorplan.mjs,
+//   one pixel per unit (lossless WebP).
+// Each floor's ghost, for while another's picked, is drawn by that too.
 type PlanKind = "vektor" | "pixel";
 const PLAN_KINDS: { value: PlanKind; label: string }[] = [
   { value: "vektor", label: "Vektor" },
@@ -33,21 +33,35 @@ const PLAN_KEY = "forms.venuePlan"; // which one, remembered on this device
 // with the compass on, the plan sits turned 11° anticlockwise. (Lined up by
 // eye on site, with the compass on.)
 const NORTH_DEG = 11;
-const COLOSSEUM_EG: Record<PlanKind, FloorPlan> = {
-  vektor: { src: "/venues/colosseum-eg.svg", width: 9519, height: 5253, vector: true, northDeg: NORTH_DEG },
-  pixel: {
-    src: "/venues/colosseum-eg.webp",
-    width: 9519,
-    height: 5253,
-    picture: { x: 40, y: 40, width: 9439, height: 5173 },
-    northDeg: NORTH_DEG,
-  },
+const FLOOR_NAMES: Record<Floor, { label: string; name: string }> = {
+  eg: { label: "E", name: "Erdgeschoss" },
+  zwischen: { label: "0.5", name: "Zwischengeschoss" },
+  og: { label: "1", name: "Obergeschoss" },
 };
+function colosseum(kind: PlanKind): MapFloor[] {
+  return FLOORS.map((floor) => {
+    const base = `/venues/colosseum-${floor}`;
+    return {
+      id: floor,
+      ...FLOOR_NAMES[floor],
+      plan: {
+        src: kind === "vektor" ? `${base}.svg` : `${base}.webp`,
+        ghost: `${base}-ghost.webp`,
+        width: 10100,
+        height: 5300,
+        vector: kind === "vektor",
+        northDeg: NORTH_DEG,
+      },
+    };
+  });
+}
+const COLOSSEUM: Record<PlanKind, MapFloor[]> = { vektor: colosseum("vektor"), pixel: colosseum("pixel") };
 
 // The map's standing pins, shown whatever event is open (or none): where
-// each sits on the plan, as a fraction of its width and height. Placed on
-// an event and copied out (see copyPins).
-const DEFAULT_PINS: { id: string; title: string; u: number; v: number }[] = [
+// each sits on the plan, as a fraction of its width and height, and on
+// which floor (the ground floor if none). Placed on an event and copied out
+// (see copyPins).
+const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: Floor }[] = [
   { id: "gastro", title: "Gastro", u: 0.1549, v: 0.3618 },
   { id: "kino-2", title: "Kino 2", u: 0.4764, v: 0.1353 },
   { id: "kino-3", title: "Kino 3", u: 0.354, v: 0.0894 },
@@ -62,8 +76,9 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number }[] = [
   { id: "parken", title: "Parken", u: 0.8867, v: 0.9893 },
 ];
 
-// What the next tap on the map does: drop a new pin, move one there, or add
-// a corner to the area being drawn (its corners so far).
+// What the next tap on the map does: drop a new pin, move one there (onto
+// the floor shown then, if it's been switched since), or add a corner to
+// the area being drawn (its corners so far).
 type Placing = { kind: "new" } | { kind: "move"; id: string } | { kind: "area"; points: AreaPoint[] };
 
 // The Forms page: the events on one side (top on a phone, left on an iPad
@@ -98,6 +113,10 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   const areas = event ? (areaEdits[event.id] ?? event.mapAreas) : previewEvents.flatMap((e) => e.mapAreas);
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
+  // The floor on show: only its pins and areas are on the map.
+  const [floor, setFloor] = useState<Floor>("eg");
+  const floorPins = pins.filter((p) => floorOf(p) === floor);
+  const floorAreas = areas.filter((a) => floorOf(a) === floor);
   const [editing, setEditing] = useState(false);
   // The open event's Checkliste, shared by its setup page and the pins.
   const checklist = useChecklistState(event);
@@ -111,7 +130,9 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
       : null;
   // With the venue's own areas whose option is ticked for what's on show
   // (the Wagenhalle's halls — see venueAreas), beneath the event's own.
-  const shownAreas = [...linkedAreas(event ? checklist.answer : (previewChecklist?.answer ?? null)), ...areas];
+  const shownAreas = [...linkedAreas(event ? checklist.answer : (previewChecklist?.answer ?? null)), ...areas].filter(
+    (a) => floorOf(a) === floor,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [planKind, setPlanKind] = useState<PlanKind>("pixel");
   // Saves go one after another, so an older list can't land after a newer.
@@ -151,6 +172,16 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
     setOpenSpot(null);
     setEditing(false);
     setSelectedArea(null);
+  }
+
+  // Another floor: whatever was open or picked out on the last goes, and so
+  // does an area half drawn there. A pin being placed or moved lands on
+  // the new one.
+  function pickFloor(next: string) {
+    setFloor(next as Floor);
+    setOpenSpot(null);
+    setSelectedArea(null);
+    if (placing?.kind === "area") setPlacing(null);
   }
 
   // Opens the event's Checkliste (if it isn't already) at this category.
@@ -199,7 +230,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   // The area being drawn, closed (on its first corner) and kept.
   function closeArea() {
     if (placing?.kind !== "area" || placing.points.length < 3) return;
-    const area: MapArea = { id: crypto.randomUUID(), points: placing.points };
+    const area: MapArea = { id: crypto.randomUUID(), points: placing.points, floor };
     saveAreas([...areas, area]);
     setPlacing(null);
     setSelectedArea(null);
@@ -210,7 +241,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
       setOpenSpot(null);
       // While editing, a tap on an area picks it out (the topmost, where
       // they overlap); anywhere else lets it go.
-      if (editing) setSelectedArea((at && [...areas].reverse().find((a) => areaContains(a, at))?.id) ?? null);
+      if (editing) setSelectedArea((at && [...floorAreas].reverse().find((a) => areaContains(a, at))?.id) ?? null);
       return;
     }
     if (!at || at.u < 0 || at.u > 1 || at.v < 0 || at.v > 1) return; // off the plan: keep waiting
@@ -221,11 +252,11 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
       return;
     }
     if (placing.kind === "new") {
-      const pin: MapPin = { id: crypto.randomUUID(), title: `Pin ${pins.length + 1}`, u, v };
+      const pin: MapPin = { id: crypto.randomUUID(), title: `Pin ${pins.length + 1}`, u, v, floor };
       savePins([...pins, pin]);
       setOpenSpot(`pin:${pin.id}`);
     } else {
-      savePins(pins.map((p) => (p.id === placing.id ? { ...p, u, v } : p)));
+      savePins(pins.map((p) => (p.id === placing.id ? { ...p, u, v, floor } : p)));
     }
     setPlacing(null);
   }
@@ -233,9 +264,12 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   // TEMPORARY: copies the map's pins (the standing ones and the open
   // event's) as code, to take pins placed here into DEFAULT_PINS by hand.
   async function copyPins() {
+    const onFloor = (p: { floor?: Floor }) => (floorOf(p) === "eg" ? "" : `, floor: "${floorOf(p)}"`);
     const lines = [
-      ...DEFAULT_PINS.map((p) => `  { id: ${JSON.stringify(p.id)}, title: ${JSON.stringify(p.title)}, u: ${p.u}, v: ${p.v} },`),
-      ...pins.map((p) => `  { title: ${JSON.stringify(p.title)}, u: ${p.u}, v: ${p.v} },`),
+      ...DEFAULT_PINS.map(
+        (p) => `  { id: ${JSON.stringify(p.id)}, title: ${JSON.stringify(p.title)}, u: ${p.u}, v: ${p.v}${onFloor(p)} },`,
+      ),
+      ...pins.map((p) => `  { title: ${JSON.stringify(p.title)}, u: ${p.u}, v: ${p.v}${onFloor(p)} },`),
     ];
     const text = `[\n${lines.join("\n")}\n]`;
     try {
@@ -249,7 +283,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   const draft = placing?.kind === "area" ? placing.points : null;
 
   const spots: MapSpot[] = [
-    ...DEFAULT_PINS.map((pin) => ({
+    ...DEFAULT_PINS.filter((pin) => floorOf(pin) === floor).map((pin) => ({
       id: pin.id,
       u: pin.u,
       v: pin.v,
@@ -264,7 +298,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
         />
       ),
     })),
-    ...pins.map((pin) => {
+    ...floorPins.map((pin) => {
       const spotId = `pin:${pin.id}`;
       return {
         id: spotId,
@@ -322,7 +356,9 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <VenueMap
             className="min-h-0 flex-1"
-            plan={COLOSSEUM_EG[planKind]}
+            floors={COLOSSEUM[planKind]}
+            floor={floor}
+            onFloorChange={pickFloor}
             focus={null}
             onBackgroundTap={onMapTap}
             spots={spots}
@@ -340,8 +376,9 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
           {/* Along the map's bottom, with an event open: "Bearbeiten" — and
               while editing, "+ Pin" and "+ Fläche" (or what a tap on the map
               is about to do), deleting the area picked out, for now copying
-              the pins out, and "Fertig". */}
-          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex flex-wrap items-end gap-2">
+              the pins out, and "Fertig". Clear of the floor picker in the
+              corner. */}
+          <div className="pointer-events-none absolute bottom-3 left-3 right-[68px] z-20 flex flex-wrap items-end gap-2">
             {event && !editing && (
               <button
                 type="button"

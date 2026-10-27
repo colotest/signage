@@ -1,8 +1,10 @@
+import { isFloor, type Floor } from "@/lib/venueFloors";
+
 // An event's highlighted area on the venue map (0043): a polygon, its
 // corners placed on the plan like pins are — as a fraction of its width (u)
-// and height (v).
+// and height (v) — and on one floor like them too.
 export type AreaPoint = { u: number; v: number };
-export type MapArea = { id: string; points: AreaPoint[] };
+export type MapArea = { id: string; points: AreaPoint[]; floor?: Floor };
 
 export const MAX_AREAS = 50;
 export const MAX_AREA_POINTS = 100;
@@ -15,7 +17,7 @@ export function parseAreas(value: unknown): MapArea[] {
   const areas: MapArea[] = [];
   for (const item of value) {
     if (!item || typeof item !== "object") continue;
-    const { id, points } = item as Record<string, unknown>;
+    const { id, points, floor } = item as Record<string, unknown>;
     if (typeof id !== "string" || !id || id.length > 64 || !Array.isArray(points)) continue;
     const clean: AreaPoint[] = [];
     for (const point of points.slice(0, MAX_AREA_POINTS)) {
@@ -26,7 +28,7 @@ export function parseAreas(value: unknown): MapArea[] {
       clean.push({ u, v });
     }
     if (clean.length < 3) continue;
-    areas.push({ id, points: clean });
+    areas.push({ id, points: clean, ...(isFloor(floor) ? { floor } : {}) });
     if (areas.length === MAX_AREAS) break;
   }
   return areas;

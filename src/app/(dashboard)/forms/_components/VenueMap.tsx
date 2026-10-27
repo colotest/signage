@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Spinner } from "@/components/ui/Spinner";
 import type { AreaPoint, MapArea } from "@/lib/eventAreas";
 import { cn } from "@/lib/utils/cn";
@@ -22,7 +22,19 @@ export type FloorPlan = {
   // Which way true north lies on the drawing, in degrees clockwise from
   // its top edge. Turns the map to match the compass.
   northDeg: number;
+  // The floor as it shows while another is picked: a small picture with
+  // its blur drawn in (see scripts/rasterize-floorplan.mjs), filling the
+  // plan.
+  ghost?: string;
 };
+
+// One of the building's floors. Its plan is drawn in the same frame as the
+// others' (the same width and height), so they lie one over the other.
+export type MapFloor = { id: string; label: string; name: string; plan: FloorPlan };
+
+// How strongly the floors not picked show through, by how many floors away
+// they are.
+const GHOST_OPACITY = [1, 0.16, 0.08];
 
 // A place on the plan, as a fraction of its width (u) and height (v), and
 // what to show there. Spots stay upright and the same size on screen
@@ -65,7 +77,9 @@ const DOUBLE_TAP_MS = 300;
 type Pointer = { x: number; y: number; t: number };
 
 export function VenueMap({
-  plan,
+  floors,
+  floor,
+  onFloorChange,
   spots,
   areas = [],
   selectedArea = null,
@@ -74,7 +88,14 @@ export function VenueMap({
   onBackgroundTap,
   className,
 }: {
-  plan: FloorPlan;
+  // The building's floors, bottom up, and which is picked: drawn in full,
+  // the others showing through faintly above and below it (see
+  // GHOST_OPACITY). With more than one floor, a picker for them sits in
+  // the bottom corner.
+  floors: MapFloor[];
+  floor: string;
+  onFloorChange?: (id: string) => void;
+  // On the picked floor.
   spots: MapSpot[];
   // Highlighted areas, drawn on the plan beneath the spots (see PlanAreas);
   // the selected one outlined, and an area being drawn as far as it's got.
@@ -116,10 +137,14 @@ export function VenueMap({
   // resize; after that a resize keeps whatever's in the middle there.
   const touchedRef = useRef(false);
 
-  // The plan whose picture has loaded; swapping to another shows the
-  // spinner again until that one has.
+  const floorIndex = Math.max(floors.findIndex((f) => f.id === floor), 0);
+  const plan = floors[floorIndex].plan;
+  // The plan whose picture has loaded; swapping to another (another floor,
+  // or the same as pixels) shows the spinner again until that one has —
+  // over the spots and areas, which stay once the first has.
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const loaded = loadedSrc === plan.src;
+  const ready = loadedSrc !== null;
   const [following, setFollowing] = useState(false);
   const followingRef = useRef(false);
   const headingRef = useRef<number | null>(null);
@@ -690,31 +715,53 @@ export function VenueMap({
         className="absolute left-0 top-0 origin-top-left"
         style={{ width: 0, height: 0, willChange: "transform" }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- one big picture drawn at whatever size the map needs, not a photo for next/image to resize */}
-        <img
-          key={plan.src}
-          src={plan.src}
-          alt="Grundriss"
-          draggable={false}
-          decoding="async"
-          // A cached plan can finish loading before React is listening, so
-          // it's checked for on mount as well.
-          ref={(img) => {
-            if (img?.complete && img.naturalWidth) setLoadedSrc(plan.src);
-          }}
-          onLoad={() => setLoadedSrc(plan.src)}
-          style={{
-            left: `${(picture.x / plan.width) * 100}%`,
-            top: `${(picture.y / plan.height) * 100}%`,
-            width: `${(picture.width / plan.width) * 100}%`,
-            height: `${(picture.height / plan.height) * 100}%`,
-          }}
-          className={cn(
-            "pointer-events-none absolute max-w-none transition-opacity duration-500 dark:invert dark:hue-rotate-180",
-            loaded ? "opacity-100" : "opacity-0",
-          )}
-        />
-        {loaded && <PlanAreas plan={plan} areas={areas} selected={selectedArea} draft={draft} />}
+        {/* The floors bottom up, each in its place in the stack: the picked
+            one drawn in full, the rest as their ghosts. */}
+        {floors.map((f, i) => {
+          const away = Math.abs(i - floorIndex);
+          return (
+            <Fragment key={f.id}>
+              {away > 0 && f.plan.ghost && (
+                // eslint-disable-next-line @next/next/no-img-element -- see below
+                <img
+                  src={f.plan.ghost}
+                  alt=""
+                  draggable={false}
+                  decoding="async"
+                  style={{ opacity: GHOST_OPACITY[away] ?? 0 }}
+                  className="pointer-events-none absolute inset-0 h-full w-full max-w-none dark:invert dark:hue-rotate-180"
+                />
+              )}
+              {away === 0 && (
+                // eslint-disable-next-line @next/next/no-img-element -- one big picture drawn at whatever size the map needs, not a photo for next/image to resize
+                <img
+                  key={plan.src}
+                  src={plan.src}
+                  alt={`Grundriss, ${f.name}`}
+                  draggable={false}
+                  decoding="async"
+                  // A cached plan can finish loading before React is
+                  // listening, so it's checked for on mount as well.
+                  ref={(img) => {
+                    if (img?.complete && img.naturalWidth) setLoadedSrc(plan.src);
+                  }}
+                  onLoad={() => setLoadedSrc(plan.src)}
+                  style={{
+                    left: `${(picture.x / plan.width) * 100}%`,
+                    top: `${(picture.y / plan.height) * 100}%`,
+                    width: `${(picture.width / plan.width) * 100}%`,
+                    height: `${(picture.height / plan.height) * 100}%`,
+                  }}
+                  className={cn(
+                    "pointer-events-none absolute max-w-none transition-opacity duration-500 dark:invert dark:hue-rotate-180",
+                    loaded ? "opacity-100" : "opacity-0",
+                  )}
+                />
+              )}
+            </Fragment>
+          );
+        })}
+        {ready && <PlanAreas plan={plan} areas={areas} selected={selectedArea} draft={draft} />}
       </div>
 
       {!loaded && (
@@ -723,7 +770,7 @@ export function VenueMap({
         </div>
       )}
 
-      {loaded &&
+      {ready &&
         spots.map((spot) => (
           <div
             key={spot.id}
@@ -777,6 +824,37 @@ export function VenueMap({
           </span>
         </button>
       </div>
+
+      {floors.length > 1 && (
+        // The floors, top down as they stand.
+        <div
+          role="group"
+          aria-label="Etage"
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute bottom-3 right-3 z-20 flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-border glass-material shadow-[var(--shadow-float)]"
+        >
+          {[...floors].reverse().map((f, i) => (
+            <Fragment key={f.id}>
+              {i > 0 && <span className="mx-2 h-px bg-border" />}
+              <button
+                type="button"
+                onClick={() => onFloorChange?.(f.id)}
+                aria-pressed={f.id === floors[floorIndex].id}
+                aria-label={f.name}
+                title={f.name}
+                className={cn(
+                  "no-press flex h-11 w-11 items-center justify-center text-[15px] font-semibold tabular-nums transition-colors",
+                  f.id === floors[floorIndex].id
+                    ? "bg-accent text-accent-contrast"
+                    : "text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+                )}
+              >
+                {f.label}
+              </button>
+            </Fragment>
+          ))}
+        </div>
+      )}
 
       {notice && (
         <div
