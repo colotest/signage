@@ -35,6 +35,9 @@ export type MapFloor = { id: string; label: string; name: string; plan: FloorPla
 // How strongly the floors not picked show through, by how many floors away
 // they are.
 const GHOST_OPACITY = [1, 0.16, 0.08];
+// Switching floors fades one plan into the other, and each ghost to how
+// strongly it shows now, this long — once the new plan has loaded.
+const FLOOR_FADE_MS = 300;
 
 // A place on the plan, as a fraction of its width (u) and height (v), and
 // what to show there. Spots stay upright and the same size on screen
@@ -145,6 +148,26 @@ export function VenueMap({
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const loaded = loadedSrc === plan.src;
   const ready = loadedSrc !== null;
+  // The floor just switched away from, whose plan stays while the new one
+  // loads and fades in over it.
+  const [shownFloor, setShownFloor] = useState(floor);
+  const [leaving, setLeaving] = useState<string | null>(null);
+  if (shownFloor !== floor) {
+    setShownFloor(floor);
+    setLeaving(shownFloor);
+  }
+  // Counts a plan as loaded a couple of frames on, so it's been drawn
+  // see-through at least once and fades in — a cached one would otherwise
+  // be in before its first frame, and just appear.
+  function letIn(src: string) {
+    if (loadedSrc === src) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => setLoadedSrc(src)));
+  }
+  useEffect(() => {
+    if (!leaving || !loaded) return;
+    const timer = setTimeout(() => setLeaving(null), FLOOR_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [leaving, loaded]);
   const [following, setFollowing] = useState(false);
   const followingRef = useRef(false);
   const headingRef = useRef<number | null>(null);
@@ -695,8 +718,6 @@ export function VenueMap({
     });
   }
 
-  const picture = plan.picture ?? { x: 0, y: 0, width: plan.width, height: plan.height };
-
   return (
     <div
       ref={containerRef}
@@ -716,45 +737,62 @@ export function VenueMap({
         style={{ width: 0, height: 0, willChange: "transform" }}
       >
         {/* The floors bottom up, each in its place in the stack: the picked
-            one drawn in full, the rest as their ghosts. */}
+            one drawn in full, the rest as their ghosts. Until the picked
+            one's plan has loaded, it shows as its ghost still, and the
+            floor before stays drawn in full. */}
         {floors.map((f, i) => {
           const away = Math.abs(i - floorIndex);
+          const ghostAway = away === 0 && !loaded && leaving ? 1 : away;
+          // Drawn in full: the picked floor, and the one switched away
+          // from until the picked one's in. One picture for both, so the
+          // one leaving carries on as it was, just fading.
+          const current = away === 0;
+          const full = current || f.id === leaving ? f.plan : null;
+          const pic = full?.picture ?? { x: 0, y: 0, width: plan.width, height: plan.height };
           return (
             <Fragment key={f.id}>
-              {away > 0 && f.plan.ghost && (
+              {f.plan.ghost && (
                 // eslint-disable-next-line @next/next/no-img-element -- see below
                 <img
                   src={f.plan.ghost}
                   alt=""
                   draggable={false}
                   decoding="async"
-                  style={{ opacity: GHOST_OPACITY[away] ?? 0 }}
-                  className="pointer-events-none absolute inset-0 h-full w-full max-w-none dark:invert dark:hue-rotate-180"
+                  style={{
+                    opacity: ghostAway > 0 ? (GHOST_OPACITY[ghostAway] ?? 0) : 0,
+                    transitionDuration: `${FLOOR_FADE_MS}ms`,
+                  }}
+                  className="pointer-events-none absolute inset-0 h-full w-full max-w-none transition-opacity dark:invert dark:hue-rotate-180"
                 />
               )}
-              {away === 0 && (
+              {full && (
                 // eslint-disable-next-line @next/next/no-img-element -- one big picture drawn at whatever size the map needs, not a photo for next/image to resize
                 <img
-                  key={plan.src}
-                  src={plan.src}
-                  alt={`Grundriss, ${f.name}`}
+                  key={full.src}
+                  src={full.src}
+                  alt={current ? `Grundriss, ${f.name}` : ""}
                   draggable={false}
                   decoding="async"
                   // A cached plan can finish loading before React is
                   // listening, so it's checked for on mount as well.
                   ref={(img) => {
-                    if (img?.complete && img.naturalWidth) setLoadedSrc(plan.src);
+                    if (current && img?.complete && img.naturalWidth) letIn(full.src);
                   }}
-                  onLoad={() => setLoadedSrc(plan.src)}
+                  onLoad={() => {
+                    if (current) letIn(full.src);
+                  }}
                   style={{
-                    left: `${(picture.x / plan.width) * 100}%`,
-                    top: `${(picture.y / plan.height) * 100}%`,
-                    width: `${(picture.width / plan.width) * 100}%`,
-                    height: `${(picture.height / plan.height) * 100}%`,
+                    left: `${(pic.x / plan.width) * 100}%`,
+                    top: `${(pic.y / plan.height) * 100}%`,
+                    width: `${(pic.width / plan.width) * 100}%`,
+                    height: `${(pic.height / plan.height) * 100}%`,
+                    // Faded like a floor when it is one, otherwise (the map
+                    // opening, Vektor ↔ Pixel) as it always was.
+                    transitionDuration: leaving ? `${FLOOR_FADE_MS}ms` : "500ms",
                   }}
                   className={cn(
-                    "pointer-events-none absolute max-w-none transition-opacity duration-500 dark:invert dark:hue-rotate-180",
-                    loaded ? "opacity-100" : "opacity-0",
+                    "pointer-events-none absolute max-w-none transition-opacity dark:invert dark:hue-rotate-180",
+                    loaded === current ? "opacity-100" : "opacity-0",
                   )}
                 />
               )}

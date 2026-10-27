@@ -1,7 +1,7 @@
 // Flattens the Affinity floor-plan export: bakes every <g transform> into
-// absolute coordinates, rounds them, and merges all strokes of one look into
-// a few <path>s — one for each cell of a coarse grid over the plan (see
-// GRID below).
+// absolute coordinates, rounds them, and merges all strokes of one look
+// (colour, and opacity from the groups around them) into a few <path>s —
+// one for each cell of a coarse grid over the plan (see GRID below).
 // Usage: node scripts/flatten-floorplan.mjs in.svg out.svg [precision]
 // (SW=5 sets the line width, in the plan's own units; see WIDTHS). Prints
 // the viewBox to put in the FloorPlan (width/height) on the Forms page.
@@ -26,15 +26,16 @@ const ID = [1, 0, 0, 1, 0, 0];
 const f = 10 ** PREC;
 
 const SCALE = process.env.SCALE ? Number(process.env.SCALE) : null;
-const stack = [SCALE ? [SCALE, 0, 0, SCALE, 0, 0] : ID];
+// Each open <g>: its transform, and its opacity times its parents'.
+const stack = [{ m: SCALE ? [SCALE, 0, 0, SCALE, 0, 0] : ID, op: 1 }];
 const buckets = new Map(); // key -> [{ d, x, y }], x/y where the part starts
 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-function styleKey(style) {
+function styleKey(style, op) {
   const get = (k) => (style.match(new RegExp(`(?:^|;)${k}:([^;]+)`)) || [])[1];
   const stroke = get("stroke") ?? "none";
   const fill = get("fill") ?? "black";
-  return `${stroke}|${fill}`;
+  return `${stroke}|${fill}|${Math.round(op * 1000) / 1000}`;
 }
 
 // Coordinates are kept as integers in 1/f units and written relative to the
@@ -47,7 +48,7 @@ const fmt = (q) => {
 };
 const join = (nums) => nums.map((n, k) => (k > 0 && !n.startsWith("-") ? " " : "") + n).join("");
 
-function addPath(d, style, m) {
+function addPath(d, style, { m, op }) {
   const out = [];
   const tokens = d.match(/[MLCZ]|-?\d*\.?\d+(?:e-?\d+)?/gi);
   let i = 0, cmd = null;
@@ -86,7 +87,7 @@ function addPath(d, style, m) {
   }
   // Drop paths that collapsed to a single point at this precision.
   if (out.length < 2) return;
-  const key = styleKey(style);
+  const key = styleKey(style, op);
   if (!buckets.has(key)) buckets.set(key, []);
   const [x0, y0] = out[0].slice(1).match(/-?\d*\.?\d+/g).map(Number);
   buckets.get(key).push({ d: out.join(""), x: x0, y: y0 });
@@ -100,12 +101,13 @@ while ((mt = tagRe.exec(src))) {
   if (name === "g") {
     if (close) { stack.pop(); continue; }
     const tf = attr("transform");
-    let m = stack[stack.length - 1];
+    let { m, op } = stack[stack.length - 1];
     if (tf) {
       const nums = tf.match(/matrix\(([^)]+)\)/)[1].split(",").map(Number);
       m = mul(m, nums);
     }
-    if (!selfClose) stack.push(m);
+    if (attr("opacity")) op *= Number(attr("opacity"));
+    if (!selfClose) stack.push({ m, op });
     continue;
   }
   if (close) continue;
@@ -164,9 +166,12 @@ const cellOf = ({ x, y }) => {
 const SW = Number(process.env.SW ?? 5);
 const WIDTHS = { "#8e8e93": SW * 0.4 };
 let body = "";
-const order = [...buckets.keys()].sort((a, b) => (a.startsWith("black") ? 1 : 0) - (b.startsWith("black") ? 1 : 0));
+// Grey first, then black; the see-through (the floor's detailing) beneath
+// the solid.
+const rank = (key) => (key.startsWith("black") ? 1 : 0) + (key.split("|")[2] === "1" ? 2 : 0);
+const order = [...buckets.keys()].sort((a, b) => rank(a) - rank(b));
 for (const key of order) {
-  const [stroke, fill] = key.split("|");
+  const [stroke, fill, op] = key.split("|");
   const col = COLORS[stroke] ?? "#1c1c1e";
   const fillCol = fill === "none" ? "none" : col;
   const cells = new Map();
@@ -175,7 +180,10 @@ for (const key of order) {
     if (!cells.has(cell)) cells.set(cell, []);
     cells.get(cell).push(part.d);
   }
-  body += `<g fill="${fillCol}" stroke="${col}" stroke-width="${WIDTHS[col] ?? SW}">\n`;
+  // stroke-opacity on the lines rather than opacity on the group: the same
+  // look, without the browser drawing the group aside first to fade it.
+  const fade = op === "1" ? "" : ` stroke-opacity="${op}"${fillCol === "none" ? "" : ` fill-opacity="${op}"`}`;
+  body += `<g fill="${fillCol}" stroke="${col}" stroke-width="${WIDTHS[col] ?? SW}"${fade}>\n`;
   for (const cell of [...cells.keys()].sort((a, b) => a - b)) {
     body += `<path d="${cells.get(cell).join("")}"/>\n`;
   }
