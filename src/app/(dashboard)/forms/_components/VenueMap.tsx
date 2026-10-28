@@ -197,6 +197,13 @@ export function VenueMap({
   const youConeRef = useRef<HTMLSpanElement>(null);
   const [youStats, setYouStats] = useState<{ steps: number; radiusM: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // A nudge to the plan's north, set by hand while following the compass to
+  // line the plan up with the room — the sum is the northDeg to keep.
+  const [northNudge, setNorthNudge] = useState(0);
+  const northRef = useRef(plan.northDeg);
+  useEffect(() => {
+    northRef.current = plan.northDeg + northNudge;
+  });
 
   const spotsRef = useRef(spots);
   const onBackgroundTapRef = useRef(onBackgroundTap);
@@ -235,7 +242,7 @@ export function VenueMap({
       if (el) placeSpot(el, spot);
     }
     if (needleRef.current) {
-      needleRef.current.style.transform = `rotate(${v.r + (plan.northDeg * Math.PI) / 180}rad)`;
+      needleRef.current.style.transform = `rotate(${v.r + (northRef.current * Math.PI) / 180}rad)`;
     }
     placeYou();
   }
@@ -258,7 +265,7 @@ export function VenueMap({
     if (youConeRef.current) {
       youConeRef.current.style.visibility = h ? "visible" : "hidden";
       if (h) {
-        const facing = Math.atan2(h.x, h.y) + (plan.northDeg * Math.PI) / 180 + v.r;
+        const facing = Math.atan2(h.x, h.y) + (northRef.current * Math.PI) / 180 + v.r;
         youConeRef.current.style.transform = `rotate(${facing}rad)`;
       }
     }
@@ -730,7 +737,7 @@ export function VenueMap({
     const v = viewRef.current;
     const heading = headingRef.current;
     if (v && heading !== null && pointersRef.current.size === 0) {
-      const target = (-(heading + plan.northDeg) * Math.PI) / 180;
+      const target = (-(heading + northRef.current) * Math.PI) / 180;
       let da = (target - v.r) % (2 * Math.PI);
       if (da > Math.PI) da -= 2 * Math.PI;
       if (da < -Math.PI) da += 2 * Math.PI;
@@ -810,7 +817,7 @@ export function VenueMap({
     const tracker = trackerRef.current, h = youHeadingRef.current;
     if (!tracker || !h || locatingRef.current === "off") return;
     // The compass's degrees from north, turned to the plan's from its top.
-    tracker.step((Math.atan2(h.x, h.y) * 180) / Math.PI + plan.northDeg);
+    tracker.step((Math.atan2(h.x, h.y) * 180) / Math.PI + northRef.current);
     stepsRef.current += 1;
     updateYouStats();
     placeYou();
@@ -1102,28 +1109,37 @@ export function VenueMap({
         </div>
       )}
 
-      {!notice && locating !== "off" && (
-        // How the location's going: waiting for a tap, or how sure it is.
-        <div
-          role="status"
-          className="pop-in pointer-events-none absolute right-3 top-[198px] z-20 origin-top-right rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
-        >
-          {locating === "placing" || !youStats
-            ? youStats
-              ? "Tippe, wo du stehst – nochmal: aus"
-              : "Tippe auf den Plan, wo du stehst"
-            : `± ${Math.max(1, Math.round(youStats.radiusM))} m · ${youStats.steps} Schritte`}
-        </div>
-      )}
-
-      {notice && (
-        <div
-          role="status"
-          className="pop-in pointer-events-none absolute right-3 top-[198px] z-20 origin-top-right rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
-        >
-          {notice}
-        </div>
-      )}
+      {/* Beneath the controls: north to nudge while following the compass,
+          then how the location's going, or a passing note. */}
+      <div className="pointer-events-none absolute right-3 top-[198px] z-20 flex flex-col items-end gap-2">
+        {following && (
+          <NorthNudge
+            value={normalizeDeg(plan.northDeg + northNudge)}
+            onStep={(step) => setNorthNudge((n) => n + step)}
+          />
+        )}
+        {!notice && locating !== "off" && (
+          // Waiting for a tap, or how sure it is.
+          <div
+            role="status"
+            className="pop-in origin-top-right rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
+          >
+            {locating === "placing" || !youStats
+              ? youStats
+                ? "Tippe, wo du stehst – nochmal: aus"
+                : "Tippe auf den Plan, wo du stehst"
+              : `± ${Math.max(1, Math.round(youStats.radiusM))} m · ${youStats.steps} Schritte`}
+          </div>
+        )}
+        {notice && (
+          <div
+            role="status"
+            className="pop-in origin-top-right rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
+          >
+            {notice}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1211,6 +1227,60 @@ function PlanAreas({
         </>
       )}
     </svg>
+  );
+}
+
+// -180 < degrees ≤ 180.
+function normalizeDeg(degrees: number) {
+  const d = ((degrees % 360) + 360) % 360;
+  return d > 180 ? d - 360 : d;
+}
+
+// While following the compass: the plan's north, a degree at a time (held,
+// it keeps going), to line the plan up with the room by eye. The number
+// shown is the north to write into the plan (FloorPlan.northDeg).
+function NorthNudge({ value, onStep }: { value: number; onStep: (step: number) => void }) {
+  const repeat = useRef<{ timer?: ReturnType<typeof setTimeout> }>({});
+  const stop = () => clearTimeout(repeat.current.timer);
+  const start = (step: number) => {
+    stop();
+    onStep(step);
+    const again = (delay: number) => {
+      repeat.current.timer = setTimeout(() => {
+        onStep(step);
+        again(70);
+      }, delay);
+    };
+    again(400);
+  };
+  useEffect(() => stop, []);
+  const button = (step: number, label: string, glyph: string) => (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onPointerDown={() => start(step)}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onStep(step);
+      }}
+      className="no-press flex h-9 w-9 items-center justify-center rounded-full text-[18px] font-medium hover:bg-[var(--control-fill-hover)]"
+    >
+      {glyph}
+    </button>
+  );
+  return (
+    <div
+      onPointerDown={(e) => e.stopPropagation()}
+      className="pop-in pointer-events-auto flex origin-top-right items-center gap-1 rounded-full border border-border glass-material p-1 shadow-[var(--shadow-float)]"
+    >
+      {/* A larger north turns the plan the other way round, anticlockwise. */}
+      {button(1, "Plan 1° gegen den Uhrzeigersinn drehen", "↺")}
+      <span className="min-w-[88px] text-center text-[13px] font-medium tabular-nums">Nord {value}°</span>
+      {button(-1, "Plan 1° im Uhrzeigersinn drehen", "↻")}
+    </div>
   );
 }
 
