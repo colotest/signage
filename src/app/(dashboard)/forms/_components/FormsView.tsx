@@ -33,6 +33,10 @@ const PLAN_KEY = "forms.venuePlan"; // which one, remembered on this device
 // with the compass on, the plan sits turned 11° anticlockwise. (Lined up by
 // eye on site, with the compass on.)
 const NORTH_DEG = 11;
+// The plan's scale, from fitting OpenStreetMap's outline of the building
+// onto the ground floor's walls: about 1.51 cm a unit, so 66 to the metre
+// and the building some 137 m end to end. All three floors are drawn to it.
+const UNITS_PER_METRE = 66.2;
 const FLOOR_NAMES: Record<Floor, { label: string; name: string }> = {
   eg: { label: "E", name: "Erdgeschoss" },
   zwischen: { label: "0.5", name: "Zwischengeschoss" },
@@ -51,6 +55,8 @@ function colosseum(kind: PlanKind): MapFloor[] {
         height: 5300,
         vector: kind === "vektor",
         northDeg: NORTH_DEG,
+        unitsPerMetre: UNITS_PER_METRE,
+        walls: `${base}.svg`,
       },
     };
   });

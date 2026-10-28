@@ -5,6 +5,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import type { AreaPoint, MapArea } from "@/lib/eventAreas";
 import { cn } from "@/lib/utils/cn";
 import { startCompass } from "./compass";
+import { createTracker, loadWalls, type Tracker, type Walls } from "./deadReckoning";
+import { startSteps } from "./steps";
 import { createWheelClassifier } from "./wheelKind";
 
 export type FloorPlan = {
@@ -26,6 +28,12 @@ export type FloorPlan = {
   // its blur drawn in (see scripts/rasterize-floorplan.mjs), filling the
   // plan.
   ghost?: string;
+  // How many of the plan's units make a metre, and where its walls can be
+  // read from (its vector drawing): for following the device round it on
+  // foot (see deadReckoning). Without both, the map has no location
+  // button.
+  unitsPerMetre?: number;
+  walls?: string;
 };
 
 // One of the building's floors. Its plan is drawn in the same frame as the
@@ -172,6 +180,22 @@ export function VenueMap({
   const followingRef = useRef(false);
   const headingRef = useRef<number | null>(null);
   const stopCompassRef = useRef<(() => void) | null>(null);
+  // Following the device round the plan on foot (see deadReckoning):
+  // "placing" waits for a tap on where it is, "on" follows its steps from
+  // there.
+  const [locating, setLocating] = useState<"off" | "placing" | "on">("off");
+  const locatingRef = useRef(locating);
+  const trackerRef = useRef<Tracker | null>(null);
+  const wallsRef = useRef<Walls | null>(null);
+  const stopLocatingRef = useRef<(() => void) | null>(null);
+  // Which way the device faces, smoothed: a unit vector, x east and y north.
+  const youHeadingRef = useRef<{ x: number; y: number } | null>(null);
+  const youFrameRef = useRef<number | null>(null);
+  const stepsRef = useRef(0);
+  const youRef = useRef<HTMLDivElement | null>(null);
+  const youRingRef = useRef<HTMLSpanElement>(null);
+  const youConeRef = useRef<HTMLSpanElement>(null);
+  const [youStats, setYouStats] = useState<{ steps: number; radiusM: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const spotsRef = useRef(spots);
@@ -212,6 +236,31 @@ export function VenueMap({
     }
     if (needleRef.current) {
       needleRef.current.style.transform = `rotate(${v.r + (plan.northDeg * Math.PI) / 180}rad)`;
+    }
+    placeYou();
+  }
+
+  // The device's dot: where the tracker has it, its ring as wide as it's
+  // unsure (in the plan's units, so it scales with the zoom), and its cone
+  // the way it faces, turned with the map.
+  function placeYou() {
+    const el = youRef.current, v = viewRef.current;
+    const fix = trackerRef.current?.fix();
+    if (!el || !v || !fix) return;
+    const p = toScreen(v, fix.x, fix.y);
+    el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+    if (youRingRef.current) {
+      const d = `${2 * fix.radius * v.s}px`;
+      youRingRef.current.style.width = d;
+      youRingRef.current.style.height = d;
+    }
+    const h = youHeadingRef.current;
+    if (youConeRef.current) {
+      youConeRef.current.style.visibility = h ? "visible" : "hidden";
+      if (h) {
+        const facing = Math.atan2(h.x, h.y) + (plan.northDeg * Math.PI) / 180 + v.r;
+        youConeRef.current.style.transform = `rotate(${facing}rad)`;
+      }
     }
   }
 
@@ -472,9 +521,28 @@ export function VenueMap({
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       clearTimeout(settleTimer.current);
       stopCompassRef.current?.();
+      stopLocatingRef.current?.();
     },
     [],
   );
+
+  // The picked floor's walls, for the tracker, while it's on (none for the
+  // moment it takes to read another floor's, rather than the wrong ones).
+  const locatingOn = locating !== "off";
+  useEffect(() => {
+    if (!locatingOn || !plan.walls) return;
+    let live = true;
+    wallsRef.current = null;
+    trackerRef.current?.setWalls(null);
+    void loadWalls(plan.walls).then((walls) => {
+      if (!live) return;
+      wallsRef.current = walls;
+      trackerRef.current?.setWalls(walls);
+    });
+    return () => {
+      live = false;
+    };
+  }, [locatingOn, plan.walls]);
 
   // Brings the focused spot into view: zoomed in a little if the map's out
   // at the whole plan, and a bit below the middle, so the card opening
@@ -607,7 +675,8 @@ export function VenueMap({
             v: (-dx * s + dy * c) / v.s / plan.height,
           };
         }
-        onBackgroundTapRef.current?.(at);
+        if (locatingRef.current === "placing" && at) placeYourself(at.u * plan.width, at.v * plan.height);
+        else onBackgroundTapRef.current?.(at);
       }
       return;
     }
@@ -672,6 +741,92 @@ export function VenueMap({
       }
     }
     requestAnimationFrame(followLoop);
+  }
+
+  function setLocate(next: "off" | "placing" | "on") {
+    locatingRef.current = next;
+    setLocating(next);
+  }
+
+  function updateYouStats() {
+    const fix = trackerRef.current?.fix();
+    setYouStats(fix && plan.unitsPerMetre ? { steps: stepsRef.current, radiusM: fix.radius / plan.unitsPerMetre } : null);
+  }
+
+  // The location button. Off, it starts the step counter and compass —
+  // straight from the tap, as iOS asks — and waits for a tap on where the
+  // device is. On, it waits for one again, to set it right; pressed again
+  // while waiting, it's off.
+  function onLocatePress() {
+    if (locatingRef.current === "placing") {
+      stopLocating();
+      return;
+    }
+    if (locatingRef.current === "on") {
+      setLocate("placing");
+      return;
+    }
+    const steps = startSteps(onStep);
+    const heading = startCompass(onYouHeading);
+    setLocate("placing");
+    void Promise.all([steps, heading]).then(([stopSteps, stopHeading]) => {
+      const stop = () => {
+        stopSteps?.();
+        stopHeading?.();
+      };
+      if (locatingRef.current === "off") return stop();
+      stopLocatingRef.current = stop;
+      if (!stopSteps || !stopHeading) showNotice("Bewegungssensoren nicht verfügbar");
+    });
+  }
+
+  function stopLocating() {
+    stopLocatingRef.current?.();
+    stopLocatingRef.current = null;
+    trackerRef.current = null;
+    youHeadingRef.current = null;
+    stepsRef.current = 0;
+    setLocate("off");
+    setYouStats(null);
+  }
+
+  // A tap on the plan while waiting for one: the device is there.
+  function placeYourself(x: number, y: number) {
+    if (!plan.unitsPerMetre) return;
+    let tracker = trackerRef.current;
+    if (!tracker) {
+      tracker = createTracker(plan.unitsPerMetre);
+      tracker.setWalls(wallsRef.current);
+      trackerRef.current = tracker;
+    }
+    tracker.place(x, y);
+    stepsRef.current = 0;
+    setLocate("on");
+    updateYouStats();
+    placeYou();
+  }
+
+  function onStep() {
+    const tracker = trackerRef.current, h = youHeadingRef.current;
+    if (!tracker || !h || locatingRef.current === "off") return;
+    // The compass's degrees from north, turned to the plan's from its top.
+    tracker.step((Math.atan2(h.x, h.y) * 180) / Math.PI + plan.northDeg);
+    stepsRef.current += 1;
+    updateYouStats();
+    placeYou();
+  }
+
+  function onYouHeading(degrees: number) {
+    const a = (degrees * Math.PI) / 180, h = youHeadingRef.current;
+    youHeadingRef.current = h
+      ? { x: h.x + (Math.sin(a) - h.x) * 0.3, y: h.y + (Math.cos(a) - h.y) * 0.3 }
+      : { x: Math.sin(a), y: Math.cos(a) };
+    if (youFrameRef.current === null) {
+      youFrameRef.current = requestAnimationFrame(() => {
+        youFrameRef.current = null;
+        placeYou();
+      });
+    }
   }
 
   function showNotice(text: string) {
@@ -808,6 +963,29 @@ export function VenueMap({
         </div>
       )}
 
+      {youStats && (
+        // The device, as followed on foot (see placeYou), beneath the spots.
+        <div
+          ref={(el) => {
+            youRef.current = el;
+            if (el) placeYou();
+          }}
+          aria-hidden
+          className="pointer-events-none absolute left-0 top-0 z-[5]"
+        >
+          <span
+            ref={youRingRef}
+            className="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full border border-accent/40 bg-accent/10 transition-[width,height] duration-300"
+          />
+          <span ref={youConeRef} className="absolute -left-7 -top-7 block h-14 w-14">
+            <svg viewBox="0 0 56 56" className="h-14 w-14">
+              <path d="M28 28 17 4.5a26 26 0 0 1 22 0z" style={{ fill: "var(--accent)", fillOpacity: 0.35 }} />
+            </svg>
+          </span>
+          <span className="absolute left-0 top-0 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-accent shadow-[0_1px_4px_var(--shadow-ambient-strong)]" />
+        </div>
+      )}
+
       {ready &&
         spots.map((spot) => (
           <div
@@ -861,6 +1039,36 @@ export function VenueMap({
             </svg>
           </span>
         </button>
+        {plan.unitsPerMetre && plan.walls && (
+          <>
+            <span className="mx-2 h-px bg-border" />
+            <button
+              type="button"
+              onClick={onLocatePress}
+              aria-pressed={locating !== "off"}
+              aria-label={
+                locating === "off" ? "Eigenen Standort verfolgen" : locating === "on" ? "Standort neu setzen" : "Standort aus"
+              }
+              title={locating === "off" ? "Standort verfolgen" : locating === "on" ? "Standort neu setzen" : "Standort aus"}
+              className={cn(
+                "no-press flex h-11 w-11 items-center justify-center transition-colors",
+                locating !== "off"
+                  ? "bg-accent text-accent-contrast"
+                  : "text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+              )}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+                <path
+                  d="M20.5 3.5 3.5 10.6l7.4 2.5 2.5 7.4z"
+                  fill={locating === "on" ? "currentColor" : "none"}
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
 
       {floors.length > 1 && (
@@ -894,10 +1102,24 @@ export function VenueMap({
         </div>
       )}
 
+      {!notice && locating !== "off" && (
+        // How the location's going: waiting for a tap, or how sure it is.
+        <div
+          role="status"
+          className="pop-in pointer-events-none absolute right-3 top-[198px] z-20 origin-top-right rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
+        >
+          {locating === "placing" || !youStats
+            ? youStats
+              ? "Tippe, wo du stehst – nochmal: aus"
+              : "Tippe auf den Plan, wo du stehst"
+            : `± ${Math.max(1, Math.round(youStats.radiusM))} m · ${youStats.steps} Schritte`}
+        </div>
+      )}
+
       {notice && (
         <div
           role="status"
-          className="pop-in pointer-events-none absolute right-3 top-[150px] z-20 origin-top-right rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
+          className="pop-in pointer-events-none absolute right-3 top-[198px] z-20 origin-top-right rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
         >
           {notice}
         </div>
