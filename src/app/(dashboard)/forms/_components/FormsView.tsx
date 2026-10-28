@@ -12,23 +12,14 @@ import type { EventPerson, EventSummary } from "@/lib/events";
 import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
 import { EventsPane } from "./EventsPane";
 import { LinkedPinCard } from "./PinMenus";
-import { SegmentedSlider } from "./SegmentedSlider";
 import { MapCard, VenueMap, type MapFloor, type MapSpot } from "./VenueMap";
 
-// Colosseum Berlin, the floors we serve, each two ways — to see which moves
-// better on an iPad, the map has a switch between them (see PLAN_KEY):
-// - "vektor": the drawing as vectors, slimmed down by
-//   scripts/flatten-floorplan.mjs (SCALE=100: all three were exported in
-//   one 101 × 53 frame, which they keep, so they line up).
-// - "pixel": the same drawn as a picture by scripts/rasterize-floorplan.mjs,
-//   one pixel per unit (lossless WebP).
-// Each floor's ghost, for while another's picked, is drawn by that too.
-type PlanKind = "vektor" | "pixel";
-const PLAN_KINDS: { value: PlanKind; label: string }[] = [
-  { value: "vektor", label: "Vektor" },
-  { value: "pixel", label: "Pixel" },
-];
-const PLAN_KEY = "forms.venuePlan"; // which one, remembered on this device
+// Colosseum Berlin, the floors we serve, as vectors: the drawing slimmed
+// down by scripts/flatten-floorplan.mjs (SCALE=100: all three were exported
+// in one 101 × 53 frame, which they keep, so they line up). They move
+// better on an iPad than the same drawn as pictures, one pixel per unit, by
+// scripts/rasterize-floorplan.mjs — which still draws each floor's ghost,
+// for while another's picked.
 // True north points 11° clockwise of the plan's top edge, so facing north
 // with the compass on, the plan sits turned 11° anticlockwise. (Lined up by
 // eye on site, with the compass on.)
@@ -42,26 +33,23 @@ const FLOOR_NAMES: Record<Floor, { label: string; name: string }> = {
   zwischen: { label: "0.5", name: "Zwischengeschoss" },
   og: { label: "1", name: "Obergeschoss" },
 };
-function colosseum(kind: PlanKind): MapFloor[] {
-  return FLOORS.map((floor) => {
-    const base = `/venues/colosseum-${floor}`;
-    return {
-      id: floor,
-      ...FLOOR_NAMES[floor],
-      plan: {
-        src: kind === "vektor" ? `${base}.svg` : `${base}.webp`,
-        ghost: `${base}-ghost.webp`,
-        width: 10100,
-        height: 5300,
-        vector: kind === "vektor",
-        northDeg: NORTH_DEG,
-        unitsPerMetre: UNITS_PER_METRE,
-        walls: `${base}.svg`,
-      },
-    };
-  });
-}
-const COLOSSEUM: Record<PlanKind, MapFloor[]> = { vektor: colosseum("vektor"), pixel: colosseum("pixel") };
+const COLOSSEUM: MapFloor[] = FLOORS.map((floor) => {
+  const base = `/venues/colosseum-${floor}`;
+  return {
+    id: floor,
+    ...FLOOR_NAMES[floor],
+    plan: {
+      src: `${base}.svg`,
+      ghost: `${base}-ghost.webp`,
+      width: 10100,
+      height: 5300,
+      vector: true,
+      northDeg: NORTH_DEG,
+      unitsPerMetre: UNITS_PER_METRE,
+      walls: `${base}.svg`,
+    },
+  };
+});
 
 // The map's standing pins, shown whatever event is open (or none): where
 // each sits on the plan, as a fraction of its width and height, and on
@@ -140,26 +128,8 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
     (a) => floorOf(a) === floor,
   );
   const [message, setMessage] = useState<string | null>(null);
-  const [planKind, setPlanKind] = useState<PlanKind>("pixel");
   // Saves go one after another, so an older list can't land after a newer.
   const saveChain = useRef(Promise.resolve());
-
-  // The plan picked last time on this device. Read once mounted: the
-  // server can't know it, and the page has to match what it sent first.
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(PLAN_KEY);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-off read of this device's setting after hydration
-      if (saved === "vektor" || saved === "pixel") setPlanKind(saved);
-    } catch {}
-  }, []);
-
-  function pickPlan(kind: PlanKind) {
-    setPlanKind(kind);
-    try {
-      localStorage.setItem(PLAN_KEY, kind);
-    } catch {}
-  }
 
   // A note (copied, or a save that failed) goes again after a few seconds.
   useEffect(() => {
@@ -362,7 +332,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <VenueMap
             className="min-h-0 flex-1"
-            floors={COLOSSEUM[planKind]}
+            floors={COLOSSEUM}
             floor={floor}
             onFloorChange={pickFloor}
             focus={null}
@@ -372,12 +342,6 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
             selectedArea={editing ? selectedArea : null}
             draft={draft}
           />
-
-          {/* Vektor or Pixel: swaps the plan under the map as it is, so the
-              two can be compared at the same spot and zoom. */}
-          <div className="absolute left-3 top-3 z-20 w-40 rounded-full glass-material shadow-[var(--shadow-float)]">
-            <SegmentedSlider label="Plan" options={PLAN_KINDS} value={planKind} onChange={pickPlan} />
-          </div>
 
           {/* Along the map's bottom, with an event open: "Bearbeiten" — and
               while editing, "+ Pin" and "+ Fläche" (or what a tap on the map
