@@ -53,22 +53,12 @@ const COLOSSEUM: MapFloor[] = FLOORS.map((floor) => {
 
 // The map's standing pins, shown whatever event is open (or none): where
 // each sits on the plan, as a fraction of its width and height, and on
-// which floor (the ground floor if none). Placed on an event and copied out
-// (see copyPins).
-const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: Floor }[] = [
-  { id: "gastro", title: "Gastro", u: 0.1549, v: 0.3618 },
-  { id: "kino-2", title: "Kino 2", u: 0.4764, v: 0.1353 },
-  { id: "kino-3", title: "Kino 3", u: 0.354, v: 0.0894 },
-  { id: "kino-4", title: "Kino 4", u: 0.2767, v: 0.0579 },
-  { id: "kino-5", title: "Kino 5", u: 0.1524, v: 0.0051 },
-  { id: "wagenhalle-kino", title: "Wagenhalle 'Kino'", u: 0.4308, v: 0.3461 },
-  { id: "wagenhalle-event", title: "Wagenhalle 'Event'", u: 0.2826, v: 0.5807 },
-  { id: "garderobe", title: "Garderobe", u: 0.7099, v: 0.4784 },
-  { id: "wc-unten", title: "WC 'Unten'", u: 0.6294, v: 0.1665 },
-  { id: "wc-wagenhalle", title: "WC 'Wagenhalle'", u: 0.0894, v: 0.6599 },
-  { id: "sicherheit", title: "Sicherheit", u: 0.7395, v: 0.8469 },
-  { id: "parken", title: "Parken", u: 0.8867, v: 0.9893 },
-];
+// which floor (the ground floor if none). None for now: they're being
+// placed afresh as an event's own pins, to be copied out (see copyPins)
+// and kept here once they're right. A standing pin whose id PinMenus
+// knows (PIN_LINKS — "gastro", "kino-2", "sicherheit" and so on) works the
+// open event's Checkliste again.
+const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: Floor }[] = [];
 
 // What the next tap on the map does: drop a new pin, move one there (onto
 // the floor shown then, if it's been switched since), or add a corner to
