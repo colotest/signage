@@ -77,15 +77,18 @@ export function EventsList({
   onToggleArchived,
   onOpen,
   previewIds,
+  previewAt,
   onPreview,
 }: {
   events: EventSummary[];
   archived: boolean;
   onToggleArchived: () => void;
   onOpen: (id: string) => void;
-  // The events the calendar is showing on the map, while scrubbing through it.
+  // The events the calendar is showing on the map, while scrubbing through
+  // it, and the moment scrubbed to.
   previewIds: string[];
-  onPreview: (ids: string[]) => void;
+  previewAt: Date | null;
+  onPreview: (ids: string[], at?: Date | null) => void;
 }) {
   // The card of the event whose bar the pointer's over on the calendar.
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -170,6 +173,7 @@ export function EventsList({
         <ScheduleCalendar
           events={inList}
           previewIds={previewIds}
+          previewAt={previewAt}
           onPreview={onPreview}
           onHighlight={setHighlightId}
           onOpen={onOpen}

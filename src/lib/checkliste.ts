@@ -29,6 +29,7 @@ Saal 4
 Saal 5
 Saal 6
 Saal 7
+Saal 8
 Saal 9
 Saal 10
 Wagenhalle exklusiv
@@ -55,6 +56,12 @@ Pressebereich
 Workshopräume
 Breakout Räume
 Catering-/Lagerfläche
+
+#Branding
+Banner Indoor
+Banner Outdoor Oben
+Banner Outdoor Unten
+Projektion Indoor
 
 ##Technik
 #Welche Technik wird benötigt?
@@ -83,17 +90,15 @@ Recording
 _Sonstiges:
 
 ##Catering und Getränke
+#Gastroflächen
+Küche
+Mainbar
+
 #Catering geplant
 Colosseum Catering
 Externes Catering
 Noch unklar
 Kein Catering geplant
-
-#Gastroflächen
-@eins
-Küche
-Mainbar
-Mainbar Seitlich
 
 #Cateringform
 Frühstück / Coffee Break
@@ -101,19 +106,6 @@ Lunch / Mittagessen
 Dinner / Abendessen
 Fingerfood / Empfang
 Snacks / Popcorn
-Noch unklar
-
-#Getränkeversorgung
-Getränkepauschale
-Selbstzahler / Bar
-Teilweise Pauschale
-Noch unklar
-
-#Welche Getränke sollen angeboten werden
-Softdrinks
-Kaffee / Tee
-Bier / Wein
-Longdrinks / Cocktails
 Noch unklar
 
 #Cateringanspruch
@@ -131,24 +123,36 @@ Markengetränke
 besondere Bar
 Noch unklar
 
+#Getränkeversorgung
+Getränkepauschale
+Selbstzahler / Bar
+Teilweise Pauschale
+Noch unklar
+
+#Welche Getränke sollen angeboten werden
+Softdrinks
+Kaffee / Tee
+Bier / Wein
+Longdrinks / Cocktails
+Noch unklar
+
 ##Logistik und Service
 #Eingang
-@eins
 Gleimstr.
 Schönhauser
 #Barrierefreiheit
 Barrierefrei
-#Garderobe benötigt
-Ja
-Nein
-Noch unklar
-#Garderobe
+#Garderobenart
 @eins
-@wenn garderobe-benoetigt/ja
-Gestellt
-Selbstständig
+Service
+Selbst
+TBD
+#Akkreditierungsart
+@eins
+Service
+Selbst
+TBD
 #Parkplatzsperrung / Ladezone benötigt
-@eins
 Seite Biocompany
 Seite Kino
 Noch unklar
@@ -157,9 +161,10 @@ Ja
 Nein
 Noch unklar
 #WC Positionen
-@eins
-WC Unten
-WC Wagenhalle
+WC Halle/Kino
+WC Halle/Hof
+WC Kino
+WC Oben
 #WC Service / Reinigung während Event
 Ja
 Nein
@@ -292,22 +297,33 @@ export function exclusiveWith(key: string): string[] {
 export const AREAS_SECTION = "welche-flaechen-sind-interessant";
 export const WAGENHALLE_EXKLUSIV = `${AREAS_SECTION}/wagenhalle-exklusiv`;
 export const WAGENHALLE_NICHT_EXKLUSIV = `${AREAS_SECTION}/wagenhalle-nicht-exklusiv`;
+export const BRANDING = "branding";
+export const GASTRO_SECTION = "gastroflaechen";
+export const CATERING_SECTION = "catering-geplant";
+export const DRINKS_SECTION = "getraenkeversorgung";
+export const ENTRANCES = ["eingang/gleimstr", "eingang/schoenhauser"];
 export const BARRIEREFREI = "barrierefreiheit/barrierefrei";
+export const GARDEROBE_KIND = "garderobenart";
+export const AKKREDITIERUNG_KIND = "akkreditierungsart";
+export const PARKING = "parkplatzsperrung-ladezone-benoetigt";
+export const SECURITY = "security-ordner-benoetigt";
 export const WC_POSITIONS = "wc-positionen";
-export const WC_UNTEN = `${WC_POSITIONS}/wc-unten`;
-export const WC_WAGENHALLE = `${WC_POSITIONS}/wc-wagenhalle`;
 export const WC_SERVICE = "wc-service-reinigung-waehrend-event";
-// The WC Wagenhalle isn't step-free: with Barrierefrei ticked, it's flagged.
-export const NOT_STEP_FREE = new Set([WC_WAGENHALLE]);
+// The WC Halle/Hof (the Wagenhalle's) isn't step-free: with Barrierefrei
+// ticked, it's flagged.
+export const NOT_STEP_FREE = new Set([`${WC_POSITIONS}/wc-halle-hof`]);
 
-// The venue map's room pins (see PinMenus) keep a pick of their own of the
-// room requirements, stored alongside the list's answers as
-// "pin:<pin>:<field>"; the list's own option is ticked while any room has
-// it. The two Wagenhalle halls also keep their own tick ("pin:<pin>:selected"),
-// which together decide between the list's exklusiv and nicht exklusiv.
+// The venue map's Kino pins (see PinMenus) each tick their Saal, and keep a
+// pick of their own of the room requirements, stored alongside the list's
+// answers as "pin:<pin>:<field>"; the list's own option is ticked while any
+// room has it, and says which. The two Wagenhalle halls keep their own
+// tick ("pin:<pin>:selected"), which together decide between the list's
+// exklusiv and nicht exklusiv (and show the halls on the map — see
+// venueAreas).
 export const ROOM_REQUIREMENTS = "besondere-anforderungen-an-raeume";
 export const WAGENHALLE_PINS = ["wagenhalle-kino", "wagenhalle-event"];
-export const ROOM_PINS = ["kino-2", "kino-3", "kino-4", "kino-5", ...WAGENHALLE_PINS];
+export const KINO_PINS = Array.from({ length: 10 }, (_, i) => `kino-${i + 1}`);
+export const ROOM_PINS = [...KINO_PINS, ...WAGENHALLE_PINS];
 
 export function pinKey(pinId: string, part: string) {
   return `pin:${pinId}:${part}`;
@@ -316,10 +332,7 @@ export function pinKey(pinId: string, part: string) {
 // The room pins' names, as on the map — for the list to say which rooms
 // asked for one of its room requirements.
 export const ROOM_PIN_NAMES: Record<string, string> = {
-  "kino-2": "Kino 2",
-  "kino-3": "Kino 3",
-  "kino-4": "Kino 4",
-  "kino-5": "Kino 5",
+  ...Object.fromEntries(KINO_PINS.map((id, i) => [id, `Kino ${i + 1}`])),
   "wagenhalle-kino": "Wagenhalle 'Kino'",
   "wagenhalle-event": "Wagenhalle 'Event'",
 };
@@ -335,7 +348,8 @@ const OPENS_WAGENHALLE_KINO = [`${AREAS_SECTION}/saal-2`, `${AREAS_SECTION}/saal
 
 // A change as it's to be saved, with what follows from it: a Wagenhalle
 // hall's tick sets exklusiv (both halls) or nicht exklusiv (one) in the
-// list; ticking Kino 2 or 3 ticks Wagenhalle 'Kino'.
+// list; ticking Kino 2 or 3 ticks Wagenhalle 'Kino'; and the venue always
+// has an entrance open — taking the only one away opens the other.
 export function withConsequences(
   patch: Record<string, true | string | null>,
   answer: (key: string) => true | string | null,
@@ -350,6 +364,11 @@ export function withConsequences(
     const count = hallKeys.filter((key) => (key in full ? full[key] === true : answer(key) === true)).length;
     full[WAGENHALLE_EXKLUSIV] = count === 2 || null;
     full[WAGENHALLE_NICHT_EXKLUSIV] = count === 1 || null;
+  }
+  const after = (key: string) => (key in full ? full[key] : answer(key));
+  for (const [i, entrance] of ENTRANCES.entries()) {
+    const other = ENTRANCES[1 - i];
+    if (full[entrance] === null && answer(entrance) === true && after(other) !== true) full[other] = true;
   }
   return full;
 }

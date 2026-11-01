@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { EdgeBand } from "@/components/EdgeBand";
 import { sameDay, weekStartsOn } from "@/components/MonthCalendar";
 import type { EventSummary } from "@/lib/events";
@@ -26,6 +26,8 @@ const DAY_MS = 86_400_000;
 // A touch has to go this far sideways (and more sideways than up or down)
 // before it scrubs rather than scrolls.
 const SCRUB_SLOP = 8;
+// Scrubbing goes by this many minutes: a pixel's about 25 of them anyway.
+const SCRUB_STEP_MIN = 5;
 
 function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -59,6 +61,21 @@ function spanOf(event: EventSummary): Span | null {
   return { event, start, end };
 }
 
+// Whether an event's on at a moment: from its start to its end, a day
+// without a time of day counting from its start or to its end; with no
+// end, to the end of its first day.
+function runsAt(event: EventSummary, at: number) {
+  if (!event.startsAt) return false;
+  const s = new Date(event.startsAt);
+  const start = event.startsTimeSet ? s.getTime() : startOfDay(s).getTime();
+  let end = addDays(startOfDay(s), 1).getTime();
+  if (event.endsAt) {
+    const e = new Date(event.endsAt);
+    end = event.endsTimeSet ? e.getTime() : addDays(startOfDay(e), 1).getTime();
+  }
+  return at >= start && at < end;
+}
+
 // One week's slice of an event's bar, and the lane it runs in.
 type Segment = { span: Span; col: number; length: number; lane: number; fromBefore: boolean; onAfter: boolean };
 
@@ -88,13 +105,15 @@ function weekSegments(week: Date, spans: Span[]) {
 // colour. Each week is only as tall as the bars running through it need,
 // and the window eases to fit the three in view.
 //
-// Scrubbing through it previews the day on the venue map: with a mouse,
-// whichever day the pointer is over; on a touchscreen, dragging sideways
-// along the weeks (up and down still scrolls them), the last day touched
-// staying previewed until a tap on an empty stretch. Every event on that
-// day shows at once — set up, they never claim the same thing — and a day
-// without any, nothing. Hovering a bar lights up its card in the list;
-// tapping it opens its event, as the card does.
+// Scrubbing through it, like a video editor's playhead, previews a moment
+// on the venue map — each day runs midnight to midnight across its column,
+// so how far along the pointer is gives the time of day (a thin line marks
+// it): with a mouse, wherever the pointer is; on a touchscreen, dragging
+// sideways along the weeks (up and down still scrolls them), the last
+// moment touched staying previewed until a tap on an empty stretch. Every
+// event on at that moment shows at once — set up, they never claim the
+// same thing — and a moment without any, nothing. Hovering a bar lights up
+// its card in the list; tapping it opens its event, as the card does.
 //
 // On an iPad or a desktop it stays at the top of the list while the events
 // scroll under it; on a phone, where the list is short of room, it scrolls
@@ -102,7 +121,9 @@ function weekSegments(week: Date, spans: Span[]) {
 export function ScheduleCalendar(props: {
   events: EventSummary[];
   previewIds: string[];
-  onPreview: (ids: string[]) => void;
+  previewAt: Date | null;
+  // The events on at the moment scrubbed to, and the moment.
+  onPreview: (ids: string[], at: Date | null) => void;
   onOpen: (id: string) => void;
   onHighlight: (id: string | null) => void;
 }) {
@@ -118,13 +139,15 @@ export function ScheduleCalendar(props: {
 function ScheduleGrid({
   events,
   previewIds,
+  previewAt,
   onPreview,
   onOpen,
   onHighlight,
 }: {
   events: EventSummary[];
   previewIds: string[];
-  onPreview: (ids: string[]) => void;
+  previewAt: Date | null;
+  onPreview: (ids: string[], at: Date | null) => void;
   onOpen: (id: string) => void;
   onHighlight: (id: string | null) => void;
 }) {
@@ -213,36 +236,63 @@ function ScheduleGrid({
 
   // --- scrubbing ------------------------------------------------------------
 
-  const [scrubDay, setScrubDay] = useState<Date | null>(null);
   const touchRef = useRef<{ id: number; x: number; y: number; scrubbing: boolean } | null>(null);
   // A drag that scrubbed ends in a click on whatever's under it — which
   // shouldn't open that event.
   const justScrubbed = useRef(false);
+  // The playhead: moved straight on the page as the pointer goes, without
+  // drawing the weeks again each time; and the moment last previewed.
+  const lineRef = useRef<HTMLDivElement>(null);
+  const scrubbedAt = useRef<number | null>(null);
 
-  function dayAt(clientX: number, clientY: number) {
+  // Let go of from elsewhere (the map's "Vorschau" ✕, an event opened): the
+  // playhead goes with it.
+  useEffect(() => {
+    if (previewAt || scrubbedAt.current === null) return;
+    scrubbedAt.current = null;
+    if (lineRef.current) lineRef.current.style.display = "none";
+  }, [previewAt]);
+
+  // The moment under a point, and where its week row is.
+  function momentAt(clientX: number, clientY: number) {
     const el = scrollerRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
+    const x = clientX - rect.left;
     const y = clientY - rect.top + el.scrollTop;
-    const col = Math.floor(((clientX - rect.left) / rect.width) * 7);
+    const along = (x / rect.width) * 7;
+    const col = Math.floor(along);
     if (y < 0 || col < 0 || col > 6) return null;
     const row = rows[rowAt(y)];
     if (y >= row.top + row.height) return null;
-    return addDays(row.week, col);
+    const day = addDays(row.week, col);
+    const minutes = Math.min(Math.floor(((along - col) * 24 * 60) / SCRUB_STEP_MIN) * SCRUB_STEP_MIN, 24 * 60 - SCRUB_STEP_MIN);
+    return { at: new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes), row, x };
   }
 
-  function preview(day: Date | null) {
-    setScrubDay(day);
-    const on = day
-      ? spans.filter((s) => s.start <= day && s.end >= day).sort((a, b) => a.start.getTime() - b.start.getTime())
-      : [];
-    onPreview(on.map((s) => s.event.id));
+  function preview(moment: ReturnType<typeof momentAt>) {
+    const line = lineRef.current;
+    if (line) {
+      line.style.display = moment ? "block" : "none";
+      if (moment) {
+        line.style.top = `${moment.row.top}px`;
+        line.style.height = `${moment.row.height}px`;
+        line.style.left = `${moment.x}px`;
+      }
+    }
+    const at = moment ? moment.at.getTime() : null;
+    if (at === scrubbedAt.current) return;
+    scrubbedAt.current = at;
+    const on = at === null ? [] : spans.filter((s) => runsAt(s.event, at)).sort((a, b) => a.start.getTime() - b.start.getTime());
+    onPreview(
+      on.map((s) => s.event.id),
+      moment?.at ?? null,
+    );
   }
 
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
     if (e.pointerType === "mouse") {
-      const day = dayAt(e.clientX, e.clientY);
-      if (!day || !scrubDay || !sameDay(day, scrubDay)) preview(day);
+      preview(momentAt(e.clientX, e.clientY));
       return;
     }
     const touch = touchRef.current;
@@ -259,8 +309,8 @@ function ScheduleGrid({
       touch.scrubbing = true;
       e.currentTarget.setPointerCapture(e.pointerId);
     }
-    const day = dayAt(e.clientX, e.clientY);
-    if (day && (!scrubDay || !sameDay(day, scrubDay))) preview(day);
+    const moment = momentAt(e.clientX, e.clientY);
+    if (moment) preview(moment);
   }
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
@@ -341,9 +391,8 @@ function ScheduleGrid({
               const day = addDays(week, col);
               const isToday = sameDay(day, today);
               const weekend = day.getDay() === 0 || day.getDay() === 6;
-              const scrubbed = !!scrubDay && sameDay(day, scrubDay);
               return (
-                <div key={col} className={cn("relative flex flex-col items-center rounded-[10px]", scrubbed && "bg-foreground/[.07]")}>
+                <div key={col} className="relative flex flex-col items-center">
                   <span
                     className={cn(
                       "flex shrink-0 items-center justify-center rounded-full text-[16px] tabular-nums",
@@ -395,6 +444,13 @@ function ScheduleGrid({
             })}
           </div>
         ))}
+        {/* The playhead, over the bars (see preview). */}
+        <div
+          ref={lineRef}
+          aria-hidden
+          className="pointer-events-none absolute z-10 w-px -translate-x-1/2 bg-foreground/70"
+          style={{ display: "none" }}
+        />
       </div>
 
       {/* The fade the list's cards pass under, on an iPad or desktop. */}

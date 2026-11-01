@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { setEventAreas, setEventPins } from "@/lib/actions/events";
 import { cn } from "@/lib/utils/cn";
 import { areaContains, MAX_AREA_POINTS, MAX_AREAS, type AreaPoint, type MapArea } from "@/lib/eventAreas";
@@ -9,10 +9,14 @@ import { linkedAreas } from "@/lib/venueAreas";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
 import { floorOf, FLOORS, type Floor } from "@/lib/venueFloors";
 import type { EventPerson, EventSummary } from "@/lib/events";
+import { useScreenStatuses } from "@/lib/realtime/useScreenStatuses";
+import type { VenueScreens } from "@/lib/venueScreens";
 import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
+import { formatScrubMoment } from "./eventFormat";
 import { EventsPane } from "./EventsPane";
 import { LinkedPinCard } from "./PinMenus";
-import { MapCard, VenueMap, type MapFloor, type MapSpot } from "./VenueMap";
+import { ScreenPin } from "./ScreenPin";
+import { MapCard, VenueMap, type MapFloor, type MapSpot, type PlanGeo } from "./VenueMap";
 
 // Colosseum Berlin, the floors we serve, as vectors: the drawing slimmed
 // down by scripts/flatten-floorplan.mjs (SCALE=100: all three were exported
@@ -24,10 +28,12 @@ import { MapCard, VenueMap, type MapFloor, type MapSpot } from "./VenueMap";
 // with the compass on, the plan sits turned 11° anticlockwise. (Lined up by
 // eye on site, with the compass on.)
 const NORTH_DEG = 11;
-// The plan's scale, from fitting OpenStreetMap's outline of the building
-// onto the ground floor's walls: about 1.51 cm a unit, so 66 to the metre
-// and the building some 137 m end to end. All three floors are drawn to it.
-const UNITS_PER_METRE = 66.2;
+// Where the plans lie on the earth, from fitting OpenStreetMap's outline of
+// the building onto the ground floor's walls: its south-east corner
+// (52.5478° N, 13.41299° E) at the plan's lower right, the plan turned 9.4°
+// from true north, and about 1.51 cm a unit — 66 to the metre, the
+// building some 137 m end to end. All three floors are drawn to it.
+const COLOSSEUM_GEO: PlanGeo = { lat: 52.5478, lon: 13.41299, x: 8461, y: 4662, turnDeg: 9.4, unitsPerMetre: 66.2 };
 const FLOOR_NAMES: Record<Floor, { label: string; name: string }> = {
   eg: { label: "E", name: "Erdgeschoss" },
   zwischen: { label: "0.5", name: "Zwischengeschoss" },
@@ -45,20 +51,69 @@ const COLOSSEUM: MapFloor[] = FLOORS.map((floor) => {
       height: 5300,
       vector: true,
       northDeg: NORTH_DEG,
-      unitsPerMetre: UNITS_PER_METRE,
-      walls: `${base}.svg`,
+      geo: COLOSSEUM_GEO,
     },
   };
 });
 
-// The map's standing pins, shown whatever event is open (or none): where
-// each sits on the plan, as a fraction of its width and height, and on
-// which floor (the ground floor if none). None for now: they're being
-// placed afresh as an event's own pins, to be copied out (see copyPins)
-// and kept here once they're right. A standing pin whose id PinMenus
-// knows (PIN_LINKS — "gastro", "kino-2", "sicherheit" and so on) works the
-// open event's Checkliste again.
-const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: Floor }[] = [];
+// The map's standing pins, on every event: where each sits on the plan, as
+// a fraction of its width and height, and on which floor (the ground floor
+// if none). Placed as the pins of an untitled event without a date and
+// copied out (see copyPins). Those whose id PinMenus knows (PIN_LINKS)
+// work the open event's Checkliste; the rest are names.
+const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: Floor }[] = [
+  { id: "banner-indoor", title: "Banner Indoor", u: 0.1392, v: 0.3728 },
+  { id: "projektion-indoor", title: "Projektion Indoor", u: 0.4925, v: 0.6599 },
+  { id: "banner-outdoor", title: "Banner Outdoor", u: 0.5676, v: 0.8777 },
+  { id: "kino-5", title: "Kino 5", u: 0.1153, v: 0.242 },
+  { id: "kino-4", title: "Kino 4", u: 0.206, v: 0.2833 },
+  { id: "kino-3", title: "Kino 3", u: 0.2775, v: 0.3166 },
+  { id: "kino-2", title: "Kino 2", u: 0.3669, v: 0.3553 },
+  { id: "wc-halle-kino", title: "WC Halle/Kino", u: 0.4139, v: 0.3977 },
+  { id: "wc-halle-hof", title: "WC Halle/Hof", u: 0.0839, v: 0.6887 },
+  { id: "wc-kino", title: "WC Kino", u: 0.6558, v: 0.8845 },
+  { id: "akkreditierung", title: "Akkreditierung", u: 0.4238, v: 0.7632 },
+  { id: "garderobe", title: "Garderobe", u: 0.4669, v: 0.5777 },
+  { id: "kueche", title: "Küche", u: 0.0961, v: 0.4337 },
+  { id: "main-bar", title: "Main Bar", u: 0.1674, v: 0.4862 },
+  { id: "halle-geteilt", title: "Halle Geteilt", u: 0.283, v: 0.5576 },
+  { id: "eingang-gleimstr", title: "Eingang Gleimstr.", u: 0.5293, v: 0.9119 },
+  { id: "eingang-schoenhauser", title: "Eingang Schönh.", u: 0.9006, v: 0.7699 },
+  { id: "kino-1", title: "Kino 1", u: 0.7541, v: 0.7169 },
+  { id: "galerie-bar", title: "Galerie Bar", u: 0.4054, v: 0.5179, floor: "og" },
+  { id: "kino-10", title: "Kino 10", u: 0.2042, v: 0.4013, floor: "og" },
+  { id: "wc-oben", title: "WC Oben", u: 0.3549, v: 0.3715, floor: "og" },
+  { id: "kino-7", title: "Kino 7", u: 0.2792, v: 0.6429, floor: "og" },
+  { id: "kino-6", title: "Kino 6", u: 0.3907, v: 0.6424, floor: "og" },
+  { id: "kino-8", title: "Kino 8", u: 0.153, v: 0.6414, floor: "og" },
+  { id: "kino-9", title: "Kino 9", u: 0.0809, v: 0.4805, floor: "og" },
+  { id: "telekollegen", title: "Telekollegen", u: 0.1088, v: 0.4361, floor: "og" },
+  { id: "screen-9", title: "Screen 9", u: 0.1251, v: 0.5204, floor: "og" },
+  { id: "screen-8", title: "Screen 8", u: 0.2377, v: 0.574, floor: "og" },
+  { id: "screen-7", title: "Screen 7", u: 0.3075, v: 0.575, floor: "og" },
+  { id: "screen-6", title: "Screen 6", u: 0.3617, v: 0.575, floor: "og" },
+  { id: "screen-10", title: "Screen 10", u: 0.292, v: 0.4727, floor: "og" },
+  { id: "screen-4", title: "Screen 4", u: 0.2074, v: 0.3682 },
+  { id: "screen-3", title: "Screen 3", u: 0.2547, v: 0.3935 },
+  { id: "screen-2", title: "Screen 2", u: 0.295, v: 0.4066 },
+  { id: "screen-mainbar", title: "Screen Mainbar", u: 0.1565, v: 0.5265 },
+  { id: "dj-position-treppe", title: "DJ Position Treppe", u: 0.4134, v: 0.5125 },
+  { id: "sicherheit", title: "Sicherheit", u: 0.4418, v: 0.8025 },
+  { id: "zwischenebene", title: "Zwischenebene", u: 0.477, v: 0.5235, floor: "zwischen" },
+  { id: "galerie-flaeche", title: "Galerie Fläche", u: 0.1941, v: 0.5202, floor: "og" },
+  { id: "technik", title: "Technik", u: 0.432, v: 0.547 },
+  { id: "barrierefreiheit", title: "Barrierefreiheit", u: 0.4652, v: 0.8454 },
+  { id: "parken-kino", title: "Parkv. Kino", u: 0.6388, v: 0.9521 },
+  { id: "parken-bioco", title: "Parkv. BioCo", u: 0.3724, v: 0.9559 },
+];
+
+// The screen pins, by the dashboard's name for their screen: shown on the
+// Events list's map too, each with a little preview of its screen (see
+// ScreenPin).
+const SCREEN_PINS: Record<string, string> = {
+  ...Object.fromEntries([2, 3, 4, 6, 7, 8, 9, 10].map((n) => [`screen-${n}`, `Kino ${n}`])),
+  "screen-mainbar": "Mainbar",
+};
 
 // What the next tap on the map does: drop a new pin, move one there (onto
 // the floor shown then, if it's been switched since), or add a corner to
@@ -71,8 +126,18 @@ type Placing = { kind: "new" } | { kind: "move"; id: string } | { kind: "area"; 
 // The standing pins work the open event's Checkliste (see PinMenus); its
 // own pins are named, moved and placed in edit mode ("Bearbeiten"), and its
 // areas drawn there corner by corner (tapping the first corner again closes
-// one) or picked out with a tap to be deleted.
-export function FormsView({ events, people }: { events: EventSummary[]; people: EventPerson[] }) {
+// one) or picked out with a tap to be deleted. With no event open, the map
+// shows the screens' pins, live — or, scrubbing the calendar to another
+// day, what they'll be showing then, beside the events on at that moment.
+export function FormsView({
+  events,
+  people,
+  screens,
+}: {
+  events: EventSummary[];
+  people: EventPerson[];
+  screens: VenueScreens;
+}) {
   const [openSpot, setOpenSpot] = useState<string | null>(null);
   // The open event, from the URL (where EventsPane keeps it).
   const eventId = useSearchParams().get("event");
@@ -84,6 +149,13 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
   // claim the same thing (the venue has one of each), so whichever has an
   // answer for something gives it.
   const [previewIds, setPreviewIds] = useState<string[]>([]);
+  // The moment it's scrubbed to: those events are the ones on then.
+  const [scrubAt, setScrubAt] = useState<Date | null>(null);
+  const previewAt = event ? null : scrubAt;
+  function preview(ids: string[], at: Date | null = null) {
+    setPreviewIds(ids);
+    setScrubAt(at);
+  }
   const previewEvents = event
     ? []
     : previewIds.map((id) => events.find((e) => e.id === id)).filter((e): e is EventSummary => !!e);
@@ -118,6 +190,18 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
     (a) => floorOf(a) === floor,
   );
   const [message, setMessage] = useState<string | null>(null);
+  // The screens' players, as the dashboard follows them.
+  const statusOf = useScreenStatuses(screens.statuses);
+  const mediaById = useMemo(() => new Map(screens.media.map((m) => [m.id, m])), [screens.media]);
+  const screenByPin = useMemo(() => {
+    const byName = new Map(screens.screens.map((screen) => [screen.name.trim().toLowerCase(), screen]));
+    return new Map(Object.entries(SCREEN_PINS).flatMap(([pin, name]) => {
+      const screen = byName.get(name.toLowerCase());
+      return screen ? [[pin, screen] as const] : [];
+    }));
+  }, [screens.screens]);
+  // Live, unless the calendar's scrubbed to another day than today.
+  const screensAt = previewAt && previewAt.toDateString() !== new Date().toDateString() ? previewAt : null;
   // Saves go one after another, so an older list can't land after a newer.
   const saveChain = useRef(Promise.resolve());
 
@@ -248,28 +332,46 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
 
   const draft = placing?.kind === "area" ? placing.points : null;
 
+  // An event open, all the standing pins; none, the screens alone — or all
+  // of them again for the events on at a moment scrubbed to.
+  const standing = DEFAULT_PINS.filter(
+    (pin) => floorOf(pin) === floor && (event || previewEvents.length > 0 || screenByPin.has(pin.id)),
+  );
   const spots: MapSpot[] = [
-    ...DEFAULT_PINS.filter((pin) => floorOf(pin) === floor).map((pin) => ({
-      id: pin.id,
-      u: pin.u,
-      v: pin.v,
-      node: (
-        <LinkedPinCard
-          pin={pin}
-          // While editing, the standing pins are only names.
-          state={event && !editing ? checklist : previewChecklist}
-          open={openSpot === pin.id}
-          onToggle={() => setOpenSpot((s) => (s === pin.id ? null : pin.id))}
-          onShowCategory={showChecklistCategory}
-        />
-      ),
-    })),
+    ...standing.map((pin) => {
+      const screen = !event ? screenByPin.get(pin.id) : undefined;
+      return {
+        id: pin.id,
+        u: pin.u,
+        v: pin.v,
+        front: openSpot === pin.id,
+        node: screen ? (
+          <ScreenPin
+            title={pin.title}
+            screen={screen}
+            status={statusOf(screen.id)}
+            mediaById={mediaById}
+            at={screensAt}
+          />
+        ) : (
+          <LinkedPinCard
+            pin={pin}
+            // While editing, the standing pins are only names.
+            state={event && !editing ? checklist : previewChecklist}
+            open={openSpot === pin.id}
+            onOpenChange={(open) => setOpenSpot((s) => (open ? pin.id : s === pin.id ? null : s))}
+            onShowCategory={showChecklistCategory}
+          />
+        ),
+      };
+    }),
     ...floorPins.map((pin) => {
       const spotId = `pin:${pin.id}`;
       return {
         id: spotId,
         u: pin.u,
         v: pin.v,
+        front: openSpot === spotId,
         node: (
           <MapCard
             title={pin.title || "Pin"}
@@ -315,7 +417,8 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
             events={events}
             people={people}
             previewIds={previewEvents.map((e) => e.id)}
-            onPreview={setPreviewIds}
+            previewAt={previewAt}
+            onPreview={preview}
           />
         </div>
 
@@ -332,6 +435,14 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
             selectedArea={editing ? selectedArea : null}
             draft={draft}
           />
+
+          {previewAt && (
+            // The moment scrubbed to on the Events list's calendar, to the
+            // minute, set like the map's controls.
+            <div className="pointer-events-none absolute left-3 top-3 z-20 flex h-11 items-center rounded-[var(--radius-md)] border border-border glass-material px-3.5 text-[15px] font-semibold tabular-nums shadow-[var(--shadow-float)]">
+              {formatScrubMoment(previewAt)}
+            </div>
+          )}
 
           {/* Along the map's bottom, with an event open: "Bearbeiten" — and
               while editing, "+ Pin" and "+ Fläche" (or what a tap on the map
@@ -459,7 +570,7 @@ export function FormsView({ events, people }: { events: EventSummary[]; people: 
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPreviewIds([])}
+                  onClick={() => preview([])}
                   aria-label="Vorschau schließen"
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:text-foreground"
                 >

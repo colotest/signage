@@ -24,13 +24,16 @@ export function EventsPane({
   events,
   people,
   previewIds,
+  previewAt,
   onPreview,
 }: {
   events: EventSummary[];
   people: EventPerson[];
-  // The events the list's calendar is showing on the map (see ScheduleCalendar).
+  // The events the list's calendar is showing on the map, and the moment
+  // it's scrubbed to (see ScheduleCalendar).
   previewIds: string[];
-  onPreview: (ids: string[]) => void;
+  previewAt: Date | null;
+  onPreview: (ids: string[], at?: Date | null) => void;
 }) {
   const params = useSearchParams();
   const route: Route = {
@@ -66,6 +69,7 @@ export function EventsPane({
             setRoute({ eventId, view: null });
           }}
           previewIds={previewIds}
+          previewAt={previewAt}
           onPreview={onPreview}
         />
       ),

@@ -25,6 +25,12 @@ export function formatEventMoment(d: Date, hasTime = true) {
   return hasTime ? `${day}, ${pad(d.getHours())}:${pad(d.getMinutes())} ${WEEKDAYS[d.getDay()]}` : `${day} ${WEEKDAYS[d.getDay()]}`;
 }
 
+// "03/11/2026 Tu 18:00" — the moment scrubbed to on the Events list's
+// calendar, read out over the map.
+export function formatScrubMoment(d: Date) {
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${WEEKDAYS[d.getDay()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function formatEventDateTime(iso: string, hasTime = true) {
   return formatEventMoment(new Date(iso), hasTime);
 }

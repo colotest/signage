@@ -2,11 +2,21 @@
 
 import type { ReactNode } from "react";
 import {
+  AKKREDITIERUNG_KIND,
   AREAS_SECTION,
   BARRIEREFREI,
+  BRANDING,
+  CATERING_SECTION,
+  DRINKS_SECTION,
+  ENTRANCES,
+  GARDEROBE_KIND,
+  GASTRO_SECTION,
   NOT_STEP_FREE,
+  PARKING,
   ROOM_PINS,
   ROOM_REQUIREMENTS,
+  SECURITY,
+  WC_POSITIONS,
   WC_SERVICE,
   pinKey,
   sectionByKey,
@@ -17,49 +27,72 @@ import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
 import type { ChecklistState } from "./checklistState";
 import { MapCard } from "./VenueMap";
 
-// How the venue map's standing pins tie into the open event's Checkliste:
-// - A Kino: its title ticks the like-numbered Saal under "Welche Flächen
-//   sind interessant?" (the box beside it shows that same answer).
-// - A Wagenhalle hall: its title ticks the hall; both ticked is
-//   "Wagenhalle exklusiv", one alone "Wagenhalle nicht exklusiv" (worked
-//   out wherever a hall's ticked — see withConsequences, which also has
-//   Kino 2 and 3 bring Wagenhalle 'Kino' along).
-// - Either, opened: the room requirements, picked per room — the list's own
-//   option is ticked while any room has it.
-// - Gastro, opened: "Catering geplant", one to one; its title scrolls the
-//   Checkliste to "Catering und Getränke".
-// - Garderobe, Sicherheit: a switch for Ja / Nein on their question, and
-//   opened, a way back to no answer at all — and for the Garderobe, once
-//   it's on, its follow-up (Gestellt / Selbstständig).
-// - Parken: opened, which side to close off (one of the question's
-//   options).
-// - A WC: a switch that makes it the event's WC (under "WC Positionen";
-//   the other's goes off), and opened, "Service" for its cleaning during
-//   the event. The Wagenhalle's carries a red wheelchair while
-//   Barrierefrei is ticked: it isn't step-free.
+// How the venue map's standing pins tie into the open event's Checkliste.
+// Most have a switch beside their title; the title does the same as the
+// switch. Of those, the ones with more to pick open as they're switched on
+// — showing no arrow, as title and switch open them — and pressed again
+// while open, switch off and close (a tap on the map closes one and leaves
+// it on; pressed then, it opens again):
+// - A Kino: on ticks its Saal under "Welche Flächen sind interessant?";
+//   open, the room requirements, picked per room — the list's own option
+//   is ticked while any room has it, and names the rooms that do.
+// - Garderobe, Akkreditierung: on while their -art has an answer — Service
+//   to begin with; open, Service, Selbst or TBD.
+// - A WC: on makes it one of the event's WC positions; open, Service or
+//   Selbst for cleaning during the event — one answer for every WC ("WC
+//   Service / Reinigung", Ja or Nein). The Halle/Hof's carries a red
+//   wheelchair while Barrierefrei is ticked: it isn't step-free.
+// - Banner Outdoor: on hangs one up top ("Banner Outdoor Oben"); open, Oben
+//   and Unten, either or both.
+// - Küche, Main Bar: on ticks it under "Gastroflächen"; open, the Küche
+//   what's planned for catering, the Main Bar the drinks. Anything done
+//   with either scrolls the Checkliste to "Catering und Getränke".
+// And with a switch alone: Sicherheit (Ja or Nein on "Security / Ordner"),
+// both Parkv. (their side's closure), both Eingänge (which the list keeps
+// one of open — see withConsequences), Barrierefreiheit, Banner Indoor and
+// Projektion Indoor. Technik's title scrolls the Checkliste to its section.
 type PinLink =
   | { kind: "saal"; field: string }
-  | { kind: "wagenhalle" }
-  | { kind: "options"; section: string; category: string }
-  | { kind: "switch"; section: string; followUp?: string }
-  | { kind: "pick"; section: string }
-  | { kind: "wc"; field: string };
+  | { kind: "check"; field: string }
+  | { kind: "yesno"; section: string }
+  | { kind: "art"; section: string }
+  | { kind: "wc"; field: string }
+  | { kind: "outdoor"; fields: [string, string] }
+  | { kind: "gastro"; field: string; section: string; leaveOut?: string[] }
+  | { kind: "scroll"; category: string };
 
-const AREAS = AREAS_SECTION;
+const CATERING_CATEGORY = "catering-und-getraenke";
 
 const PIN_LINKS: Record<string, PinLink> = {
-  "kino-2": { kind: "saal", field: `${AREAS}/saal-2` },
-  "kino-3": { kind: "saal", field: `${AREAS}/saal-3` },
-  "kino-4": { kind: "saal", field: `${AREAS}/saal-4` },
-  "kino-5": { kind: "saal", field: `${AREAS}/saal-5` },
-  "wagenhalle-kino": { kind: "wagenhalle" },
-  "wagenhalle-event": { kind: "wagenhalle" },
-  gastro: { kind: "options", section: "catering-geplant", category: "catering-und-getraenke" },
-  garderobe: { kind: "switch", section: "garderobe-benoetigt", followUp: "garderobe" },
-  parken: { kind: "pick", section: "parkplatzsperrung-ladezone-benoetigt" },
-  "wc-unten": { kind: "wc", field: "wc-positionen/wc-unten" },
-  "wc-wagenhalle": { kind: "wc", field: "wc-positionen/wc-wagenhalle" },
-  sicherheit: { kind: "switch", section: "security-ordner-benoetigt" },
+  ...Object.fromEntries(
+    Array.from({ length: 10 }, (_, i) => [`kino-${i + 1}`, { kind: "saal", field: `${AREAS_SECTION}/saal-${i + 1}` }]),
+  ),
+  "banner-indoor": { kind: "check", field: `${BRANDING}/banner-indoor` },
+  "projektion-indoor": { kind: "check", field: `${BRANDING}/projektion-indoor` },
+  "banner-outdoor": {
+    kind: "outdoor",
+    fields: [`${BRANDING}/banner-outdoor-oben`, `${BRANDING}/banner-outdoor-unten`],
+  },
+  sicherheit: { kind: "yesno", section: SECURITY },
+  "parken-kino": { kind: "check", field: `${PARKING}/seite-kino` },
+  "parken-bioco": { kind: "check", field: `${PARKING}/seite-biocompany` },
+  "eingang-gleimstr": { kind: "check", field: ENTRANCES[0] },
+  "eingang-schoenhauser": { kind: "check", field: ENTRANCES[1] },
+  barrierefreiheit: { kind: "check", field: BARRIEREFREI },
+  garderobe: { kind: "art", section: GARDEROBE_KIND },
+  akkreditierung: { kind: "art", section: AKKREDITIERUNG_KIND },
+  "wc-halle-kino": { kind: "wc", field: `${WC_POSITIONS}/wc-halle-kino` },
+  "wc-halle-hof": { kind: "wc", field: `${WC_POSITIONS}/wc-halle-hof` },
+  "wc-kino": { kind: "wc", field: `${WC_POSITIONS}/wc-kino` },
+  "wc-oben": { kind: "wc", field: `${WC_POSITIONS}/wc-oben` },
+  kueche: {
+    kind: "gastro",
+    field: `${GASTRO_SECTION}/kueche`,
+    section: CATERING_SECTION,
+    leaveOut: ["Noch unklar", "Kein Catering geplant"],
+  },
+  "main-bar": { kind: "gastro", field: `${GASTRO_SECTION}/mainbar`, section: DRINKS_SECTION },
+  technik: { kind: "scroll", category: "technik" },
 };
 
 // Shorter names for a room's own requirements than the list's plurals.
@@ -68,185 +101,225 @@ const ROOM_LABELS: Record<string, string> = {
   "Breakout Räume": "Breakoutraum",
 };
 
+type Patch = Record<string, true | null>;
+
 // A standing pin's card, tied to the Checkliste as above — or, for a pin
 // with no ties (or no event open to tie into), just its name.
 export function LinkedPinCard({
   pin,
   state,
   open,
-  onToggle,
+  onOpenChange,
   onShowCategory,
 }: {
   pin: { id: string; title: string };
   // The open event's answers; none open, the pins are only names.
   state: ChecklistState | null;
   open: boolean;
-  onToggle: () => void;
+  onOpenChange: (open: boolean) => void;
   onShowCategory: (categoryKey: string) => void;
 }) {
   const link = PIN_LINKS[pin.id];
-  if (!state || !link) return <MapCard title={pin.title} open={false} onToggle={onToggle} />;
-  const { answer, save } = state;
+  const plain = <MapCard title={pin.title} open={false} onToggle={() => onOpenChange(false)} />;
+  if (!state || !link) return plain;
+  const { answer } = state;
   const ticked = (key: string) => answer(key) === true;
+  // Anything done with a Küche or Main Bar pin brings the list along.
+  const save = (patch: Patch) => {
+    state.save(patch);
+    if (link.kind === "gastro") onShowCategory(CATERING_CATEGORY);
+  };
 
-  if (link.kind === "saal" || link.kind === "wagenhalle") {
-    const selectedKey = link.kind === "saal" ? link.field : pinKey(pin.id, "selected");
-    const toggleSelected = () => save({ [selectedKey]: ticked(selectedKey) ? null : true });
-    const requirements = sectionByKey(ROOM_REQUIREMENTS)?.fields ?? [];
+  if (link.kind === "scroll") {
+    return (
+      <MapCard title={pin.title} open={false} onToggle={() => {}} onTitlePress={() => onShowCategory(link.category)} />
+    );
+  }
+
+  // A pin with nothing more to pick: its switch, and its title the same.
+  const switchCard = (on: boolean | null, toggle: () => void) => (
+    <MapCard
+      title={pin.title}
+      open={false}
+      onToggle={toggle}
+      onTitlePress={toggle}
+      control={<Switch label={pin.title} value={on} onPress={toggle} />}
+    />
+  );
+
+  if (link.kind === "check") {
+    const on = ticked(link.field);
+    return switchCard(on, () => save({ [link.field]: on ? null : true }));
+  }
+
+  if (link.kind === "yesno") {
+    // Ja on, Nein off — and neither (or "Noch unklar") shown as off, but
+    // faded, until it's been said.
+    const section = sectionByKey(link.section);
+    if (!section) return plain;
+    const yes = section.fields.find((f) => f.label === "Ja")!.key;
+    const no = section.fields.find((f) => f.label === "Nein")!.key;
+    const value = ticked(yes) ? true : ticked(no) ? false : null;
+    return switchCard(value, () => save({ [value ? no : yes]: true }));
+  }
+
+  // The rest open as they're switched on. press: off → on and open; on but
+  // closed → open; open → off and closed.
+  const expandable = (
+    on: boolean,
+    turnOn: Patch,
+    turnOff: Patch,
+    content: ReactNode,
+    extra?: { adornment?: ReactNode },
+  ) => {
+    const press = () => {
+      if (!on) {
+        save(turnOn);
+        onOpenChange(true);
+      } else if (!open) {
+        onOpenChange(true);
+      } else {
+        save(turnOff);
+        onOpenChange(false);
+      }
+    };
     return (
       <MapCard
         title={pin.title}
         open={open}
-        onToggle={onToggle}
-        onTitlePress={toggleSelected}
-        adornment={<TickBox checked={ticked(selectedKey)} />}
+        onToggle={press}
+        onTitlePress={press}
+        arrow={false}
+        adornment={extra?.adornment}
+        control={<Switch label={pin.title} value={on} onPress={press} />}
       >
-        <OptionList
-          options={requirements.map((field) => ({
-            key: pinKey(pin.id, field.key),
-            label: ROOM_LABELS[field.label] ?? field.label,
-            checked: ticked(pinKey(pin.id, field.key)),
-            onToggle: () => {
-              const on = !ticked(pinKey(pin.id, field.key));
-              const elsewhere = ROOM_PINS.some((id) => id !== pin.id && ticked(pinKey(id, field.key)));
-              save({ [pinKey(pin.id, field.key)]: on || null, [field.key]: on || elsewhere || null });
-            },
-          }))}
-        />
+        {content}
       </MapCard>
+    );
+  };
+
+  if (link.kind === "saal") {
+    const requirements = sectionByKey(ROOM_REQUIREMENTS)?.fields ?? [];
+    // The list's own option stays ticked while another room has it.
+    const elsewhere = (fieldKey: string) => ROOM_PINS.some((id) => id !== pin.id && ticked(pinKey(id, fieldKey)));
+    const off: Patch = { [link.field]: null };
+    for (const field of requirements) {
+      if (!ticked(pinKey(pin.id, field.key))) continue;
+      off[pinKey(pin.id, field.key)] = null;
+      off[field.key] = elsewhere(field.key) || null;
+    }
+    return expandable(
+      ticked(link.field),
+      { [link.field]: true },
+      off,
+      <OptionList
+        options={requirements.map((field) => {
+          const key = pinKey(pin.id, field.key);
+          return {
+            key,
+            label: ROOM_LABELS[field.label] ?? field.label,
+            checked: ticked(key),
+            onToggle: () => {
+              const on = !ticked(key);
+              save({ [key]: on || null, [field.key]: on || elsewhere(field.key) || null });
+            },
+          };
+        })}
+      />,
+    );
+  }
+
+  if (link.kind === "art") {
+    const section = sectionByKey(link.section);
+    if (!section) return plain;
+    const fields = section.fields;
+    return expandable(
+      fields.some((f) => ticked(f.key)),
+      { [fields[0].key]: true },
+      Object.fromEntries(fields.map((f) => [f.key, null])),
+      <OptionList
+        round
+        options={fields.map((field) => ({
+          key: field.key,
+          label: field.label,
+          checked: ticked(field.key),
+          // One answer, and always one while it's on: picking the one
+          // picked already leaves it.
+          onToggle: () => !ticked(field.key) && save({ [field.key]: true }),
+        }))}
+      />,
     );
   }
 
   if (link.kind === "wc") {
-    const service = sectionByKey(WC_SERVICE)?.fields.find((f) => f.label === "Ja");
+    const service = sectionByKey(WC_SERVICE)?.fields ?? [];
+    const yes = service.find((f) => f.label === "Ja")?.key;
+    const no = service.find((f) => f.label === "Nein")?.key;
     const flagged = ticked(BARRIEREFREI) && NOT_STEP_FREE.has(link.field);
-    return (
-      <MapCard
-        title={pin.title}
-        open={open}
-        onToggle={onToggle}
-        adornment={
-          flagged ? (
-            <span title="Nicht barrierefrei" className="text-danger">
-              <WheelchairIcon className="h-[18px] w-[18px]" />
-            </span>
-          ) : undefined
-        }
-        control={
-          <Switch
-            label={`${pin.title} als WC-Position`}
-            value={ticked(link.field) ? true : null}
-            onChange={(on) => save({ [link.field]: on || null })}
-          />
-        }
-      >
-        {service && (
-          <OptionList
-            options={[
-              {
-                key: service.key,
-                label: "Service",
-                checked: ticked(service.key),
-                onToggle: () => save({ [service.key]: ticked(service.key) ? null : true }),
-              },
-            ]}
-          />
-        )}
-      </MapCard>
-    );
-  }
-
-  const section = sectionByKey(link.section);
-  if (!section) return <MapCard title={pin.title} open={false} onToggle={onToggle} />;
-
-  if (link.kind === "pick") {
-    return (
-      <MapCard title={pin.title} open={open} onToggle={onToggle}>
+    return expandable(
+      ticked(link.field),
+      { [link.field]: true },
+      { [link.field]: null },
+      yes && no ? (
         <OptionList
           round
-          options={section.fields.map((field) => ({
-            key: field.key,
-            label: field.label,
-            checked: ticked(field.key),
-            onToggle: () => save({ [field.key]: ticked(field.key) ? null : true }),
+          options={[
+            { key: yes, label: "Service" },
+            { key: no, label: "Selbst" },
+          ].map((option) => ({
+            ...option,
+            checked: ticked(option.key),
+            onToggle: () => save({ [option.key]: ticked(option.key) ? null : true }),
           }))}
         />
-      </MapCard>
+      ) : null,
+      {
+        adornment: flagged ? (
+          <span title="Nicht barrierefrei" className="text-danger">
+            <WheelchairIcon className="h-[18px] w-[18px]" />
+          </span>
+        ) : undefined,
+      },
     );
   }
 
-  if (link.kind === "options") {
-    return (
-      <MapCard title={pin.title} open={open} onToggle={onToggle} onTitlePress={() => onShowCategory(link.category)}>
-        <OptionList
-          options={section.fields.map((field) => ({
-            key: field.key,
-            label: field.label,
-            checked: ticked(field.key),
-            onToggle: () => save({ [field.key]: ticked(field.key) ? null : true }),
-          }))}
-        />
-      </MapCard>
-    );
-  }
-
-  // A switch: Ja on, Nein off — and neither (or "Noch unklar") shown as off,
-  // but faded, until it's been said.
-  const yes = section.fields.find((f) => f.label === "Ja")!.key;
-  const no = section.fields.find((f) => f.label === "Nein")!.key;
-  const value = ticked(yes) ? true : ticked(no) ? false : null;
-  return (
-    <MapCard
-      title={pin.title}
-      open={open}
-      onToggle={onToggle}
-      control={
-        <Switch
-          label={section.title}
-          value={value}
-          onChange={(on) => save({ [on ? yes : no]: true })}
-        />
-      }
-    >
-      {link.followUp && value === true && (
-        <FollowUp section={link.followUp} ticked={ticked} save={save} />
-      )}
-      <button
-        type="button"
-        onClick={() => save(Object.fromEntries(section.fields.map((f) => [f.key, null])))}
-        disabled={section.fields.every((f) => !ticked(f.key))}
-        className="w-full rounded-full bg-[var(--control-fill)] px-3 py-1.5 text-[14px] font-medium hover:bg-[var(--control-fill-hover)] disabled:opacity-40"
-      >
-        Zurücksetzen
-      </button>
-    </MapCard>
-  );
-}
-
-// A question's follow-up, picked inside its pin's card (one answer).
-function FollowUp({
-  section: key,
-  ticked,
-  save,
-}: {
-  section: string;
-  ticked: (key: string) => boolean;
-  save: ChecklistState["save"];
-}) {
-  const section = sectionByKey(key);
-  if (!section) return null;
-  return (
-    <div className="mb-2">
+  if (link.kind === "outdoor") {
+    const [top, bottom] = link.fields;
+    return expandable(
+      ticked(top) || ticked(bottom),
+      { [top]: true },
+      { [top]: null, [bottom]: null },
       <OptionList
-        round
-        options={section.fields.map((field) => ({
+        options={[
+          { key: top, label: "Oben" },
+          { key: bottom, label: "Unten" },
+        ].map((option) => ({
+          ...option,
+          checked: ticked(option.key),
+          onToggle: () => save({ [option.key]: ticked(option.key) ? null : true }),
+        }))}
+      />,
+    );
+  }
+
+  // Küche, Main Bar.
+  const section = sectionByKey(link.section);
+  if (!section) return plain;
+  return expandable(
+    ticked(link.field),
+    { [link.field]: true },
+    { [link.field]: null },
+    <OptionList
+      round={section.single}
+      options={section.fields
+        .filter((field) => !link.leaveOut?.includes(field.label))
+        .map((field) => ({
           key: field.key,
           label: field.label,
           checked: ticked(field.key),
           onToggle: () => save({ [field.key]: ticked(field.key) ? null : true }),
         }))}
-      />
-    </div>
+    />,
   );
 }
 
@@ -295,7 +368,7 @@ function OptionList({
 }
 
 // An iOS-style switch. value null: not answered yet — shown off, faded.
-function Switch({ label, value, onChange }: { label: string; value: boolean | null; onChange: (on: boolean) => void }) {
+function Switch({ label, value, onPress }: { label: string; value: boolean | null; onPress: () => void }) {
   const on = value === true;
   return (
     <button
@@ -303,7 +376,7 @@ function Switch({ label, value, onChange }: { label: string; value: boolean | nu
       role="switch"
       aria-checked={value === null ? "mixed" : on}
       aria-label={label}
-      onClick={() => onChange(!on)}
+      onClick={onPress}
       className={cn(
         "no-press relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200",
         on ? "bg-[#34c759]" : "bg-black/15 dark:bg-white/20",
