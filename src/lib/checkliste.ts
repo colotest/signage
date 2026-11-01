@@ -36,6 +36,14 @@ Wagenhalle exklusiv
 Wagenhalle nicht exklusiv
 Galerie
 
+#Besondere Anforderungen an Räume
+Backstage für Speaker
+VIP Bereich
+Pressebereich
+Workshopräume
+Breakout Räume
+Catering-/Lagerfläche
+
 #Mobiliarbedarf
 Kein Mobiliar benötigt
 Grundausstattung ausreichend
@@ -48,14 +56,6 @@ Bankett / Dinner
 Stehempfang
 Club / Party Setup
 Noch unklar
-
-#Besondere Anforderungen an Räume
-Backstage für Speaker
-VIP Bereich
-Pressebereich
-Workshopräume
-Breakout Räume
-Catering-/Lagerfläche
 
 #Branding
 Banner Indoor
@@ -93,6 +93,7 @@ _Sonstiges:
 #Gastroflächen
 Küche
 Mainbar
+Galerie Bar
 
 #Catering geplant
 Colosseum Catering

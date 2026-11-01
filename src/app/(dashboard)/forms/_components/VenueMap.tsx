@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Spinner } from "@/components/ui/Spinner";
 import type { AreaPoint, MapArea } from "@/lib/eventAreas";
 import { cn } from "@/lib/utils/cn";
@@ -1253,8 +1253,12 @@ function MapButton({ label, onClick, children }: { label: string; onClick: () =>
 // false leaves the arrow out where the title and its control open the
 // card themselves (see PinMenus).
 //
-// Opening, the card grows upwards from its stem, its details rising into
-// view from the bottom; closing, they sink back the same way.
+// Closed, the card is as wide as its title. Opening, it widens to
+// OPEN_CARD_WIDTH and grows upwards from its stem, its details rising into
+// view from the bottom; closing, they sink back and it narrows to fit the
+// title again.
+const OPEN_CARD_WIDTH = 256;
+
 export function MapCard({
   title,
   summary,
@@ -1278,11 +1282,27 @@ export function MapCard({
   children?: ReactNode;
 }) {
   const openable = children != null && children !== false;
-  // Wide while open, and until it's finished closing: narrowing at once
-  // would squeeze the details as they sink away.
+  // Rounded as a card while open, and until it's finished closing.
   const [wide, setWide] = useState(open);
   if (open && !wide) setWide(true);
   if (!open && !openable && wide) setWide(false);
+  // The width is set in pixels for the change to animate (there's no
+  // easing to or from "as wide as the title"): from where it is to the
+  // open width, or back to the title's own — handed back to the title
+  // once it's there.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const shownOpen = useRef(open);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box || shownOpen.current === open) return;
+    shownOpen.current = open;
+    const from = box.offsetWidth;
+    box.style.width = "";
+    const to = open ? Math.max(OPEN_CARD_WIDTH, box.offsetWidth) : box.offsetWidth;
+    box.style.width = `${from}px`;
+    void box.offsetWidth; // lands the start width before the change
+    box.style.width = `${to}px`;
+  }, [open]);
   const titleAction = onTitlePress ?? (openable ? onToggle : undefined);
   const titleContent = (
     <>
@@ -1299,9 +1319,13 @@ export function MapCard({
       />
       <div className="absolute bottom-[7px] left-0 -translate-x-1/2">
         <div
+          ref={boxRef}
+          onTransitionEnd={(e) => {
+            if (e.target === e.currentTarget && e.propertyName === "width" && !open) e.currentTarget.style.width = "";
+          }}
           className={cn(
-            "overflow-hidden border border-border glass-material shadow-[var(--shadow-float)] transition-[border-radius] duration-300",
-            open || wide ? "w-64 rounded-[var(--radius-lg)]" : "w-max rounded-full",
+            "w-max overflow-hidden border border-border glass-material shadow-[var(--shadow-float)] transition-[border-radius,width] duration-300 ease-out",
+            open || wide ? "rounded-[var(--radius-lg)]" : "rounded-full",
           )}
         >
           <div className={cn("flex items-center gap-2", open ? "px-4 pb-2 pt-3" : "px-3.5 py-2")}>
@@ -1353,7 +1377,9 @@ export function MapCard({
                 open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
               )}
             >
-              <div className="flex min-h-0 flex-col justify-end overflow-hidden">
+              {/* w-0 min-w-full: as wide as the card, without making it
+                  any wider than its title. */}
+              <div className="flex min-h-0 w-0 min-w-full flex-col justify-end overflow-hidden">
                 <div className="shrink-0 px-4 pb-4">{children}</div>
               </div>
             </div>

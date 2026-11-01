@@ -28,11 +28,11 @@ import type { ChecklistState } from "./checklistState";
 import { MapCard } from "./VenueMap";
 
 // How the venue map's standing pins tie into the open event's Checkliste.
-// Most have a switch beside their title; the title does the same as the
-// switch. Of those, the ones with more to pick open as they're switched on
-// — showing no arrow, as title and switch open them — and pressed again
-// while open, switch off and close (a tap on the map closes one and leaves
-// it on; pressed then, it opens again):
+// Most have a switch beside their title; while one's off, the title does
+// the same as the switch. Of those, the ones with more to pick open as
+// they're switched on, showing no arrow: once on, the title opens and
+// closes them (as does a tap on the map, to close), and only the switch
+// turns them off again:
 // - A Kino: on ticks its Saal under "Welche Flächen sind interessant?";
 //   open, the room requirements, picked per room — the list's own option
 //   is ticked while any room has it, and names the rooms that do.
@@ -49,8 +49,9 @@ import { MapCard } from "./VenueMap";
 //   with either scrolls the Checkliste to "Catering und Getränke".
 // And with a switch alone: Sicherheit (Ja or Nein on "Security / Ordner"),
 // both Parkv. (their side's closure), both Eingänge (which the list keeps
-// one of open — see withConsequences), Barrierefreiheit, Banner Indoor and
-// Projektion Indoor. Technik's title scrolls the Checkliste to its section.
+// one of open — see withConsequences), Barrierefreiheit, Banner Indoor,
+// Projektion Indoor, the Galerie Bar (under "Gastroflächen") and the
+// Galerie Fläche (the Galerie under "Welche Flächen sind interessant?"). Technik's title scrolls the Checkliste to its section.
 type PinLink =
   | { kind: "saal"; field: string }
   | { kind: "check"; field: string }
@@ -92,6 +93,8 @@ const PIN_LINKS: Record<string, PinLink> = {
     leaveOut: ["Noch unklar", "Kein Catering geplant"],
   },
   "main-bar": { kind: "gastro", field: `${GASTRO_SECTION}/mainbar`, section: DRINKS_SECTION },
+  "galerie-bar": { kind: "check", field: `${GASTRO_SECTION}/galerie-bar` },
+  "galerie-flaeche": { kind: "check", field: `${AREAS_SECTION}/galerie` },
   technik: { kind: "scroll", category: "technik" },
 };
 
@@ -163,8 +166,9 @@ export function LinkedPinCard({
     return switchCard(value, () => save({ [value ? no : yes]: true }));
   }
 
-  // The rest open as they're switched on. press: off → on and open; on but
-  // closed → open; open → off and closed.
+  // The rest open as they're switched on. Off, title and switch turn one on
+  // and open it; on, the title opens or closes it, and the switch turns it
+  // off (and closes it).
   const expandable = (
     on: boolean,
     turnOn: Patch,
@@ -172,26 +176,25 @@ export function LinkedPinCard({
     content: ReactNode,
     extra?: { adornment?: ReactNode },
   ) => {
-    const press = () => {
-      if (!on) {
-        save(turnOn);
-        onOpenChange(true);
-      } else if (!open) {
-        onOpenChange(true);
-      } else {
-        save(turnOff);
-        onOpenChange(false);
-      }
+    const switchOn = () => {
+      save(turnOn);
+      onOpenChange(true);
+    };
+    const pressTitle = () => (on ? onOpenChange(!open) : switchOn());
+    const pressSwitch = () => {
+      if (!on) return switchOn();
+      save(turnOff);
+      onOpenChange(false);
     };
     return (
       <MapCard
         title={pin.title}
         open={open}
-        onToggle={press}
-        onTitlePress={press}
+        onToggle={pressTitle}
+        onTitlePress={pressTitle}
         arrow={false}
         adornment={extra?.adornment}
-        control={<Switch label={pin.title} value={on} onPress={press} />}
+        control={<Switch label={pin.title} value={on} onPress={pressSwitch} />}
       >
         {content}
       </MapCard>
