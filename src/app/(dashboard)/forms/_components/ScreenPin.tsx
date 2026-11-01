@@ -10,10 +10,11 @@ import type { MediaItem, PlaylistItemWithMedia } from "@/types/domain";
 const FRAME_HEIGHT = 54;
 const BEZEL = 3;
 
-// A "Screen" pin on the map: its title, and over it a little version of the
-// dashboard's monitor for that screen — upright or turned as the screen
-// hangs, live (as on the dashboard) or, given a moment on another day, what
-// it'll be showing then (see screenMediaAt).
+// A "Screen" pin on the map: a little version of the dashboard's monitor
+// for that screen — upright or turned as the screen hangs, live (as on the
+// dashboard) or, given a moment on another day, what it'll be showing then
+// (see screenMediaAt). The picture says which screen it is, so its title
+// is only named for screen readers and on hover.
 export function ScreenPin({
   title,
   screen,
@@ -42,7 +43,12 @@ export function ScreenPin({
         className="absolute left-0 top-0 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_0_3px_var(--surface),0_2px_6px_var(--shadow-ambient-strong)]"
       />
       <div className="absolute bottom-[7px] left-0 -translate-x-1/2">
-        <div className="flex w-max flex-col items-center gap-1 rounded-[var(--radius-md)] border border-border glass-material px-2 pb-1.5 pt-2 shadow-[var(--shadow-float)]">
+        <div
+          role="img"
+          aria-label={title}
+          title={title}
+          className="w-max rounded-[var(--radius-md)] border border-border glass-material p-1.5 shadow-[var(--shadow-float)]"
+        >
           <div
             className="overflow-hidden rounded-[3px]"
             style={{ width: width + BEZEL * 2, height: FRAME_HEIGHT, border: `${BEZEL}px solid #2e2e2e` }}
@@ -58,7 +64,6 @@ export function ScreenPin({
               height={height}
             />
           </div>
-          <span className="text-[13px] font-semibold leading-5">{title}</span>
         </div>
         <span aria-hidden className="mx-auto block h-2 w-px bg-muted/60" />
       </div>

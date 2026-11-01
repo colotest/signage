@@ -96,6 +96,7 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: F
   { id: "screen-4", title: "Screen 4", u: 0.2074, v: 0.3682 },
   { id: "screen-3", title: "Screen 3", u: 0.2547, v: 0.3935 },
   { id: "screen-2", title: "Screen 2", u: 0.295, v: 0.4066 },
+  { id: "screen-5", title: "Screen 5", u: 0.1656, v: 0.3503 },
   { id: "screen-mainbar", title: "Screen Mainbar", u: 0.1565, v: 0.5265 },
   { id: "dj-position-treppe", title: "DJ Position Treppe", u: 0.4134, v: 0.5125 },
   { id: "sicherheit", title: "Sicherheit", u: 0.4418, v: 0.8025 },
@@ -105,13 +106,14 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: F
   { id: "barrierefreiheit", title: "Barrierefreiheit", u: 0.4652, v: 0.8454 },
   { id: "parken-kino", title: "Parkv. Kino", u: 0.6388, v: 0.9521 },
   { id: "parken-bioco", title: "Parkv. BioCo", u: 0.3724, v: 0.9559 },
+  { id: "haustechnik-k1", title: "Haustechnik K1", u: 0.5759, v: 0.8443 },
 ];
 
 // The screen pins, by the dashboard's name for their screen: shown on the
 // Events list's map too, each with a little preview of its screen (see
 // ScreenPin).
 const SCREEN_PINS: Record<string, string> = {
-  ...Object.fromEntries([2, 3, 4, 6, 7, 8, 9, 10].map((n) => [`screen-${n}`, `Kino ${n}`])),
+  ...Object.fromEntries([2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => [`screen-${n}`, `Kino ${n}`])),
   "screen-mainbar": "Mainbar",
 };
 
