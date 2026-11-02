@@ -29,6 +29,7 @@ export const EVENT_VIEWS = [
   { key: "mobiliar", label: "Mobiliar", group: "setup" },
   { key: "screens", label: "Screens", group: "setup" },
   { key: "uebergabeprotokoll", label: "Übergabeprotokoll", group: "ablauf" },
+  { key: "schluesseluebergabe", label: "Schlüsselübergabe", group: "ablauf" },
 ] as const;
 export type EventViewKey = (typeof EVENT_VIEWS)[number]["key"];
 
