@@ -5,6 +5,7 @@ import type { EventRecord } from "@/types/domain";
 import { parseAreas, type MapArea } from "@/lib/eventAreas";
 import { parsePins, type MapPin } from "@/lib/eventPins";
 import { parseChecklist, type ChecklistAnswers } from "@/lib/checkliste";
+import { parseEmails } from "@/lib/eventEmails";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -48,6 +49,9 @@ export type EventSummary = {
   mapPins: MapPin[];
   // Its highlighted areas on the venue map (0043).
   mapAreas: MapArea[];
+  // Addresses its Checkliste can be emailed to besides Events Management
+  // and its contact (0044).
+  checklistEmails: string[];
   // Its Checkliste as filled in so far (0039).
   checklist: ChecklistAnswers;
 };
@@ -145,6 +149,8 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     mapPins: parsePins(e.map_pins),
     // Likewise none before 0043.
     mapAreas: parseAreas(e.map_areas),
+    // Likewise none before 0044.
+    checklistEmails: parseEmails(e.checklist_emails),
     // Likewise empty before 0039.
     checklist: parseChecklist(e.checklist),
   }));

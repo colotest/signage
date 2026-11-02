@@ -447,6 +447,7 @@ export type Database = {
           ends_time_set: boolean;
           map_pins: Json;
           map_areas: Json;
+          checklist_emails: Json;
           checklist: Json;
         };
         Insert: {
@@ -469,6 +470,7 @@ export type Database = {
           ends_time_set?: boolean;
           map_pins?: Json;
           map_areas?: Json;
+          checklist_emails?: Json;
           checklist?: Json;
         };
         Update: {
@@ -491,6 +493,7 @@ export type Database = {
           ends_time_set?: boolean;
           map_pins?: Json;
           map_areas?: Json;
+          checklist_emails?: Json;
           checklist?: Json;
         };
         Relationships: [];

@@ -5,6 +5,7 @@ import { quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
 import { EVENT_TYPES } from "@/lib/eventTypes";
 import { fetchLeadCandidates } from "@/lib/events";
+import { isEmail, MAX_CHECKLIST_EMAILS, parseEmails } from "@/lib/eventEmails";
 import { parseAreas, type MapArea } from "@/lib/eventAreas";
 import { parsePins, type MapPin } from "@/lib/eventPins";
 import { cleanAnswer, exclusiveWith, parseChecklist } from "@/lib/checkliste";
@@ -222,31 +223,76 @@ export async function updateChecklist(id: string, patch: Record<string, true | s
   }
 }
 
+// Adds an address the event's Checkliste can be emailed to (its share
+// button's "+ New"). Resolves to an error message to show, or null once
+// saved.
+export async function addChecklistEmail(id: string, email: string): Promise<string | null> {
+  try {
+    const user = await requirePage("forms");
+    const address = email.trim();
+    if (!isEmail(address)) throw new Error("That doesn't look like an email address.");
+    const admin = createAdminClient();
+    const { data: event, error } = await admin.from("events").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!event) throw new Error("That event no longer exists.");
+    const emails = parseEmails(event.checklist_emails);
+    if (emails.some((e) => e.toLowerCase() === address.toLowerCase())) return null;
+    if (emails.length >= MAX_CHECKLIST_EMAILS) throw new Error("That's as many addresses as an event can keep.");
+    const { error: saveError } = await admin
+      .from("events")
+      .update({ checklist_emails: [...emails, address] })
+      .eq("id", id);
+    if (saveError) throw new Error(saveError.message);
+    recordActivity(user, {
+      action: "event.edit",
+      target: `event:${id}`,
+      summary: `Added ${quote(address)} to the Checkliste's recipients of ${quote(event.title?.trim() || "an untitled event")}`,
+    });
+    revalidatePath("/forms");
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : "Couldn't add the address";
+  }
+}
+
 // The Checkliste's share button: emails it, as filled in on the sender's
 // screen (unsaved changes and all), to people picked from Events
-// Management. Only to them — the addresses are looked up here rather than
-// taken from the browser, so this can't mail anyone else. `when` is the
-// event's dates as the sender's page shows them, in the venue's own time
-// (a server would only have UTC). Replies go to the sender. Resolves to an
-// error message to show, or null once sent.
+// Management, the event's contact, and addresses kept for the event (see
+// addChecklistEmail). Only to them — Events Management's addresses are
+// looked up here, and any other is checked against the event's own, so
+// this can't mail anyone else. `when` is the event's dates as the sender's
+// page shows them, in the venue's own time (a server would only have UTC).
+// Replies go to the sender. Resolves to an error message to show, or null
+// once sent.
 export async function emailChecklist(
   id: string,
   recipientIds: string[],
+  emails: string[],
   answers: Record<string, true | string>,
   when: string | null,
 ): Promise<string | null> {
   try {
     const user = await requirePage("forms");
     const admin = createAdminClient();
-    const { data: event, error } = await admin.from("events").select("title").eq("id", id).maybeSingle();
+    const { data: event, error } = await admin.from("events").select("*").eq("id", id).maybeSingle();
     if (error) throw new Error(error.message);
     if (!event) throw new Error("That event no longer exists.");
 
     const wanted = new Set(recipientIds);
-    const to = (await fetchLeadCandidates(admin, user))
+    const team = (await fetchLeadCandidates(admin, user))
       .filter((p) => p.management && wanted.has(p.id))
       .map((p) => p.email);
-    if (to.length === 0) throw new Error("Pick someone from Events Management to send it to.");
+    const known = new Map(
+      [event.contact_email?.trim() ?? "", ...parseEmails(event.checklist_emails)]
+        .filter(isEmail)
+        .map((e) => [e.toLowerCase(), e]),
+    );
+    const others = emails.flatMap((e) => {
+      const found = known.get(e.trim().toLowerCase());
+      return found ? [found] : [];
+    });
+    const to = [...new Map([...team, ...others].map((e) => [e.toLowerCase(), e])).values()];
+    if (to.length === 0) throw new Error("Pick someone to send it to.");
 
     const clean = parseChecklist(answers);
     const title = event.title?.trim() || "Untitled Event";
