@@ -8,6 +8,7 @@ import { areaContains, MAX_AREA_POINTS, MAX_AREAS, type AreaPoint, type MapArea 
 import { linkedAreas } from "@/lib/venueAreas";
 import { MAX_PIN_TITLE, MAX_PINS, type MapPin } from "@/lib/eventPins";
 import { floorOf, FLOORS, type Floor } from "@/lib/venueFloors";
+import { hallSplitCase } from "@/lib/checkliste";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { useScreenStatuses } from "@/lib/realtime/useScreenStatuses";
 import type { VenueScreens } from "@/lib/venueScreens";
@@ -386,7 +387,9 @@ export function FormsView({
     (pin) =>
       floorOf(pin) === floor &&
       (event || previewEvents.length > 0 || screenByPin.has(pin.id)) &&
-      (inChecklist || editing || !answersOnShow || pinIsOn(pin.id, answersOnShow) !== false),
+      (inChecklist || editing || !answersOnShow || pinIsOn(pin.id, answersOnShow) !== false) &&
+      // Halle Geteilt, only while the hall could be shared.
+      (pin.id !== "halle-geteilt" || editing || (!!answersOnShow && hallSplitCase(answersOnShow) !== null)),
   );
   const spots: MapSpot[] = [
     ...standing.map((pin) => {

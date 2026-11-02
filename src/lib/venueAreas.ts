@@ -5,6 +5,7 @@ import {
   WC_HALLE_HOF,
   WC_HALLE_KINO,
   ZWISCHENEBENE,
+  hallSplit,
   saal,
 } from "@/lib/checkliste";
 import type { MapArea } from "@/lib/eventAreas";
@@ -181,6 +182,8 @@ const AREAS = {
 //   H — and S, with the Schönhauser entrance.
 // - Without the west, Kino 2 or 3 by the Schönhauser entrance is HO and S;
 //   by the Gleimstraße alone, HOG. Kino 1 on its own shows nothing.
+// - HU and HO are the Wagenhalle shared ("Halle Geteilt", nicht exklusiv);
+//   taken whole (exklusiv), either is H instead.
 export function linkedAreas(answer: ((key: string) => true | string | null) | null): MapArea[] {
   if (!answer) return [];
   const on = (key: string) => answer(key) === true;
@@ -190,6 +193,8 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
   const [gleim, schoenh] = ENTRANCES.map(on);
   const upstairs = any(UPSTAIRS);
   const groundRooms = any([saal(1), saal(2), saal(3), saal(4), saal(5), MAINBAR]);
+  // HU and HO share the hall (see hallSplitCase); taken whole, it's H.
+  const split = hallSplit(answer);
 
   const shown: MapArea[] = [];
   if (upstairs) shown.push(AREAS.OG, on(ZWISCHENEBENE) ? AREAS.ZW : AREAS.HZW);
@@ -198,12 +203,12 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
     if (schoenh) shown.push(AREAS.SCHOENH_OG, AREAS.S);
     else if (gleim) shown.push(AREAS.GLEIM_OG);
   } else if (west && !eastKinos && !schoenh && !upstairs) {
-    shown.push(AREAS.HU);
+    shown.push(split ? AREAS.HU : AREAS.H);
   } else if (west) {
     shown.push(AREAS.H);
     if (schoenh) shown.push(AREAS.S);
   } else if ((on(saal(2)) || on(saal(3))) && schoenh) {
-    shown.push(AREAS.HO, AREAS.S);
+    shown.push(split ? AREAS.HO : AREAS.H, AREAS.S);
   } else if ((on(saal(2)) || on(saal(3))) && gleim) {
     shown.push(AREAS.HOG);
   }

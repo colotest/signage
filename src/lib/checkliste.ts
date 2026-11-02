@@ -297,6 +297,8 @@ export function exclusiveWith(key: string): string[] {
 
 // Fields other parts of the page work with by name.
 export const AREAS_SECTION = "welche-flaechen-sind-interessant";
+export const WAGENHALLE_EXKLUSIV = `${AREAS_SECTION}/wagenhalle-exklusiv`;
+export const WAGENHALLE_NICHT_EXKLUSIV = `${AREAS_SECTION}/wagenhalle-nicht-exklusiv`;
 export const BRANDING = "branding";
 export const GASTRO_SECTION = "gastroflaechen";
 export const CATERING_SECTION = "catering-geplant";
@@ -350,10 +352,35 @@ export function roomsWith(fieldKey: string, answer: (key: string) => true | stri
   return ROOM_PINS.filter((id) => answer(pinKey(id, fieldKey)) === true).map((id) => ROOM_PIN_NAMES[id]);
 }
 
+// When the Wagenhalle could be shared with another event — the west alone
+// (Kino 4, Kino 5, Main Bar or WC Halle/Hof, with nothing upstairs, none of
+// Kino 1–3 and not by the Schönhauser entrance: "HU"), or Kino 2 or 3 by
+// the Schönhauser entrance without the west ("HO") — and so whether it's
+// split is a question (the Halle Geteilt pin's; see venueAreas). null
+// otherwise.
+export function hallSplitCase(answer: (key: string) => true | string | null): "HU" | "HO" | null {
+  const on = (key: string) => answer(key) === true;
+  const any = (keys: string[]) => keys.some(on);
+  const west = any([saal(4), saal(5), MAINBAR, WC_HALLE_HOF]);
+  const upstairs = any(UPSTAIRS);
+  const schoenh = on(ENTRANCES[1]);
+  if (upstairs && !any([saal(1), saal(2), saal(3), saal(4), saal(5), MAINBAR])) return null;
+  if (west) return !upstairs && !schoenh && !any([saal(1), saal(2), saal(3)]) ? "HU" : null;
+  return (on(saal(2)) || on(saal(3))) && schoenh ? "HO" : null;
+}
+
+// Whether the hall's split, where that's a question: unless it's taken
+// whole ("Wagenhalle exklusiv").
+export function hallSplit(answer: (key: string) => true | string | null): boolean {
+  return answer(WAGENHALLE_EXKLUSIV) !== true;
+}
+
 // A change as it's to be saved, with what follows from it: anything
-// upstairs brings the Galerie along; and the venue always has an entrance
+// upstairs brings the Galerie along; the venue always has an entrance
 // open — taking the only one away opens the other, and the first place
-// picked with none open yet opens the Gleimstraße one.
+// picked with none open yet opens the Gleimstraße one; and the Wagenhalle
+// is exklusiv or nicht exklusiv, never both — and once its split is a
+// question (hallSplitCase), one or the other, nicht exklusiv to begin with.
 export function withConsequences(
   patch: Record<string, true | string | null>,
   answer: (key: string) => true | string | null,
@@ -369,6 +396,14 @@ export function withConsequences(
   }
   if (PLACES.some((key) => full[key] === true) && !ENTRANCES.some((key) => after(key) === true)) {
     full[ENTRANCES[0]] = true;
+  }
+  const [whole, shared] = [WAGENHALLE_EXKLUSIV, WAGENHALLE_NICHT_EXKLUSIV];
+  if (full[whole] === true) full[shared] = null;
+  else if (full[shared] === true) full[whole] = null;
+  if (hallSplitCase(after)) {
+    if (full[shared] === null && !(whole in patch)) full[whole] = true;
+    else if (full[whole] === null && !(shared in patch)) full[shared] = true;
+    else if (after(whole) !== true && after(shared) !== true) full[shared] = true;
   }
   return full;
 }

@@ -18,6 +18,8 @@ import {
   SECURITY,
   WC_POSITIONS,
   WC_SERVICE,
+  WAGENHALLE_EXKLUSIV,
+  WAGENHALLE_NICHT_EXKLUSIV,
   pinKey,
   sectionByKey,
 } from "@/lib/checkliste";
@@ -50,9 +52,12 @@ import { MapCard } from "./VenueMap";
 // And with a switch alone: Sicherheit (Ja or Nein on "Security / Ordner"),
 // both Parkv. (their side's closure), both Eingänge (which the list keeps
 // one of open — see withConsequences), Barrierefreiheit, Banner Indoor,
-// Projektion Indoor, the Galerie Bar (under "Gastroflächen"), the Galerie
-// Fläche and the Zwischenebene (theirs under "Welche Flächen sind
-// interessant?") and the DJ Position ("DJ / Partytechnik"). Technik's title scrolls the Checkliste to its section.
+// Projektion Indoor, Halle Geteilt (the Wagenhalle nicht exklusiv, off
+// exklusiv — shown only while that's a question, see hallSplitCase), the
+// Galerie Bar (under "Gastroflächen"), the Galerie Fläche and the
+// Zwischenebene (theirs under "Welche Flächen sind interessant?") and the
+// DJ Position ("DJ / Partytechnik"). Technik's title scrolls the
+// Checkliste to its section.
 type PinLink =
   | { kind: "saal"; field: string }
   | { kind: "check"; field: string }
@@ -61,7 +66,8 @@ type PinLink =
   | { kind: "wc"; field: string }
   | { kind: "outdoor"; fields: [string, string] }
   | { kind: "gastro"; field: string; section: string; leaveOut?: string[] }
-  | { kind: "scroll"; category: string };
+  | { kind: "scroll"; category: string }
+  | { kind: "split" };
 
 const CATERING_CATEGORY = "catering-und-getraenke";
 
@@ -99,6 +105,7 @@ const PIN_LINKS: Record<string, PinLink> = {
   zwischenebene: { kind: "check", field: `${AREAS_SECTION}/zwischenebene` },
   "dj-position-treppe": { kind: "check", field: "welche-technik-wird-benoetigt/dj-partytechnik" },
   technik: { kind: "scroll", category: "technik" },
+  "halle-geteilt": { kind: "split" },
 };
 
 // Whether a pin with a switch is switched on, by the event's answers —
@@ -121,6 +128,8 @@ export function pinIsOn(pinId: string, answer: (key: string) => true | string | 
       return (sectionByKey(link.section)?.fields ?? []).some((f) => f.label === "Ja" && ticked(f.key));
     case "scroll":
       return null;
+    case "split":
+      return ticked(WAGENHALLE_NICHT_EXKLUSIV);
   }
 }
 
@@ -146,6 +155,8 @@ export function pinAnswerKeys(pinId: string): string[] {
       return [link.field, ...(sectionByKey(link.section)?.fields ?? []).map((f) => f.key)];
     case "scroll":
       return [];
+    case "split":
+      return [WAGENHALLE_EXKLUSIV, WAGENHALLE_NICHT_EXKLUSIV];
   }
 }
 
@@ -204,6 +215,13 @@ export function LinkedPinCard({
   if (link.kind === "check") {
     const on = ticked(link.field);
     return switchCard(on, () => save({ [link.field]: on ? null : true }));
+  }
+
+  // Halle Geteilt: on, the Wagenhalle's shared (nicht exklusiv); off, it's
+  // taken whole (exklusiv) — the one unticks the other (withConsequences).
+  if (link.kind === "split") {
+    const on = ticked(WAGENHALLE_NICHT_EXKLUSIV);
+    return switchCard(on, () => save({ [on ? WAGENHALLE_EXKLUSIV : WAGENHALLE_NICHT_EXKLUSIV]: true }));
   }
 
   if (link.kind === "yesno") {
