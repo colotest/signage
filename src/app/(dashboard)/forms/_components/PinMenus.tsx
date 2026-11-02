@@ -101,6 +101,29 @@ const PIN_LINKS: Record<string, PinLink> = {
   technik: { kind: "scroll", category: "technik" },
 };
 
+// Whether a pin with a switch is switched on, by the event's answers —
+// null for a pin with no switch (a name, or Technik).
+export function pinIsOn(pinId: string, answer: (key: string) => true | string | null): boolean | null {
+  const link = PIN_LINKS[pinId];
+  if (!link) return null;
+  const ticked = (key: string) => answer(key) === true;
+  switch (link.kind) {
+    case "saal":
+    case "check":
+    case "wc":
+    case "gastro":
+      return ticked(link.field);
+    case "outdoor":
+      return link.fields.some(ticked);
+    case "art":
+      return (sectionByKey(link.section)?.fields ?? []).some((f) => ticked(f.key));
+    case "yesno":
+      return (sectionByKey(link.section)?.fields ?? []).some((f) => f.label === "Ja" && ticked(f.key));
+    case "scroll":
+      return null;
+  }
+}
+
 // The answers a pin's card shows — a change to any of them from elsewhere
 // (the Checkliste, say) is the pin's to show (see FormsView). The WCs'
 // shared Service / Selbst is left out: changing it on one WC would bring

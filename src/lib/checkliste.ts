@@ -315,6 +315,7 @@ export const SECURITY = "security-ordner-benoetigt";
 export const WC_POSITIONS = "wc-positionen";
 export const WC_SERVICE = "wc-service-reinigung-waehrend-event";
 export const WC_HALLE_HOF = `${WC_POSITIONS}/wc-halle-hof`;
+export const WC_HALLE_KINO = `${WC_POSITIONS}/wc-halle-kino`;
 export const WC_OBEN = `${WC_POSITIONS}/wc-oben`;
 // The upper floor's options: any one on takes the event up there (see
 // venueAreas), and brings the Galerie along.

@@ -3,6 +3,7 @@ import {
   MAINBAR,
   UPSTAIRS,
   WC_HALLE_HOF,
+  WC_HALLE_KINO,
   ZWISCHENEBENE,
   saal,
 } from "@/lib/checkliste";
@@ -14,7 +15,8 @@ import type { MapArea } from "@/lib/eventAreas";
 // as they were handed over: HU, H, HO, S and HOG on the ground floor, the
 // two ground-floor ways up for the upper floor (by the Gleimstraße and by
 // the Schönhauser entrance), ZW and HZW on the mezzanine, and the upper
-// floor's own.
+// floor's own — and, drawn on the "Halle" event afterwards, one more on
+// the ground floor for the upper floor without the Halle's cinema side.
 const AREAS = {
   HU: {
     id: "venue:hu",
@@ -152,6 +154,14 @@ const AREAS = {
       { u: 0.1927, v: 0.5868 }, { u: 0.1131, v: 0.5861 }, { u: 0.1038, v: 0.5754 },
     ],
   },
+  UP_WITHOUT_HALLE_KINO: {
+    id: "venue:up-without-halle-kino",
+    floor: "eg",
+    points: [
+      { u: 0.3519, v: 0.5587 }, { u: 0.3561, v: 0.5222 }, { u: 0.3715, v: 0.5018 }, { u: 0.388, v: 0.4901 },
+      { u: 0.4163, v: 0.5442 }, { u: 0.3899, v: 0.5584 },
+    ],
+  },
 } satisfies Record<string, MapArea>;
 
 // The standing areas to show, for an event's answers:
@@ -162,6 +172,10 @@ const AREAS = {
 //   on as well, the ground floor shows the way up: by the Schönhauser
 //   entrance (with S), or by the Gleimstraße.
 // - The Zwischenebene on with nothing upstairs: ZW alone, up there.
+// - And with the upper floor in use, Kino 4, Kino 5 or the Main Bar on,
+//   the Gleimstraße entrance open and the Schönhauser one not, but none of
+//   Kino 1–3 or WC Halle/Kino, the ground floor's "up without Halle/Kino"
+//   too, beside the rest.
 // - Otherwise the west (Kino 4, Kino 5, Main Bar, WC Halle/Hof) alone is HU;
 //   with any of Kino 1–3, the Schönhauser entrance or the upper floor it's
 //   H — and S, with the Schönhauser entrance.
@@ -192,6 +206,15 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
     shown.push(AREAS.HO, AREAS.S);
   } else if ((on(saal(2)) || on(saal(3))) && gleim) {
     shown.push(AREAS.HOG);
+  }
+  if (
+    upstairs &&
+    gleim &&
+    !schoenh &&
+    any([saal(4), saal(5), MAINBAR]) &&
+    !any([saal(1), saal(2), saal(3), WC_HALLE_KINO])
+  ) {
+    shown.push(AREAS.UP_WITHOUT_HALLE_KINO);
   }
   return shown;
 }

@@ -14,7 +14,7 @@ import type { VenueScreens } from "@/lib/venueScreens";
 import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
 import { formatScrubMoment } from "./eventFormat";
 import { EventsPane } from "./EventsPane";
-import { LinkedPinCard, pinAnswerKeys } from "./PinMenus";
+import { LinkedPinCard, pinAnswerKeys, pinIsOn } from "./PinMenus";
 import { ScreenPin } from "./ScreenPin";
 import { MapCard, VenueMap, type MapFloor, type MapSpot, type PlanGeo } from "./VenueMap";
 
@@ -155,8 +155,11 @@ export function FormsView({
   screens: VenueScreens;
 }) {
   const [openSpot, setOpenSpot] = useState<string | null>(null);
-  // The open event, from the URL (where EventsPane keeps it).
-  const eventId = useSearchParams().get("event");
+  // The open event, from the URL (where EventsPane keeps it), and whether
+  // its Checkliste is the page showing.
+  const params = useSearchParams();
+  const eventId = params.get("event");
+  const inChecklist = !!eventId && params.get("view") === "checkliste";
   const event = eventId ? events.find((e) => e.id === eventId) : undefined;
   // The events on the day the Events list's calendar is being scrubbed
   // over: shown on the map as if open — their pins, their Checkliste on
@@ -373,9 +376,17 @@ export function FormsView({
   const draft = placing?.kind === "area" ? placing.points : null;
 
   // An event open, all the standing pins; none, the screens alone — or all
-  // of them again for the events on at a moment scrubbed to.
+  // of them again for the events on at a moment scrubbed to. Their switches
+  // and options are only for the Checkliste: anywhere else (the event's
+  // other pages, a moment previewed) the pins are names, and those switched
+  // off aren't shown at all.
+  const answersOnShow = event ? checklist.answer : (previewChecklist?.answer ?? null);
+  const pinState = event && !editing && inChecklist ? checklist : null;
   const standing = DEFAULT_PINS.filter(
-    (pin) => floorOf(pin) === floor && (event || previewEvents.length > 0 || screenByPin.has(pin.id)),
+    (pin) =>
+      floorOf(pin) === floor &&
+      (event || previewEvents.length > 0 || screenByPin.has(pin.id)) &&
+      (inChecklist || editing || !answersOnShow || pinIsOn(pin.id, answersOnShow) !== false),
   );
   const spots: MapSpot[] = [
     ...standing.map((pin) => {
@@ -406,7 +417,7 @@ export function FormsView({
             <LinkedPinCard
               pin={pin}
               // While editing, the standing pins are only names.
-              state={event && !editing ? checklist : previewChecklist}
+              state={pinState}
               open={openSpot === pin.id}
               onOpenChange={(open) => setOpenSpot((s) => (open ? pin.id : s === pin.id ? null : s))}
               onShowCategory={showChecklistCategory}
