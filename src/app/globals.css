@@ -795,7 +795,7 @@ body {
 }
 
 /* With a mouse (desktop) there's no floating toolbar to reach behind, and
-   the extra 9% just ran the bottom of every page off the window — the Forms
+   the extra 9% just ran the bottom of every page off the window — the Events
    map's "+ Pin" along with it. */
 @media (pointer: fine) {
   :root {
@@ -1403,7 +1403,7 @@ button[data-landing]::after {
   }
 }
 
-/* The Forms page's list side moves between pages the way iOS does (Files
+/* The Events page's list side moves between pages the way iOS does (Files
    entering a folder): the next page slides in from the right over the
    current one, which drifts a little left and dims under it; going back
    runs the other way. See PageStack. */

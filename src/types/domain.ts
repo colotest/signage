@@ -82,5 +82,5 @@ export type SetupWithItems = Setup & {
   items: SetupItemWithMedia[];
 };
 
-// One of the Forms page's events (0033_events.sql).
+// One of the Events page's events (0033_events.sql).
 export type EventRecord = Database["public"]["Tables"]["events"]["Row"];

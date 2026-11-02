@@ -7,7 +7,9 @@ export type PageKey = "screens" | "media" | "forms" | "users";
 export const PAGES: { key: PageKey; label: string; href: string }[] = [
   { key: "screens", label: "Screens", href: "/dashboard" },
   { key: "media", label: "Media", href: "/library" },
-  { key: "forms", label: "Forms", href: "/forms" },
+  // Once the Forms page: its key stays, as the roles saved in the database
+  // name it.
+  { key: "forms", label: "Events", href: "/events" },
   { key: "users", label: "Users", href: "/users" },
 ];
 

@@ -70,7 +70,7 @@ export async function createPresetEvent() {
     .single();
   if (error) throw new Error(error.message);
   recordActivity(user, { action: "event.create", summary: "Added a new event" });
-  revalidatePath("/forms");
+  revalidatePath("/events");
   return data.id;
 }
 
@@ -144,7 +144,7 @@ async function applyUpdate(id: string, patch: EventPatch) {
     target: `event:${id}`,
     summary: title ? `Edited the event ${quote(title)}` : "Edited an untitled event",
   });
-  revalidatePath("/forms");
+  revalidatePath("/events");
 }
 
 // Replaces an event's pins on the venue map with these. Like updateEvent,
@@ -162,7 +162,7 @@ export async function setEventPins(id: string, pins: MapPin[]): Promise<string |
       target: `event:${id}`,
       summary: title ? `Edited the event ${quote(title)}` : "Edited an untitled event",
     });
-    revalidatePath("/forms");
+    revalidatePath("/events");
     return null;
   } catch (err) {
     return err instanceof Error ? err.message : "Couldn't save the pins";
@@ -183,7 +183,7 @@ export async function setEventAreas(id: string, areas: MapArea[]): Promise<strin
       target: `event:${id}`,
       summary: title ? `Edited the event ${quote(title)}` : "Edited an untitled event",
     });
-    revalidatePath("/forms");
+    revalidatePath("/events");
     return null;
   } catch (err) {
     return err instanceof Error ? err.message : "Couldn't save the areas";
@@ -216,7 +216,7 @@ export async function updateChecklist(id: string, patch: Record<string, true | s
       target: `event:${id}`,
       summary: data.title ? `Edited the event ${quote(data.title)}` : "Edited an untitled event",
     });
-    revalidatePath("/forms");
+    revalidatePath("/events");
     return null;
   } catch (err) {
     return err instanceof Error ? err.message : "Couldn't save the Checkliste";
@@ -248,7 +248,7 @@ export async function addChecklistEmail(id: string, email: string): Promise<stri
       target: `event:${id}`,
       summary: `Added ${quote(address)} to the Checkliste's recipients of ${quote(event.title?.trim() || "an untitled event")}`,
     });
-    revalidatePath("/forms");
+    revalidatePath("/events");
     return null;
   } catch (err) {
     return err instanceof Error ? err.message : "Couldn't add the address";
@@ -333,7 +333,7 @@ export async function archiveEvent(id: string) {
     action: "event.archive",
     summary: title ? `Archived the event ${quote(title)}` : "Archived an untitled event",
   });
-  revalidatePath("/forms");
+  revalidatePath("/events");
 }
 
 export async function unarchiveEvent(id: string) {
@@ -346,7 +346,7 @@ export async function unarchiveEvent(id: string) {
     action: "event.unarchive",
     summary: title ? `Brought back the event ${quote(title)}` : "Brought back an untitled event",
   });
-  revalidatePath("/forms");
+  revalidatePath("/events");
 }
 
 // Only an archived event can be deleted — archiving first is the
@@ -362,5 +362,5 @@ export async function deleteEvent(id: string) {
     action: "event.delete",
     summary: title ? `Deleted the event ${quote(title)}` : "Deleted an untitled event",
   });
-  revalidatePath("/forms");
+  revalidatePath("/events");
 }

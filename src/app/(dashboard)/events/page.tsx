@@ -2,9 +2,9 @@ import { pageViewer } from "@/lib/auth/session";
 import { fetchEvents, fetchLeadCandidates } from "@/lib/events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchVenueScreens } from "@/lib/venueScreens";
-import { FormsView } from "./_components/FormsView";
+import { EventsView } from "./_components/EventsView";
 
-export default async function FormsPage() {
+export default async function EventsPage() {
   const viewer = await pageViewer("forms");
   const admin = createAdminClient();
   const [events, people, screens] = await Promise.all([
@@ -12,5 +12,5 @@ export default async function FormsPage() {
     fetchLeadCandidates(admin, viewer),
     fetchVenueScreens(admin, viewer.access),
   ]);
-  return <FormsView events={events} people={people} screens={screens} />;
+  return <EventsView events={events} people={people} screens={screens} />;
 }

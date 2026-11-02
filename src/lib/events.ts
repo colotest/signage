@@ -22,7 +22,7 @@ export type EventPerson = {
   management: boolean;
 };
 
-// An event as the Forms page shows it.
+// An event as the Events page shows it.
 export type EventSummary = {
   id: string;
   title: string | null;

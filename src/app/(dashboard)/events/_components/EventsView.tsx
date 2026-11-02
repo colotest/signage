@@ -143,7 +143,7 @@ const SCREEN_PINS: Record<string, string> = {
 // the area being drawn (its corners so far).
 type Placing = { kind: "new" } | { kind: "move"; id: string } | { kind: "area"; points: AreaPoint[] };
 
-// The Forms page: the events on one side (top on a phone, left on an iPad
+// The Events page: the events on one side (top on a phone, left on an iPad
 // or desktop), each opening into its own setup pages, and the venue map on
 // the other — with the open event's own pins and highlighted areas on it.
 // The standing pins work the open event's Checkliste (see PinMenus); its
@@ -152,7 +152,7 @@ type Placing = { kind: "new" } | { kind: "move"; id: string } | { kind: "area"; 
 // one) or picked out with a tap to be deleted. With no event open, the map
 // shows the screens' pins, live — or, scrubbing the calendar to another
 // day, what they'll be showing then, beside the events on at that moment.
-export function FormsView({
+export function EventsView({
   events,
   people,
   screens,

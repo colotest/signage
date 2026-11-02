@@ -1,4 +1,4 @@
-// The kinds of event the Forms page knows (events.event_type, 0037), in the
+// The kinds of event the Events page knows (events.event_type, 0037), in the
 // order its picker shows them. Shared by the page and the action that
 // checks what it's sent; the migration's check lists the same keys.
 // stacked: the name broken over two lines, for the type's square tile,

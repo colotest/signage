@@ -62,7 +62,7 @@ function sortEvents(events: EventSummary[], key: SortKey, dir: SortDir) {
   });
 }
 
-// The Forms page's first page: every event, as cards in the Playlists
+// The Events page's first page: every event, as cards in the Playlists
 // list's style. The arrowhead opens a card in place to show who's on it;
 // anywhere else on the card goes on to the event's own page. "+ Create" at
 // the top, as in the Playlists list, adds an event filled in with its

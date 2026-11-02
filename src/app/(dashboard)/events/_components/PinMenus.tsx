@@ -137,7 +137,7 @@ export function pinIsOn(pinId: string, answer: (key: string) => true | string | 
 }
 
 // The answers a pin's card shows — a change to any of them from elsewhere
-// (the Checkliste, say) is the pin's to show (see FormsView). The WCs'
+// (the Checkliste, say) is the pin's to show (see EventsView). The WCs'
 // shared Service / Selbst is left out: changing it on one WC would bring
 // out all the others.
 export function pinAnswerKeys(pinId: string): string[] {

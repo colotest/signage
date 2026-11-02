@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
     // copy expire after the 4h default.)
     minimumCacheTTL: 2678400, // 31 days
   },
+  // The Events page was the Forms page: old links and bookmarks still get
+  // there, the event they had open and all (the query carries over).
+  async redirects() {
+    return [{ source: "/forms/:path*", destination: "/events/:path*", permanent: false }];
+  },
   // The brand font, as emails load it (src/lib/email/templates.ts): from
   // whatever origin a webmail shows it on, which fonts need leave for.
   async headers() {

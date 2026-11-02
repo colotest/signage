@@ -3,7 +3,7 @@ import type { ScreenStatusRow } from "@/lib/realtime/useScreenStatuses";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import type { MediaItem, PlaylistItemWithMedia, Screen } from "@/types/domain";
 
-// The venue's screens, for their pins on the Forms page's map: each with
+// The venue's screens, for their pins on the Events page's map: each with
 // what's on air (the dashboard's preview fallback) and its timers, each
 // window with the playlist it plays then — to show what a screen will be
 // on at a moment scrubbed to on the Events calendar.

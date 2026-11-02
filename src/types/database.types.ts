@@ -425,7 +425,7 @@ export type Database = {
           },
         ];
       };
-      // The Forms page's events (0033).
+      // The Events page's events (0033).
       events: {
         Row: {
           id: string;

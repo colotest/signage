@@ -11,7 +11,7 @@ import { ShareChecklist } from "./ShareChecklist";
 
 type Route = { eventId: string | null; view: EventViewKey | null; archived: boolean };
 
-// The list side of the Forms page: Events, then an event's own page, then
+// The list side of the Events page: Events, then an event's own page, then
 // one of its setup views — each sliding in over the last.
 //
 // Where it is lives in the URL (?event=…&view=…, and &archive=1 for the
