@@ -179,8 +179,8 @@ const AREAS = {
 // - Otherwise the west (Kino 4, Kino 5, Main Bar, WC Halle/Hof) alone is HU;
 //   with any of Kino 1–3, the Schönhauser entrance or the upper floor it's
 //   H — and S, with the Schönhauser entrance.
-// - Without the west, Kino 1–3 by the Schönhauser entrance is HO and S;
-//   Kino 2 or 3 by the Gleimstraße alone, HOG.
+// - Without the west, Kino 2 or 3 by the Schönhauser entrance is HO and S;
+//   by the Gleimstraße alone, HOG. Kino 1 on its own shows nothing.
 export function linkedAreas(answer: ((key: string) => true | string | null) | null): MapArea[] {
   if (!answer) return [];
   const on = (key: string) => answer(key) === true;
@@ -202,7 +202,7 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
   } else if (west) {
     shown.push(AREAS.H);
     if (schoenh) shown.push(AREAS.S);
-  } else if (eastKinos && schoenh) {
+  } else if ((on(saal(2)) || on(saal(3))) && schoenh) {
     shown.push(AREAS.HO, AREAS.S);
   } else if ((on(saal(2)) || on(saal(3))) && gleim) {
     shown.push(AREAS.HOG);
