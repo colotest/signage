@@ -18,11 +18,17 @@ import { EventTypeTile, PaxField, doubleClickToEdit } from "./EventFacts";
 import { ArchiveIcon } from "./EventsList";
 import { eventTitle, formatEventDate, useIsClient } from "./eventFormat";
 
-// The setup views an event has, each its own page.
+// The views an event has, each its own page, listed on its overview in
+// blocks: setting it up, then how it runs on the day.
+export const EVENT_VIEW_GROUPS = [
+  { key: "setup", label: "Setup" },
+  { key: "ablauf", label: "Ablauf" },
+] as const;
 export const EVENT_VIEWS = [
-  { key: "checkliste", label: "Checkliste" },
-  { key: "uebergabeprotokoll", label: "Übergabeprotokoll" },
-  { key: "mobiliar", label: "Mobiliar" },
+  { key: "checkliste", label: "Checkliste", group: "setup" },
+  { key: "mobiliar", label: "Mobiliar", group: "setup" },
+  { key: "screens", label: "Screens", group: "setup" },
+  { key: "uebergabeprotokoll", label: "Übergabeprotokoll", group: "ablauf" },
 ] as const;
 export type EventViewKey = (typeof EVENT_VIEWS)[number]["key"];
 
@@ -203,23 +209,27 @@ export function EventOverview({
         {error && <p className="mt-3 text-[13px] text-danger">{error}</p>}
       </section>
 
-      <h2 className="mb-2 mt-6 px-1 text-[12px] font-medium uppercase tracking-wide text-muted">Setup</h2>
-      <ul className="divide-y divide-border overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface">
-        {EVENT_VIEWS.map((view) => (
-          <li key={view.key}>
-            <button
-              type="button"
-              onClick={() => onOpenView(view.key)}
-              className="press-ghost-fit flex w-full items-center gap-3 px-3 py-3 text-left text-[15px] font-medium hover:bg-black/[.02] dark:hover:bg-white/[.03]"
-            >
-              <span className="flex-1">{view.label}</span>
-              <svg viewBox="0 0 24 24" aria-hidden className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="9 6 15 12 9 18" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {EVENT_VIEW_GROUPS.map((group) => (
+        <div key={group.key}>
+          <h2 className="mb-2 mt-6 px-1 text-[12px] font-medium uppercase tracking-wide text-muted">{group.label}</h2>
+          <ul className="divide-y divide-border overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface">
+            {EVENT_VIEWS.filter((view) => view.group === group.key).map((view) => (
+              <li key={view.key}>
+                <button
+                  type="button"
+                  onClick={() => onOpenView(view.key)}
+                  className="press-ghost-fit flex w-full items-center gap-3 px-3 py-3 text-left text-[15px] font-medium hover:bg-black/[.02] dark:hover:bg-white/[.03]"
+                >
+                  <span className="flex-1">{view.label}</span>
+                  <svg viewBox="0 0 24 24" aria-hidden className="h-4 w-4 text-muted" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polyline points="9 6 15 12 9 18" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </SubPage>
   );
 }
