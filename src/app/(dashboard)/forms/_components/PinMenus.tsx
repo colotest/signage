@@ -50,8 +50,9 @@ import { MapCard } from "./VenueMap";
 // And with a switch alone: Sicherheit (Ja or Nein on "Security / Ordner"),
 // both Parkv. (their side's closure), both Eingänge (which the list keeps
 // one of open — see withConsequences), Barrierefreiheit, Banner Indoor,
-// Projektion Indoor, the Galerie Bar (under "Gastroflächen") and the
-// Galerie Fläche (the Galerie under "Welche Flächen sind interessant?"). Technik's title scrolls the Checkliste to its section.
+// Projektion Indoor, the Galerie Bar (under "Gastroflächen"), the Galerie
+// Fläche and the Zwischenebene (theirs under "Welche Flächen sind
+// interessant?") and the DJ Position ("DJ / Partytechnik"). Technik's title scrolls the Checkliste to its section.
 type PinLink =
   | { kind: "saal"; field: string }
   | { kind: "check"; field: string }
@@ -95,8 +96,35 @@ const PIN_LINKS: Record<string, PinLink> = {
   "main-bar": { kind: "gastro", field: `${GASTRO_SECTION}/mainbar`, section: DRINKS_SECTION },
   "galerie-bar": { kind: "check", field: `${GASTRO_SECTION}/galerie-bar` },
   "galerie-flaeche": { kind: "check", field: `${AREAS_SECTION}/galerie` },
+  zwischenebene: { kind: "check", field: `${AREAS_SECTION}/zwischenebene` },
+  "dj-position-treppe": { kind: "check", field: "welche-technik-wird-benoetigt/dj-partytechnik" },
   technik: { kind: "scroll", category: "technik" },
 };
+
+// The answers a pin's card shows — a change to any of them from elsewhere
+// (the Checkliste, say) is the pin's to show (see FormsView). The WCs'
+// shared Service / Selbst is left out: changing it on one WC would bring
+// out all the others.
+export function pinAnswerKeys(pinId: string): string[] {
+  const link = PIN_LINKS[pinId];
+  if (!link) return [];
+  switch (link.kind) {
+    case "saal":
+      return [link.field, ...(sectionByKey(ROOM_REQUIREMENTS)?.fields ?? []).map((f) => pinKey(pinId, f.key))];
+    case "check":
+    case "wc":
+      return [link.field];
+    case "yesno":
+    case "art":
+      return (sectionByKey(link.section)?.fields ?? []).map((f) => f.key);
+    case "outdoor":
+      return link.fields;
+    case "gastro":
+      return [link.field, ...(sectionByKey(link.section)?.fields ?? []).map((f) => f.key)];
+    case "scroll":
+      return [];
+  }
+}
 
 // Shorter names for a room's own requirements than the list's plurals.
 const ROOM_LABELS: Record<string, string> = {

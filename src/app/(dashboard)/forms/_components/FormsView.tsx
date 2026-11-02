@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { setEventAreas, setEventPins } from "@/lib/actions/events";
 import { cn } from "@/lib/utils/cn";
 import { areaContains, MAX_AREA_POINTS, MAX_AREAS, type AreaPoint, type MapArea } from "@/lib/eventAreas";
@@ -14,7 +14,7 @@ import type { VenueScreens } from "@/lib/venueScreens";
 import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
 import { formatScrubMoment } from "./eventFormat";
 import { EventsPane } from "./EventsPane";
-import { LinkedPinCard } from "./PinMenus";
+import { LinkedPinCard, pinAnswerKeys } from "./PinMenus";
 import { ScreenPin } from "./ScreenPin";
 import { MapCard, VenueMap, type MapFloor, type MapSpot, type PlanGeo } from "./VenueMap";
 
@@ -102,12 +102,26 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: F
   { id: "sicherheit", title: "Sicherheit", u: 0.4418, v: 0.8025 },
   { id: "zwischenebene", title: "Zwischenebene", u: 0.477, v: 0.5235, floor: "zwischen" },
   { id: "galerie-flaeche", title: "Galerie Fläche", u: 0.1941, v: 0.5202, floor: "og" },
-  { id: "technik", title: "Technik", u: 0.432, v: 0.547 },
+  { id: "technik", title: "Technik", u: 0.4318, v: 0.5243 },
   { id: "barrierefreiheit", title: "Barrierefreiheit", u: 0.4652, v: 0.8454 },
   { id: "parken-kino", title: "Parkv. Kino", u: 0.6388, v: 0.9521 },
   { id: "parken-bioco", title: "Parkv. BioCo", u: 0.3724, v: 0.9559 },
   { id: "haustechnik-k1", title: "Haustechnik K1", u: 0.5759, v: 0.8443 },
 ];
+
+// Standing pins shown as their dot alone, to keep the map clear: a tap on
+// the dot brings out its card, and another puts it away. One also comes
+// out by itself when what it shows changes from elsewhere (the Checkliste).
+const DOT_PINS = new Set([
+  "dj-position-treppe",
+  "projektion-indoor",
+  "wc-halle-kino",
+  "wc-halle-hof",
+  "wc-kino",
+  "wc-oben",
+  "screen-mainbar",
+  ...[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `screen-${n}`),
+]);
 
 // The screen pins, by the dashboard's name for their screen: shown on the
 // Events list's map too, each with a little preview of its screen (see
@@ -202,6 +216,29 @@ export function FormsView({
       return screen ? [[pin, screen] as const] : [];
     }));
   }, [screens.screens]);
+  // The dot pins brought out (see DOT_PINS), and what each showed last
+  // render, to bring one out when that changes from elsewhere.
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const shownAnswers = useRef<{ event: string | undefined; byPin: Map<string, string> } | null>(null);
+  const toggleRevealed = (id: string) =>
+    setRevealed((all) => {
+      const next = new Set(all);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const dotAnswers = JSON.stringify(
+    [...DOT_PINS].map((id) => [id, JSON.stringify(pinAnswerKeys(id).map((key) => checklist.answer(key)))]),
+  );
+  const eventKey = event?.id;
+  useEffect(() => {
+    const byPin = new Map<string, string>(JSON.parse(dotAnswers));
+    const before = shownAnswers.current;
+    shownAnswers.current = { event: eventKey, byPin };
+    // A first look, or another event: nothing's changed yet.
+    if (!before || before.event !== eventKey) return;
+    const changed = [...byPin].filter(([id, now]) => before.byPin.get(id) !== now).map(([id]) => id);
+    if (changed.length) setRevealed((all) => new Set([...all, ...changed]));
+  }, [dotAnswers, eventKey]);
   // Live, unless the calendar's scrubbed to another day than today.
   const screensAt = previewAt && previewAt.toDateString() !== new Date().toDateString() ? previewAt : null;
   // Saves go one after another, so an older list can't land after a newer.
@@ -224,6 +261,7 @@ export function FormsView({
     setOpenSpot(null);
     setEditing(false);
     setSelectedArea(null);
+    setRevealed(new Set());
   }
 
   // Another floor: whatever was open or picked out on the last goes, and so
@@ -356,14 +394,24 @@ export function FormsView({
             at={screensAt}
           />
         ) : (
-          <LinkedPinCard
-            pin={pin}
-            // While editing, the standing pins are only names.
-            state={event && !editing ? checklist : previewChecklist}
-            open={openSpot === pin.id}
-            onOpenChange={(open) => setOpenSpot((s) => (open ? pin.id : s === pin.id ? null : s))}
-            onShowCategory={showChecklistCategory}
-          />
+          <DotPin
+            dot={DOT_PINS.has(pin.id)}
+            shown={revealed.has(pin.id)}
+            title={pin.title}
+            onToggle={() => {
+              if (revealed.has(pin.id)) setOpenSpot((s) => (s === pin.id ? null : s));
+              toggleRevealed(pin.id);
+            }}
+          >
+            <LinkedPinCard
+              pin={pin}
+              // While editing, the standing pins are only names.
+              state={event && !editing ? checklist : previewChecklist}
+              open={openSpot === pin.id}
+              onOpenChange={(open) => setOpenSpot((s) => (open ? pin.id : s === pin.id ? null : s))}
+              onShowCategory={showChecklistCategory}
+            />
+          </DotPin>
         ),
       };
     }),
@@ -605,6 +653,46 @@ const PILL =
   "pointer-events-auto rounded-full border border-border glass-material px-4 py-2 text-[15px] font-medium shadow-[var(--shadow-float)]";
 const ADD_BUTTON =
   "pointer-events-auto rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast shadow-[var(--shadow-float)] hover:opacity-90 disabled:opacity-40";
+
+// A dot pin (see DOT_PINS): its dot alone, or with its card once brought
+// out — the dot, either way, the button that brings the card out or puts
+// it away. Any other pin is just its card.
+function DotPin({
+  dot,
+  shown,
+  title,
+  onToggle,
+  children,
+}: {
+  dot: boolean;
+  shown: boolean;
+  title: string;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  if (!dot) return children;
+  return (
+    <div className="relative">
+      {shown ? (
+        children
+      ) : (
+        <span
+          aria-hidden
+          className="absolute left-0 top-0 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_0_3px_var(--surface),0_2px_6px_var(--shadow-ambient-strong)]"
+        />
+      )}
+      {/* Over the dot, a bigger target than the dot itself. */}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={shown}
+        aria-label={shown ? `${title} ausblenden` : `${title} zeigen`}
+        title={shown ? undefined : title}
+        className="no-press absolute left-0 top-0 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full"
+      />
+    </div>
+  );
+}
 
 // The first corner of an area being drawn: a ring, tapped to close the area
 // once it has three corners or more. The tap target is bigger than the ring.

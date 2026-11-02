@@ -35,6 +35,7 @@ Saal 10
 Wagenhalle exklusiv
 Wagenhalle nicht exklusiv
 Galerie
+Zwischenebene
 
 #Besondere Anforderungen an Räume
 Backstage für Speaker
@@ -303,6 +304,11 @@ export const GASTRO_SECTION = "gastroflaechen";
 export const CATERING_SECTION = "catering-geplant";
 export const DRINKS_SECTION = "getraenkeversorgung";
 export const ENTRANCES = ["eingang/gleimstr", "eingang/schoenhauser"];
+export const saal = (n: number) => `${AREAS_SECTION}/saal-${n}`;
+export const GALERIE = `${AREAS_SECTION}/galerie`;
+export const ZWISCHENEBENE = `${AREAS_SECTION}/zwischenebene`;
+export const MAINBAR = `${GASTRO_SECTION}/mainbar`;
+export const GALERIE_BAR = `${GASTRO_SECTION}/galerie-bar`;
 export const BARRIEREFREI = "barrierefreiheit/barrierefrei";
 export const GARDEROBE_KIND = "garderobenart";
 export const AKKREDITIERUNG_KIND = "akkreditierungsart";
@@ -310,9 +316,18 @@ export const PARKING = "parkplatzsperrung-ladezone-benoetigt";
 export const SECURITY = "security-ordner-benoetigt";
 export const WC_POSITIONS = "wc-positionen";
 export const WC_SERVICE = "wc-service-reinigung-waehrend-event";
+export const WC_HALLE_HOF = `${WC_POSITIONS}/wc-halle-hof`;
+export const WC_OBEN = `${WC_POSITIONS}/wc-oben`;
+// The upper floor's options: any one on takes the event up there (see
+// venueAreas), and brings the Galerie along.
+const UPPER_FLOOR = [saal(6), saal(7), saal(8), saal(9), saal(10), WC_OBEN, GALERIE_BAR];
+export const UPSTAIRS = [...UPPER_FLOOR, GALERIE];
+// What puts an event somewhere in the building — and so, with no entrance
+// open yet, opens the Gleimstraße one.
+const PLACES = [saal(1), saal(2), saal(3), saal(4), saal(5), MAINBAR, WC_HALLE_HOF, ...UPSTAIRS, ZWISCHENEBENE];
 // The WC Halle/Hof (the Wagenhalle's) isn't step-free: with Barrierefrei
 // ticked, it's flagged.
-export const NOT_STEP_FREE = new Set([`${WC_POSITIONS}/wc-halle-hof`]);
+export const NOT_STEP_FREE = new Set([WC_HALLE_HOF]);
 
 // The venue map's Kino pins (see PinMenus) each tick their Saal, and keep a
 // pick of their own of the room requirements, stored alongside the list's
@@ -349,8 +364,10 @@ const OPENS_WAGENHALLE_KINO = [`${AREAS_SECTION}/saal-2`, `${AREAS_SECTION}/saal
 
 // A change as it's to be saved, with what follows from it: a Wagenhalle
 // hall's tick sets exklusiv (both halls) or nicht exklusiv (one) in the
-// list; ticking Kino 2 or 3 ticks Wagenhalle 'Kino'; and the venue always
-// has an entrance open — taking the only one away opens the other.
+// list; ticking Kino 2 or 3 ticks Wagenhalle 'Kino'; anything upstairs
+// brings the Galerie along; and the venue always has an entrance open —
+// taking the only one away opens the other, and the first place picked
+// with none open yet opens the Gleimstraße one.
 export function withConsequences(
   patch: Record<string, true | string | null>,
   answer: (key: string) => true | string | null,
@@ -366,10 +383,16 @@ export function withConsequences(
     full[WAGENHALLE_EXKLUSIV] = count === 2 || null;
     full[WAGENHALLE_NICHT_EXKLUSIV] = count === 1 || null;
   }
+  if (UPPER_FLOOR.some((key) => full[key] === true) && answer(GALERIE) !== true && !(GALERIE in full)) {
+    full[GALERIE] = true;
+  }
   const after = (key: string) => (key in full ? full[key] : answer(key));
   for (const [i, entrance] of ENTRANCES.entries()) {
     const other = ENTRANCES[1 - i];
     if (full[entrance] === null && answer(entrance) === true && after(other) !== true) full[other] = true;
+  }
+  if (PLACES.some((key) => full[key] === true) && !ENTRANCES.some((key) => after(key) === true)) {
+    full[ENTRANCES[0]] = true;
   }
   return full;
 }

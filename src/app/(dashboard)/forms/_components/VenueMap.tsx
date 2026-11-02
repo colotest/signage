@@ -1087,8 +1087,10 @@ export function VenueMap({
 }
 
 // Areas soften out at their edges over about this many of the plan's units
-// (the blur's standard deviation) — wider zoomed in, as the plan is.
-const AREA_SOFTNESS = 70;
+// (the blur's standard deviation) — wider zoomed in, as the plan is — and
+// are filled this strongly.
+const AREA_SOFTNESS = 23;
+const AREA_OPACITY = 0.27;
 
 // The areas, drawn in the plan's own units over the picture, so they slide,
 // zoom and turn with it: each a blue fill blurred at its edges, the
@@ -1141,7 +1143,7 @@ function PlanAreas({
           key={area.id}
           points={toPoints(area.points)}
           filter={`url(#area-soft-${area.id})`}
-          style={{ fill: "var(--accent)", fillOpacity: 0.4 }}
+          style={{ fill: "var(--accent)", fillOpacity: AREA_OPACITY }}
         />
       ))}
       {areas
