@@ -36,6 +36,7 @@ Wagenhalle exklusiv
 Wagenhalle nicht exklusiv
 Galerie
 Zwischenebene
+Haustechnik K1
 
 #Besondere Anforderungen an Räume
 Backstage für Speaker
@@ -330,12 +331,13 @@ const PLACES = [saal(1), saal(2), saal(3), saal(4), saal(5), MAINBAR, WC_HALLE_H
 // ticked, it's flagged.
 export const NOT_STEP_FREE = new Set([WC_HALLE_HOF]);
 
-// The venue map's Kino pins (see PinMenus) each tick their Saal, and keep a
-// pick of their own of the room requirements, stored alongside the list's
-// answers as "pin:<pin>:<field>"; the list's own option is ticked while any
-// room has it, and says which.
+// The venue map's room pins (see PinMenus) — the Kinos, each ticking its
+// Saal, and Haustechnik K1 — each keep a pick of their own of the room
+// requirements, stored alongside the list's answers as "pin:<pin>:<field>";
+// the list's own option is ticked while any room has it, and says which.
 export const ROOM_REQUIREMENTS = "besondere-anforderungen-an-raeume";
-export const ROOM_PINS = Array.from({ length: 10 }, (_, i) => `kino-${i + 1}`);
+const KINO_PINS = Array.from({ length: 10 }, (_, i) => `kino-${i + 1}`);
+export const ROOM_PINS = [...KINO_PINS, "haustechnik-k1"];
 
 export function pinKey(pinId: string, part: string) {
   return `pin:${pinId}:${part}`;
@@ -343,9 +345,10 @@ export function pinKey(pinId: string, part: string) {
 
 // The room pins' names, as on the map — for the list to say which rooms
 // asked for one of its room requirements.
-export const ROOM_PIN_NAMES: Record<string, string> = Object.fromEntries(
-  ROOM_PINS.map((id, i) => [id, `Kino ${i + 1}`]),
-);
+export const ROOM_PIN_NAMES: Record<string, string> = {
+  ...Object.fromEntries(KINO_PINS.map((id, i) => [id, `Kino ${i + 1}`])),
+  "haustechnik-k1": "Haustechnik K1",
+};
 
 // The rooms (pins) that picked a room requirement for themselves.
 export function roomsWith(fieldKey: string, answer: (key: string) => true | string | null): string[] {

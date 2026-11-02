@@ -35,9 +35,10 @@ import { MapCard } from "./VenueMap";
 // they're switched on, showing no arrow: once on, the title opens and
 // closes them (as does a tap on the map, to close), and only the switch
 // turns them off again:
-// - A Kino: on ticks its Saal under "Welche Flächen sind interessant?";
-//   open, the room requirements, picked per room — the list's own option
-//   is ticked while any room has it, and names the rooms that do.
+// - A Kino, or Haustechnik K1: on ticks its Saal (or itself) under "Welche
+//   Flächen sind interessant?"; open, the room requirements, picked per
+//   room — the list's own option is ticked while any room has it, and
+//   names the rooms that do.
 // - Garderobe, Akkreditierung: on while their -art has an answer — Service
 //   to begin with; open, Service, Selbst or TBD.
 // - A WC: on makes it one of the event's WC positions; open, Service or
@@ -56,8 +57,8 @@ import { MapCard } from "./VenueMap";
 // exklusiv — shown only while that's a question, see hallSplitCase), the
 // Galerie Bar (under "Gastroflächen"), the Galerie Fläche and the
 // Zwischenebene (theirs under "Welche Flächen sind interessant?") and the
-// DJ Position ("DJ / Partytechnik"). Technik's title scrolls the
-// Checkliste to its section.
+// DJ Position ("DJ / Partytechnik"). Technik's and the Telekollegen's
+// titles scroll the Checkliste to Technik.
 type PinLink =
   | { kind: "saal"; field: string }
   | { kind: "check"; field: string }
@@ -105,6 +106,8 @@ const PIN_LINKS: Record<string, PinLink> = {
   zwischenebene: { kind: "check", field: `${AREAS_SECTION}/zwischenebene` },
   "dj-position-treppe": { kind: "check", field: "welche-technik-wird-benoetigt/dj-partytechnik" },
   technik: { kind: "scroll", category: "technik" },
+  telekollegen: { kind: "scroll", category: "technik" },
+  "haustechnik-k1": { kind: "saal", field: `${AREAS_SECTION}/haustechnik-k1` },
   "halle-geteilt": { kind: "split" },
 };
 
