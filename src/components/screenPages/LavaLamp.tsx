@@ -472,6 +472,19 @@ export type LavaTuning = typeof LAVA_TUNING;
 // Which renderer ran, and how fast — the tuner shows it.
 export type LavaStats = { renderer: "webgl" | "canvas"; fps: number };
 
+// When a lamp counts as having been lit, for its clock: some random while
+// ago rather than right now. Every lamp is the same ten blobs on the same
+// drifts, so two lit at the same moment — a venue's screens all coming
+// back together after a power cut, a network drop or a deploy — would
+// otherwise start from the very same pose and then move in lockstep for
+// as long as they ran. An hour's span is many times the longest drift, and
+// the drifts' lengths don't divide into one another, so no two lamps ever
+// come out looking alike.
+const LIT_SPAN_MS = 60 * 60 * 1000;
+export function litAt() {
+  return performance.now() - Math.random() * LIT_SPAN_MS;
+}
+
 // Below this short side, in CSS pixels, the canvas renderer draws: nothing
 // that small needs a shader, and every library thumbnail holding a WebGL
 // context would run the browser out of them.
@@ -564,7 +577,7 @@ export function LavaLamp({
     // whole box, so holding it to a fraction of the short side is what keeps
     // a thumbnail and a 4K screen looking like the same lamp.
     const reach = shortSide * t.reach;
-    litRef.current ??= performance.now();
+    litRef.current ??= litAt();
     let started = litRef.current;
     let heldSince: number | null = null;
 
@@ -643,7 +656,7 @@ export function LavaLamp({
     }
     canvas.addEventListener("webglcontextlost", lost);
 
-    litRef.current ??= performance.now();
+    litRef.current ??= litAt();
     let started = litRef.current;
     let heldSince: number | null = null;
     const count = frameCounter("webgl", statsRef);

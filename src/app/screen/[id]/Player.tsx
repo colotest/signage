@@ -874,7 +874,16 @@ export function Player({
                 />
               </div>
             )}
-            <div key={`in-${current.id}-${reloadToken}`} className="absolute inset-0" style={animation.incoming}>
+            {/* reloadToken re-keys a stuck file into a fresh fetch. A page
+                fetches nothing, so it's left out of that: remounting one
+                would only start it over — a lava lamp from its first pose,
+                on every screen at once, since a dropped connection is
+                usually the whole venue's. */}
+            <div
+              key={`in-${current.id}-${current.media_item.media_type === "page" ? "page" : reloadToken}`}
+              className="absolute inset-0"
+              style={animation.incoming}
+            >
               <Slide
                 item={current}
                 pageTuning={pageTuning}

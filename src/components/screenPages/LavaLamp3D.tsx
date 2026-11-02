@@ -7,6 +7,7 @@ import {
   LAVA_TUNING,
   LavaLamp,
   hslToRgb,
+  litAt,
   lights,
   paintLight,
   poseAt,
@@ -201,7 +202,7 @@ export function LavaLamp3D({
     }
     canvas.addEventListener("webglcontextlost", lost);
 
-    litRef.current ??= performance.now();
+    litRef.current ??= litAt();
     let started = litRef.current;
     let heldSince: number | null = null;
     const { width, height } = size;
