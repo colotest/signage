@@ -306,9 +306,14 @@ function EditableText({
   if (editing) {
     return (
       <input
+        // Focused with its text picked once, as it opens — not on every
+        // render (a new ref callback runs again each time), which picked
+        // whatever had been typed so far, for the next key to replace.
         ref={(node) => {
-          node?.focus();
-          node?.select();
+          if (!node || node.dataset.ready) return;
+          node.dataset.ready = "1";
+          node.focus();
+          node.select();
         }}
         type={inputType}
         defaultValue={unset ? "" : (shown ?? "")}

@@ -53,9 +53,14 @@ export function InlineRename({
     setDisplayValue(value);
   }
 
+  // Focused with its text picked once, as the field opens: the callback's
+  // new on every render, and picking the text again then would hand what's
+  // been typed so far to the next key.
   function attachInput(node: HTMLInputElement | null) {
-    node?.focus();
-    node?.select();
+    if (!node || node.dataset.ready) return;
+    node.dataset.ready = "1";
+    node.focus();
+    node.select();
   }
 
   function commit(next: string | undefined) {

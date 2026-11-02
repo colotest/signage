@@ -69,10 +69,14 @@ export function RenameableTitle({
   // A ref callback fires the moment the input is actually in the DOM —
   // unlike requestAnimationFrame (which waits a whole extra paint), this
   // can't lose a keystroke typed right after the double-click that opened it.
+  // Once per edit: the callback's new on every render, and picking the
+  // text again then would hand what's been typed to the next key.
   function attachInput(node: HTMLInputElement | null) {
     inputRef.current = node;
-    node?.focus();
-    node?.select();
+    if (!node || node.dataset.ready) return;
+    node.dataset.ready = "1";
+    node.focus();
+    node.select();
   }
 
   function commit() {
