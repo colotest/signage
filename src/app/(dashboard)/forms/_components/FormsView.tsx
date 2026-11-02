@@ -99,6 +99,8 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: F
   { id: "screen-2", title: "Screen 2", u: 0.295, v: 0.4066 },
   { id: "screen-5", title: "Screen 5", u: 0.1656, v: 0.3503 },
   { id: "screen-mainbar", title: "Screen Mainbar", u: 0.1565, v: 0.5265 },
+  { id: "screen-popcornbar-l", title: "Screen Popcornbar L", u: 0.8264, v: 0.8069 },
+  { id: "screen-popcornbar-r", title: "Screen Popcornbar R", u: 0.795, v: 0.7855 },
   { id: "dj-position-treppe", title: "DJ Position Treppe", u: 0.4134, v: 0.5125 },
   { id: "sicherheit", title: "Sicherheit", u: 0.4418, v: 0.8025 },
   { id: "zwischenebene", title: "Zwischenebene", u: 0.477, v: 0.5235, floor: "zwischen" },
@@ -121,6 +123,8 @@ const DOT_PINS = new Set([
   "wc-kino",
   "wc-oben",
   "screen-mainbar",
+  "screen-popcornbar-l",
+  "screen-popcornbar-r",
   ...[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `screen-${n}`),
 ]);
 
@@ -130,6 +134,8 @@ const DOT_PINS = new Set([
 const SCREEN_PINS: Record<string, string> = {
   ...Object.fromEntries([2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => [`screen-${n}`, `Kino ${n}`])),
   "screen-mainbar": "Mainbar",
+  "screen-popcornbar-l": "Popcornbar L",
+  "screen-popcornbar-r": "Popcornbar R",
 };
 
 // What the next tap on the map does: drop a new pin, move one there (onto
