@@ -47,6 +47,7 @@ Breakout Räume
 Catering-/Lagerfläche
 
 #Mobiliarbedarf
+@eins
 Kein Mobiliar benötigt
 Grundausstattung ausreichend
 Erweitertes Mobiliar benötigt
@@ -98,6 +99,7 @@ Mainbar
 Galerie Bar
 
 #Catering geplant
+@eins
 Colosseum Catering
 Externes Catering
 Noch unklar
@@ -112,6 +114,7 @@ Snacks / Popcorn
 Noch unklar
 
 #Cateringanspruch
+@eins
 Einfach / Basic
 Standard Eventcatering
 Hochwertiges Catering
@@ -127,6 +130,7 @@ besondere Bar
 Noch unklar
 
 #Getränkeversorgung
+@eins
 Getränkepauschale
 Selbstzahler / Bar
 Teilweise Pauschale
