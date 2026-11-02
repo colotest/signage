@@ -367,7 +367,7 @@ export function hallSplitCase(answer: (key: string) => true | string | null): "H
   const west = any([saal(4), saal(5), MAINBAR, WC_HALLE_HOF]);
   const upstairs = any(UPSTAIRS);
   const schoenh = on(ENTRANCES[1]);
-  if (upstairs && !any([saal(1), saal(2), saal(3), saal(4), saal(5), MAINBAR])) return null;
+  if (upstairs && !any([saal(2), saal(3), saal(4), saal(5), MAINBAR])) return null;
   if (west) return !schoenh && !any([saal(1), saal(2), saal(3)]) ? "HU" : null;
   return (on(saal(2)) || on(saal(3))) && schoenh ? "HO" : null;
 }

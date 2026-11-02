@@ -169,9 +169,9 @@ const AREAS = {
 // - Upper floor: any of its options on (Kino 6–10, WC Oben, Galerie Bar,
 //   Galerie — which comes on with the others, see withConsequences) shows
 //   its area, and the mezzanine's — ZW with the Zwischenebene on, HZW
-//   without. With none of the ground floor's rooms (Kino 1–5) or Main Bar
-//   on as well, the ground floor shows the way up: by the Schönhauser
-//   entrance (with S), or by the Gleimstraße.
+//   without. With none of the ground floor's rooms (Kino 2–5) or Main Bar
+//   on as well — Kino 1 may be — the ground floor shows the way up: by the
+//   Schönhauser entrance (with S), or by the Gleimstraße.
 // - The Zwischenebene on with nothing upstairs: ZW alone, up there.
 // - And with the upper floor in use, Kino 4, Kino 5 or the Main Bar on,
 //   the Gleimstraße entrance open and the Schönhauser one not, but none of
@@ -192,7 +192,9 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
   const eastKinos = any([saal(1), saal(2), saal(3)]);
   const [gleim, schoenh] = ENTRANCES.map(on);
   const upstairs = any(UPSTAIRS);
-  const groundRooms = any([saal(1), saal(2), saal(3), saal(4), saal(5), MAINBAR]);
+  // The ground floor's rooms that take the event's area down there — not
+  // Kino 1, which on its own shows none (and so leaves the way up).
+  const groundRooms = any([saal(2), saal(3), saal(4), saal(5), MAINBAR]);
   // HU and HO share the hall (see hallSplitCase); taken whole, it's H.
   const split = hallSplit(answer);
 
