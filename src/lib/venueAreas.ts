@@ -177,9 +177,9 @@ const AREAS = {
 //   the Gleimstraße entrance open and the Schönhauser one not, but none of
 //   Kino 1–3 or WC Halle/Kino, the ground floor's "up without Halle/Kino"
 //   too, beside the rest.
-// - Otherwise the west (Kino 4, Kino 5, Main Bar, WC Halle/Hof) alone is HU;
-//   with any of Kino 1–3, the Schönhauser entrance or the upper floor it's
-//   H — and S, with the Schönhauser entrance.
+// - Otherwise the west (Kino 4, Kino 5, Main Bar, WC Halle/Hof) is HU, the
+//   upper floor in use or not; with any of Kino 1–3 or the Schönhauser
+//   entrance it's H — and S, with the Schönhauser entrance.
 // - Without the west, Kino 2 or 3 by the Schönhauser entrance is HO and S;
 //   by the Gleimstraße alone, HOG. Kino 1 on its own shows nothing.
 // - HU and HO are the Wagenhalle shared ("Halle Geteilt", nicht exklusiv);
@@ -202,7 +202,7 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
   if (upstairs && !groundRooms) {
     if (schoenh) shown.push(AREAS.SCHOENH_OG, AREAS.S);
     else if (gleim) shown.push(AREAS.GLEIM_OG);
-  } else if (west && !eastKinos && !schoenh && !upstairs) {
+  } else if (west && !eastKinos && !schoenh) {
     shown.push(split ? AREAS.HU : AREAS.H);
   } else if (west) {
     shown.push(AREAS.H);

@@ -356,8 +356,8 @@ export function roomsWith(fieldKey: string, answer: (key: string) => true | stri
 }
 
 // When the Wagenhalle could be shared with another event — the west alone
-// (Kino 4, Kino 5, Main Bar or WC Halle/Hof, with nothing upstairs, none of
-// Kino 1–3 and not by the Schönhauser entrance: "HU"), or Kino 2 or 3 by
+// on the ground floor (Kino 4, Kino 5, Main Bar or WC Halle/Hof, with none
+// of Kino 1–3 and not by the Schönhauser entrance: "HU"), or Kino 2 or 3 by
 // the Schönhauser entrance without the west ("HO") — and so whether it's
 // split is a question (the Halle Geteilt pin's; see venueAreas). null
 // otherwise.
@@ -368,7 +368,7 @@ export function hallSplitCase(answer: (key: string) => true | string | null): "H
   const upstairs = any(UPSTAIRS);
   const schoenh = on(ENTRANCES[1]);
   if (upstairs && !any([saal(1), saal(2), saal(3), saal(4), saal(5), MAINBAR])) return null;
-  if (west) return !upstairs && !schoenh && !any([saal(1), saal(2), saal(3)]) ? "HU" : null;
+  if (west) return !schoenh && !any([saal(1), saal(2), saal(3)]) ? "HU" : null;
   return (on(saal(2)) || on(saal(3))) && schoenh ? "HO" : null;
 }
 
