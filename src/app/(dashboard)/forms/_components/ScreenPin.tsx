@@ -5,9 +5,11 @@ import type { ScreenLiveStatus } from "@/lib/realtime/useScreenStatuses";
 import { screenMediaAt, type VenueScreen } from "@/lib/venueScreens";
 import type { MediaItem, PlaylistItemWithMedia } from "@/types/domain";
 
-// The monitor's height, bezel and all: under three of a pin title's lines
-// (20px each), so it sits in the pin without crowding the map.
-const FRAME_HEIGHT = 54;
+// The monitor's long edge, bezel and all: under three of a pin title's
+// lines (20px each), so it sits in the pin without crowding the map. A
+// screen hung on its side is the same monitor turned: as wide as an
+// upright one is tall.
+const FRAME_LONG = 54;
 const BEZEL = 3;
 
 // A "Screen" pin on the map: a little version of the dashboard's monitor
@@ -30,8 +32,9 @@ export function ScreenPin({
   at: Date | null;
 }) {
   const portrait = screen.rotation === 90 || screen.rotation === 270;
-  const height = FRAME_HEIGHT - BEZEL * 2;
-  const width = portrait ? (height * 9) / 16 : (height * 16) / 9;
+  const long = FRAME_LONG - BEZEL * 2;
+  const short = (long * 9) / 16;
+  const [width, height] = portrait ? [short, long] : [long, short];
   // A moment's picture, as if it were the only thing on air (the preview's
   // fallback without a status report).
   const scheduled = at ? screenMediaAt(screen, at) : null;
@@ -51,7 +54,7 @@ export function ScreenPin({
         >
           <div
             className="overflow-hidden rounded-[3px]"
-            style={{ width: width + BEZEL * 2, height: FRAME_HEIGHT, border: `${BEZEL}px solid #2e2e2e` }}
+            style={{ width: width + BEZEL * 2, height: height + BEZEL * 2, border: `${BEZEL}px solid #2e2e2e` }}
           >
             <ScreenPreview
               screen={screen}

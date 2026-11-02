@@ -44,21 +44,32 @@ function daysBetween(a: Date, b: Date) {
 const monthName = (month: number) => new Date(2026, month, 1).toLocaleString("en-GB", { month: "long" });
 
 // The days an event covers: from its start's day to its end's — ending at
-// midnight is ending on the day before — or just the one day.
-type Span = { event: EventSummary; start: Date; end: Date };
+// midnight is ending on the day before — or just the one day. startAt and
+// endAt: how far through its first and last day it starts and ends (0–1),
+// as the scrubber reads a day's column; a day without a time of day is
+// the whole of it.
+type Span = { event: EventSummary; start: Date; end: Date; startAt: number; endAt: number };
+
+const dayFraction = (d: Date) => (d.getHours() * 60 + d.getMinutes()) / (24 * 60);
 
 function spanOf(event: EventSummary): Span | null {
   if (!event.startsAt) return null;
-  const start = startOfDay(new Date(event.startsAt));
+  const from = new Date(event.startsAt);
+  const start = startOfDay(from);
+  const startAt = event.startsTimeSet ? dayFraction(from) : 0;
   let end = start;
+  let endAt = 1;
   if (event.endsAt) {
     const at = new Date(event.endsAt);
     end = startOfDay(at);
-    if (event.endsTimeSet && at.getHours() === 0 && at.getMinutes() === 0 && addDays(end, -1) >= start) {
-      end = addDays(end, -1);
+    if (event.endsTimeSet) {
+      if (at.getHours() === 0 && at.getMinutes() === 0 && addDays(end, -1) >= start) end = addDays(end, -1);
+      else endAt = dayFraction(at);
     }
   }
-  return { event, start, end };
+  // An end before its own start on the same day (a typo): at least a sliver.
+  if (end.getTime() === start.getTime() && endAt <= startAt) endAt = Math.min(1, startAt + 1 / 24);
+  return { event, start, end, startAt, endAt };
 }
 
 // Whether an event's on at a moment: from its start to its end, a day
@@ -76,8 +87,19 @@ function runsAt(event: EventSummary, at: number) {
   return at >= start && at < end;
 }
 
-// One week's slice of an event's bar, and the lane it runs in.
-type Segment = { span: Span; col: number; length: number; lane: number; fromBefore: boolean; onAfter: boolean };
+// One week's slice of an event's bar, and the lane it runs in: whole days
+// from col for length, and within them, where the bar itself starts and
+// ends (in days from the week's start).
+type Segment = {
+  span: Span;
+  col: number;
+  length: number;
+  lane: number;
+  fromBefore: boolean;
+  onAfter: boolean;
+  left: number;
+  right: number;
+};
 
 function weekSegments(week: Date, spans: Span[]) {
   const last = addDays(week, 6);
@@ -94,7 +116,11 @@ function weekSegments(week: Date, spans: Span[]) {
     let lane = laneEnds.findIndex((end) => end < col);
     if (lane === -1) lane = laneEnds.length;
     laneEnds[lane] = col + length - 1;
-    return { span, col, length, lane, fromBefore: span.start < week, onAfter: span.end > last };
+    const fromBefore = span.start < week;
+    const onAfter = span.end > last;
+    const left = col + (fromBefore ? 0 : span.startAt);
+    const right = col + length - (onAfter ? 0 : 1 - span.endAt);
+    return { span, col, length, lane, fromBefore, onAfter, left, right };
   });
 }
 
@@ -410,6 +436,8 @@ function ScheduleGrid({
 
             {segments.map((seg) => {
               const id = seg.span.event.id;
+              const insetStart = !seg.fromBefore && seg.span.startAt === 0 ? 2 : 0;
+              const insetEnd = !seg.onAfter && seg.span.endAt === 1 ? 2 : 0;
               const shown = previewIds.includes(id);
               return (
                 <button
@@ -434,8 +462,11 @@ function ScheduleGrid({
                   style={{
                     top: DAY_NUMBER + seg.lane * LANE,
                     height: 16,
-                    left: `calc(${(seg.col / 7) * 100}% + ${seg.fromBefore ? 0 : 2}px)`,
-                    width: `calc(${(seg.length / 7) * 100}% - ${(seg.fromBefore ? 0 : 2) + (seg.onAfter ? 0 : 2)}px)`,
+                    // From the time it starts to the time it ends, as the
+                    // scrubber reads the days — a whole day's bar kept off
+                    // the column's edges.
+                    left: `calc(${(seg.left / 7) * 100}% + ${insetStart}px)`,
+                    width: `max(4px, calc(${((seg.right - seg.left) / 7) * 100}% - ${insetStart + insetEnd}px))`,
                   }}
                 >
                   {eventTitle(seg.span.event)}
