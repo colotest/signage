@@ -6,9 +6,8 @@ import { useRef, useState, useTransition, type ReactNode } from "react";
 import { ChevronLeftIcon } from "@/components/icons/PlaybackIcons";
 import { Menu } from "@/components/ui/Menu";
 import { POPUP_WHITE_BUTTON } from "@/components/ui/Popup";
-import { CheckIcon } from "@/components/icons/PlaybackIcons";
 import { archiveEvent, deleteEvent, unarchiveEvent, updateEvent, type EventPatch } from "@/lib/actions/events";
-import type { EventPerson, EventSummary } from "@/lib/events";
+import type { EventLead, EventPerson, EventSummary } from "@/lib/events";
 import { RoleDots } from "@/components/RoleDot";
 import { useOwnRoles } from "@/lib/auth/ViewerContext";
 import { cn } from "@/lib/utils/cn";
@@ -205,7 +204,7 @@ export function EventOverview({
             onSave={(description) => save({ description })}
             className="text-[15px] leading-snug text-foreground/85"
           />
-          <LeadPicker people={people} event={event} onPick={(leadId) => save({ leadId })} />
+          <LeadPills people={people} event={event} onChange={(leadIds) => save({ leadIds })} />
         </div>
         {error && <p className="mt-3 text-[13px] text-danger">{error}</p>}
       </section>
@@ -386,77 +385,121 @@ function EditableText({
   );
 }
 
-// The lead, as a pill: their name, then the dots of their roles — only the
-// roles the viewer holds too, as everywhere. Tapping it opens everyone who
-// can lead (the Events Management role, and whoever's looking) to pick from.
-function LeadPicker({
+// The leads, as pills in a row that wraps onto the next line as it fills:
+// each their name, then the dots of their roles — only the roles the viewer
+// holds too, as everywhere — and after them a round "+" to add another from
+// everyone who can lead (the Events Management role, and whoever's
+// looking). Tapping a lead offers to remove them, as long as another stays.
+// No lead at all, the one pill reads "Lead" and adds one.
+function LeadPills({
   people,
   event,
-  onPick,
+  onChange,
 }: {
   people: EventPerson[];
   event: EventSummary;
-  onPick: (id: string | null) => void;
+  onChange: (leadIds: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLButtonElement>(null);
+  const [adding, setAdding] = useState(false);
+  const addRef = useRef<HTMLButtonElement>(null);
   // As with the text fields, shown before the save comes back.
-  const [picked, setPicked] = useState<{ id: string | null; name: string | null; roleIds: string[] } | null>(null);
-  const [synced, setSynced] = useState(event.leadId);
-  if (event.leadId !== synced) {
-    setSynced(event.leadId);
-    setPicked(null);
+  const [shown, setShown] = useState<EventLead[]>(event.leads);
+  const [synced, setSynced] = useState(event.leads);
+  if (event.leads !== synced) {
+    setSynced(event.leads);
+    setShown(event.leads);
   }
-  const leadId = picked ? picked.id : event.leadId;
-  const leadName = picked ? picked.name : event.leadName;
-  const leadRoles = useOwnRoles(picked ? picked.roleIds : event.leadRoleIds);
+  const others = people.filter((person) => !shown.some((lead) => lead.id === person.id));
 
-  function pick(person: EventPerson | null) {
-    setOpen(false);
-    if ((person?.id ?? null) === leadId) return;
-    setPicked({ id: person?.id ?? null, name: person?.name ?? null, roleIds: person?.roleIds ?? [] });
-    onPick(person?.id ?? null);
+  function change(next: EventLead[]) {
+    setShown(next);
+    onChange(next.map((lead) => lead.id));
+  }
+
+  function add(person: EventPerson) {
+    setAdding(false);
+    change([...shown, { id: person.id, name: person.name, roleIds: person.roleIds }]);
   }
 
   return (
-    <div className="relative">
+    <div className="flex flex-wrap items-center gap-2">
+      {shown.map((lead) => (
+        <LeadPill
+          key={lead.id}
+          lead={lead}
+          removable={shown.length > 1}
+          onRemove={() => change(shown.filter((other) => other.id !== lead.id))}
+        />
+      ))}
+      <button
+        ref={addRef}
+        type="button"
+        onClick={() => setAdding((open) => !open)}
+        aria-expanded={adding}
+        aria-label="Add a lead"
+        title="Add a lead"
+        className={cn(
+          shown.length === 0
+            ? "no-press unset-breathe inline-flex items-center rounded-full bg-black/[.05] px-3 py-1 text-[15px] font-medium shadow-[var(--shadow-well)] dark:bg-white/[.08]"
+            : "no-press flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-black/[.05] text-muted shadow-[var(--shadow-well)] hover:text-foreground dark:bg-white/[.08]",
+        )}
+      >
+        {shown.length === 0 ? (
+          "Lead"
+        ) : (
+          <svg viewBox="0 0 24 24" aria-hidden className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M12 6v12M6 12h12" />
+          </svg>
+        )}
+      </button>
+      <Menu open={adding} onClose={() => setAdding(false)} anchorRef={addRef} align="start" className="w-56 p-1">
+        <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Add a lead</div>
+        {others.map((person) => (
+          <button key={person.id} type="button" onClick={() => add(person)} className={cn(MENU_ITEM_CLASS, "flex items-center gap-2")}>
+            <span className="truncate">{person.name}</span>
+            <PersonRoleDots roleIds={person.roleIds} />
+          </button>
+        ))}
+        {others.length === 0 && <div className="px-2.5 py-1.5 text-[13px] text-muted">Everyone&rsquo;s a lead already</div>}
+      </Menu>
+    </div>
+  );
+}
+
+// One lead's pill, and the little menu a tap on it opens to remove them —
+// greyed out while they're the only one.
+function LeadPill({ lead, removable, onRemove }: { lead: EventLead; removable: boolean; onRemove: () => void }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const roles = useOwnRoles(lead.roleIds);
+  return (
+    <>
       <button
         ref={anchorRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        title="Change lead"
-        className={cn(
-          "no-press inline-flex max-w-full items-center gap-2 rounded-full bg-black/[.05] px-3 py-1 text-[15px] font-medium shadow-[var(--shadow-well)] dark:bg-white/[.08]",
-          !leadName && "unset-breathe",
-        )}
+        className="no-press inline-flex max-w-full items-center gap-2 rounded-full bg-black/[.05] px-3 py-1 text-[15px] font-medium shadow-[var(--shadow-well)] dark:bg-white/[.08]"
       >
-        <span className="truncate">{leadName || "Lead"}</span>
-        <RoleDots roles={leadRoles} />
+        <span className="truncate">{lead.name}</span>
+        <RoleDots roles={roles} />
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} align="start" className="w-56 p-1">
-        <div className="px-2.5 pb-1 pt-1.5 text-[12px] text-muted">Lead</div>
-        {people.map((person) => (
-          <button
-            key={person.id}
-            type="button"
-            onClick={() => pick(person)}
-            className={cn(MENU_ITEM_CLASS, "flex items-center justify-between gap-2")}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate">{person.name}</span>
-              <PersonRoleDots roleIds={person.roleIds} />
-            </span>
-            {person.id === leadId && <CheckIcon className="h-4 w-4 shrink-0 text-accent" />}
-          </button>
-        ))}
-        {leadId && (
-          <button type="button" onClick={() => pick(null)} className={cn(MENU_ITEM_CLASS, "text-muted")}>
-            No lead
-          </button>
-        )}
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} align="start" className="w-44 p-1">
+        <button
+          type="button"
+          disabled={!removable}
+          onClick={() => {
+            setOpen(false);
+            onRemove();
+          }}
+          title={removable ? undefined : "An event keeps at least one lead"}
+          className={cn(MENU_ITEM_CLASS, "font-medium text-danger disabled:cursor-default disabled:text-muted disabled:hover:bg-transparent")}
+        >
+          Remove
+        </button>
+        {!removable && <div className="px-2.5 pb-1.5 text-[12px] text-muted">The only lead stays.</div>}
       </Menu>
-    </div>
+    </>
   );
 }
 

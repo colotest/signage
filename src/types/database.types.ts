@@ -438,6 +438,7 @@ export type Database = {
           contact_phone: string | null;
           contact_email: string | null;
           lead_id: string | null;
+          lead_ids: string[];
           starts_at: string | null;
           ends_at: string | null;
           created_by: string | null;
@@ -461,6 +462,7 @@ export type Database = {
           contact_phone?: string | null;
           contact_email?: string | null;
           lead_id?: string | null;
+          lead_ids?: string[];
           starts_at?: string | null;
           ends_at?: string | null;
           created_by?: string | null;
@@ -484,6 +486,7 @@ export type Database = {
           contact_phone?: string | null;
           contact_email?: string | null;
           lead_id?: string | null;
+          lead_ids?: string[];
           starts_at?: string | null;
           ends_at?: string | null;
           created_by?: string | null;

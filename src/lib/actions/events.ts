@@ -35,7 +35,8 @@ export type EventPatch = Partial<{
   contactName: string;
   contactPhone: string;
   contactEmail: string;
-  leadId: string | null;
+  // Its leads, in order (0045).
+  leadIds: string[];
   // ISO timestamps. Without a time of day, the start is the beginning of
   // its day and the end the very end of its (see 0035).
   startsAt: string | null;
@@ -65,7 +66,7 @@ export async function createPresetEvent() {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("events")
-    .insert({ ...PRESET, lead_id: user.id, created_by: user.id })
+    .insert({ ...PRESET, lead_id: user.id, lead_ids: [user.id], created_by: user.id })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
@@ -92,7 +93,7 @@ async function applyUpdate(id: string, patch: EventPatch) {
   const admin = createAdminClient();
   const { data: current, error: readError } = await admin
     .from("events")
-    .select("title, starts_at, ends_at")
+    .select("title, starts_at, ends_at, lead_ids")
     .eq("id", id)
     .maybeSingle();
   if (readError) throw new Error(readError.message);
@@ -117,10 +118,14 @@ async function applyUpdate(id: string, patch: EventPatch) {
   if (patch.contactName !== undefined) row.contact_name = text(patch.contactName);
   if (patch.contactPhone !== undefined) row.contact_phone = text(patch.contactPhone);
   if (patch.contactEmail !== undefined) row.contact_email = text(patch.contactEmail);
-  if (patch.leadId !== undefined) {
-    // Only someone who could be picked as lead (or nobody).
-    const candidates = patch.leadId ? await fetchLeadCandidates(admin, user) : [];
-    row.lead_id = patch.leadId && candidates.some((c) => c.id === patch.leadId) ? patch.leadId : null;
+  if (patch.leadIds !== undefined) {
+    // Only someone who could be picked as a lead, or who's one already
+    // (who may since have left the role), each once.
+    const allowed = new Set([...(await fetchLeadCandidates(admin, user)).map((c) => c.id), ...current.lead_ids]);
+    const leadIds = [...new Set(patch.leadIds)].filter((leadId) => allowed.has(leadId));
+    row.lead_ids = leadIds;
+    // Kept as the first, for whatever still reads it (see 0045).
+    row.lead_id = leadIds[0] ?? null;
   }
   if (patch.startsAt !== undefined) row.starts_at = timestamp(patch.startsAt);
   if (patch.endsAt !== undefined) row.ends_at = timestamp(patch.endsAt);

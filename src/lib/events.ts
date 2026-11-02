@@ -23,6 +23,10 @@ export type EventPerson = {
 };
 
 // An event as the Events page shows it.
+// One of an event's leads, with their roles — the page shows only those
+// the viewer holds too.
+export type EventLead = { id: string; name: string; roleIds: string[] };
+
 export type EventSummary = {
   id: string;
   title: string | null;
@@ -34,8 +38,8 @@ export type EventSummary = {
   contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
-  leadId: string | null;
-  leadName: string | null;
+  // Who's in charge of it, in the order they were added (0045).
+  leads: EventLead[];
   startsAt: string | null;
   endsAt: string | null;
   // Whether startsAt / endsAt have a time of day, or are just a day (0035).
@@ -43,8 +47,6 @@ export type EventSummary = {
   endsTimeSet: boolean;
   // When it was archived, or null while it's current.
   archivedAt: string | null;
-  // The lead's roles — the page shows only those the viewer holds too.
-  leadRoleIds: string[];
   // Its own pins on the venue map (0038).
   mapPins: MapPin[];
   // Its highlighted areas on the venue map (0043).
@@ -115,7 +117,9 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
   if (error) throw new Error(error.message);
   const events = (data ?? []) as EventRecord[];
 
-  const leadIds = [...new Set(events.map((e) => e.lead_id).filter((id): id is string => id !== null))];
+  // Each event's leads: from lead_ids, or before 0045 the one lead_id.
+  const leadIdsOf = (e: EventRecord) => e.lead_ids ?? (e.lead_id ? [e.lead_id] : []);
+  const leadIds = [...new Set(events.flatMap(leadIdsOf))];
   const leadNames = new Map<string, string>();
   if (leadIds.length > 0) {
     const { data: leads, error: leadError } = await admin.from("users").select("id, email, nickname").in("id", leadIds);
@@ -135,8 +139,11 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     contactName: e.contact_name,
     contactPhone: e.contact_phone,
     contactEmail: e.contact_email,
-    leadId: e.lead_id,
-    leadName: e.lead_id ? (leadNames.get(e.lead_id) ?? null) : null,
+    // Anyone no longer a user (see 0045) is passed over.
+    leads: leadIdsOf(e).flatMap((id) => {
+      const name = leadNames.get(id);
+      return name ? [{ id, name, roleIds: leadRoles.get(id) ?? [] }] : [];
+    }),
     startsAt: e.starts_at,
     endsAt: e.ends_at,
     // ?? true: every event had a time before 0035.
@@ -144,7 +151,6 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     endsTimeSet: e.ends_time_set ?? true,
     // ?? null: reads as current before 0034 has added the column.
     archivedAt: e.archived_at ?? null,
-    leadRoleIds: e.lead_id ? (leadRoles.get(e.lead_id) ?? []) : [],
     // Read as none before 0038 has added the column.
     mapPins: parsePins(e.map_pins),
     // Likewise none before 0043.

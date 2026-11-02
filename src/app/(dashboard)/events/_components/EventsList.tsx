@@ -21,7 +21,7 @@ function matches(event: EventSummary, query: string) {
   const words = fold(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
   const haystack = fold(
-    [eventTitle(event), event.customer, event.leadName, event.contactName, event.contactEmail, event.contactPhone]
+    [eventTitle(event), event.customer, ...event.leads.map((lead) => lead.name), event.contactName, event.contactEmail, event.contactPhone]
       .filter(Boolean)
       .join(" "),
   );
@@ -387,7 +387,7 @@ export function EventDetails({ event, dates }: { event: EventSummary; dates?: st
         {dates}
       </p>
     ),
-    event.leadName && <p key="lead">{event.leadName}</p>,
+    event.leads.length > 0 && <p key="lead">{event.leads.map((lead) => lead.name).join(", ")}</p>,
     (event.customer || contact.length > 0) && (
       <div key="customer" className="flex flex-col">
         {event.customer && <span>{event.customer}</span>}
