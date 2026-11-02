@@ -1,5 +1,5 @@
 // The venue's floors that we serve, bottom up: the ground floor ("E"), the
-// mezzanine ("0.5") and the upper floor ("1"). Pins and areas each sit on
+// mezzanine ("Zw") and the upper floor ("OG"). Pins and areas each sit on
 // one (see floorOf).
 export const FLOORS = ["eg", "zwischen", "og"] as const;
 export type Floor = (typeof FLOORS)[number];

@@ -37,8 +37,8 @@ const NORTH_DEG = 11;
 const COLOSSEUM_GEO: PlanGeo = { lat: 52.5478, lon: 13.41299, x: 8461, y: 4662, turnDeg: 9.4, unitsPerMetre: 66.2 };
 const FLOOR_NAMES: Record<Floor, { label: string; name: string }> = {
   eg: { label: "E", name: "Erdgeschoss" },
-  zwischen: { label: "0.5", name: "Zwischengeschoss" },
-  og: { label: "1", name: "Obergeschoss" },
+  zwischen: { label: "Zw", name: "Zwischengeschoss" },
+  og: { label: "OG", name: "Obergeschoss" },
 };
 const COLOSSEUM: MapFloor[] = FLOORS.map((floor) => {
   const base = `/venues/colosseum-${floor}`;
