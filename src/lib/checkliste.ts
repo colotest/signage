@@ -297,8 +297,6 @@ export function exclusiveWith(key: string): string[] {
 
 // Fields other parts of the page work with by name.
 export const AREAS_SECTION = "welche-flaechen-sind-interessant";
-export const WAGENHALLE_EXKLUSIV = `${AREAS_SECTION}/wagenhalle-exklusiv`;
-export const WAGENHALLE_NICHT_EXKLUSIV = `${AREAS_SECTION}/wagenhalle-nicht-exklusiv`;
 export const BRANDING = "branding";
 export const GASTRO_SECTION = "gastroflaechen";
 export const CATERING_SECTION = "catering-geplant";
@@ -332,14 +330,9 @@ export const NOT_STEP_FREE = new Set([WC_HALLE_HOF]);
 // The venue map's Kino pins (see PinMenus) each tick their Saal, and keep a
 // pick of their own of the room requirements, stored alongside the list's
 // answers as "pin:<pin>:<field>"; the list's own option is ticked while any
-// room has it, and says which. The two Wagenhalle halls keep their own
-// tick ("pin:<pin>:selected"), which together decide between the list's
-// exklusiv and nicht exklusiv (and show the halls on the map — see
-// venueAreas).
+// room has it, and says which.
 export const ROOM_REQUIREMENTS = "besondere-anforderungen-an-raeume";
-export const WAGENHALLE_PINS = ["wagenhalle-kino", "wagenhalle-event"];
-export const KINO_PINS = Array.from({ length: 10 }, (_, i) => `kino-${i + 1}`);
-export const ROOM_PINS = [...KINO_PINS, ...WAGENHALLE_PINS];
+export const ROOM_PINS = Array.from({ length: 10 }, (_, i) => `kino-${i + 1}`);
 
 export function pinKey(pinId: string, part: string) {
   return `pin:${pinId}:${part}`;
@@ -347,42 +340,24 @@ export function pinKey(pinId: string, part: string) {
 
 // The room pins' names, as on the map — for the list to say which rooms
 // asked for one of its room requirements.
-export const ROOM_PIN_NAMES: Record<string, string> = {
-  ...Object.fromEntries(KINO_PINS.map((id, i) => [id, `Kino ${i + 1}`])),
-  "wagenhalle-kino": "Wagenhalle 'Kino'",
-  "wagenhalle-event": "Wagenhalle 'Event'",
-};
+export const ROOM_PIN_NAMES: Record<string, string> = Object.fromEntries(
+  ROOM_PINS.map((id, i) => [id, `Kino ${i + 1}`]),
+);
 
 // The rooms (pins) that picked a room requirement for themselves.
 export function roomsWith(fieldKey: string, answer: (key: string) => true | string | null): string[] {
   return ROOM_PINS.filter((id) => answer(pinKey(id, fieldKey)) === true).map((id) => ROOM_PIN_NAMES[id]);
 }
 
-// Kino 2 and 3 sit in the Wagenhalle's cinema half: ticking either ticks
-// Wagenhalle 'Kino' too.
-const OPENS_WAGENHALLE_KINO = [`${AREAS_SECTION}/saal-2`, `${AREAS_SECTION}/saal-3`];
-
-// A change as it's to be saved, with what follows from it: a Wagenhalle
-// hall's tick sets exklusiv (both halls) or nicht exklusiv (one) in the
-// list; ticking Kino 2 or 3 ticks Wagenhalle 'Kino'; anything upstairs
-// brings the Galerie along; and the venue always has an entrance open —
-// taking the only one away opens the other, and the first place picked
-// with none open yet opens the Gleimstraße one.
+// A change as it's to be saved, with what follows from it: anything
+// upstairs brings the Galerie along; and the venue always has an entrance
+// open — taking the only one away opens the other, and the first place
+// picked with none open yet opens the Gleimstraße one.
 export function withConsequences(
   patch: Record<string, true | string | null>,
   answer: (key: string) => true | string | null,
 ): Record<string, true | string | null> {
   const full = { ...patch };
-  const kinoHall = pinKey("wagenhalle-kino", "selected");
-  if (OPENS_WAGENHALLE_KINO.some((key) => full[key] === true) && answer(kinoHall) !== true && !(kinoHall in full)) {
-    full[kinoHall] = true;
-  }
-  const hallKeys = WAGENHALLE_PINS.map((id) => pinKey(id, "selected"));
-  if (hallKeys.some((key) => key in full)) {
-    const count = hallKeys.filter((key) => (key in full ? full[key] === true : answer(key) === true)).length;
-    full[WAGENHALLE_EXKLUSIV] = count === 2 || null;
-    full[WAGENHALLE_NICHT_EXKLUSIV] = count === 1 || null;
-  }
   if (UPPER_FLOOR.some((key) => full[key] === true) && answer(GALERIE) !== true && !(GALERIE in full)) {
     full[GALERIE] = true;
   }
@@ -400,7 +375,6 @@ export function withConsequences(
 function isPinKey(key: string) {
   const [prefix, pinId, part, ...rest] = key.split(":");
   if (prefix !== "pin" || rest.length > 0 || !ROOM_PINS.includes(pinId)) return false;
-  if (part === "selected") return WAGENHALLE_PINS.includes(pinId);
   return FIELDS.get(part) !== undefined && SECTION_OF.get(part)?.key === ROOM_REQUIREMENTS;
 }
 

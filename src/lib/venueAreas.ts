@@ -157,10 +157,11 @@ const AREAS = {
 // The standing areas to show, for an event's answers:
 // - Upper floor: any of its options on (Kino 6–10, WC Oben, Galerie Bar,
 //   Galerie — which comes on with the others, see withConsequences) shows
-//   its area, and the mezzanine's — ZW with the
-//   Zwischenebene on, HZW without. With none of the ground floor's rooms
-//   (Kino 1–5) or Main Bar on as well, the ground floor shows the way up:
-//   by the Schönhauser entrance (with S), or by the Gleimstraße.
+//   its area, and the mezzanine's — ZW with the Zwischenebene on, HZW
+//   without. With none of the ground floor's rooms (Kino 1–5) or Main Bar
+//   on as well, the ground floor shows the way up: by the Schönhauser
+//   entrance (with S), or by the Gleimstraße.
+// - The Zwischenebene on with nothing upstairs: ZW alone, up there.
 // - Otherwise the west (Kino 4, Kino 5, Main Bar, WC Halle/Hof) alone is HU;
 //   with any of Kino 1–3, the Schönhauser entrance or the upper floor it's
 //   H — and S, with the Schönhauser entrance.
@@ -178,6 +179,7 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
 
   const shown: MapArea[] = [];
   if (upstairs) shown.push(AREAS.OG, on(ZWISCHENEBENE) ? AREAS.ZW : AREAS.HZW);
+  else if (on(ZWISCHENEBENE)) shown.push(AREAS.ZW);
   if (upstairs && !groundRooms) {
     if (schoenh) shown.push(AREAS.SCHOENH_OG, AREAS.S);
     else if (gleim) shown.push(AREAS.GLEIM_OG);
