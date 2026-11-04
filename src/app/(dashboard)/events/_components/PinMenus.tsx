@@ -135,6 +135,7 @@ const PIN_ANCHORS: Record<string, string> = {
   "eingang-gleimstr": LOGISTICS_CATEGORY,
   "eingang-schoenhauser": LOGISTICS_CATEGORY,
   "main-bar": DRINKS_SECTION,
+  "galerie-bar": DRINKS_SECTION,
   kueche: CATERING_SECTION,
   "halle-geteilt": FURNITURE_SECTION,
   "galerie-flaeche": FURNITURE_SECTION,
