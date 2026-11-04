@@ -1,10 +1,11 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { dateRangeAnswer, parkingDatesKey, parseDateRange, type DateRange } from "@/lib/checkliste";
+import { dateRangeAnswer, PARKING_SIDES, parkingDatesKey, parseDateRange, type DateRange } from "@/lib/checkliste";
 import { cn } from "@/lib/utils/cn";
 import type { ChecklistState } from "./checklistState";
-import { DateRangePicker } from "./EventCalendar";
+import { DateRangePicker, type Zone } from "./EventCalendar";
+import { PARKING_ZONES } from "./EventDates";
 
 const NONE: DateRange = { startsAt: null, endsAt: null, startsTimeSet: false, endsTimeSet: false };
 
@@ -15,19 +16,28 @@ export const EventDatesContext = createContext<DateRange | null>(null);
 // The days a side's parking closure (its towing zone) is registered for:
 // the event's own calendar, in yellow, saved in the Checkliste beside the
 // side's tick — each side its own, so they can be on different days — with
-// the event's own days faintly in blue under it. On the side's Parkv. pin,
-// and under its option in the list; either way on a surface (a card, a
-// list's row) rather than the page, so the calendar's blurred edges wash
-// out to that.
+// the event's own days faintly in blue under it, and its zone named under
+// its days ("BioCo & Kino" where the other side's closed then too). On the
+// side's Parkv. pin, and under its option in the list; either way on a
+// surface (a card, a list's row) rather than the page, so the calendar's
+// blurred edges wash out to that.
 export function ParkingDates({ side, state, className }: { side: string; state: ChecklistState; className?: string }) {
   const key = parkingDatesKey(side);
   const eventDates = useContext(EventDatesContext);
+  const others: Zone[] = PARKING_SIDES.filter((other) => other !== side && state.answer(other) === true).flatMap(
+    (other) => {
+      const dates = parseDateRange(state.answer(parkingDatesKey(other)));
+      return dates ? [{ label: PARKING_ZONES[other], dates }] : [];
+    },
+  );
   return (
     <div className={cn("tone-yellow [--edge-scrim:var(--surface)]", className)}>
       <DateRangePicker
         dates={parseDateRange(state.answer(key)) ?? NONE}
         onSave={(patch) => state.save({ [key]: dateRangeAnswer(patch) })}
         underlay={eventDates ? { dates: [eventDates], color: "var(--date-blue)", amount: 14 } : undefined}
+        zones={others}
+        ownZone={PARKING_ZONES[side]}
       />
     </div>
   );

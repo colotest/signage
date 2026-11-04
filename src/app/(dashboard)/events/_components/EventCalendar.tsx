@@ -10,12 +10,14 @@ import { updateEvent } from "@/lib/actions/events";
 import { PARKING_SIDES, parkingDatesKey, parseDateRange, type DateRange } from "@/lib/checkliste";
 import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
-import { effectiveEnd, effectiveStart, nextFullHour, type DateValue } from "./EventDates";
+import { effectiveEnd, effectiveStart, nextFullHour, PARKING_ZONES, type DateValue } from "./EventDates";
 import { ChecklistStateContext } from "./checklistState";
 import { useIsClient } from "./eventFormat";
 
-// One week row: the day circle and, under it, room for a time.
-const ROW = 52;
+// One week row: the day circle and, under it, room for a time — and, on a
+// calendar with parking zones to name (see Zone), a line more for those.
+const ROW_PLAIN = 52;
+const ROW_ZONED = 64;
 const CIRCLE = 34;
 // Closed, how much of the weeks either side shows, under the blurred edges.
 // The top one is deeper, to hold the month's name.
@@ -110,6 +112,10 @@ function daysCovered(dates: DateRange): { from: Date; to: Date } | null {
 export type Underlay = { dates: DateRange[]; color: string; amount: number };
 type UnderlayDays = { ranges: { from: Date; to: Date }[]; color: string; amount: number };
 
+// A parking closure's zone and its dates, for a calendar to name under the
+// yellow days it covers.
+export type Zone = { label: string; dates: DateRange };
+
 // Never ending before it starts: an end that would is pulled up to the
 // start.
 function settle(next: DateValue): DateValue {
@@ -156,29 +162,38 @@ type TimePrompt = {
 export function EventDatesSection({ event }: { event: EventSummary }) {
   const checklist = useContext(ChecklistStateContext);
   const answer = (key: string) => (checklist ? checklist.answer(key) : (event.checklist[key] ?? null));
-  const closures = PARKING_SIDES.filter((side) => answer(side) === true).flatMap(
-    (side) => parseDateRange(answer(parkingDatesKey(side))) ?? [],
-  );
+  const zones: Zone[] = PARKING_SIDES.filter((side) => answer(side) === true).flatMap((side) => {
+    const dates = parseDateRange(answer(parkingDatesKey(side)));
+    return dates ? [{ label: PARKING_ZONES[side], dates }] : [];
+  });
   return (
     <DateRangePicker
       dates={event}
       onSave={(patch) => updateEvent(event.id, patch)}
-      underlay={{ dates: closures, color: "var(--date-yellow)", amount: 30 }}
+      underlay={{ dates: zones.map((zone) => zone.dates), color: "var(--date-yellow)", amount: 30 }}
+      zones={zones}
     />
   );
 }
 
 // The calendar itself, for any start and end (the Parkv. pins' closures
 // too — see ParkingDates): onSave gets each change, and may come back with
-// an error message to show.
+// an error message to show. zones: parking closures to name under their
+// days — each day the zones on then, "BioCo & Kino" where both are. With
+// ownZone (a closure's own calendar), only its own days are named, as that
+// zone and whichever others share them.
 export function DateRangePicker({
   dates,
   onSave,
   underlay,
+  zones = [],
+  ownZone,
 }: {
   dates: DateRange;
   onSave: (patch: DateRange) => Promise<string | null> | void;
   underlay?: Underlay;
+  zones?: Zone[];
+  ownZone?: string;
 }) {
   const isClient = useIsClient();
   const [editing, setEditing] = useState(false);
@@ -208,6 +223,20 @@ export function DateRangePicker({
 
   const startDay = value.startsAt ? startOfDay(value.startsAt) : null;
   const endDay = endDayOf(value);
+  const zoneDays = zones.flatMap((zone) => {
+    const days = daysCovered(zone.dates);
+    return days ? [{ label: zone.label, ...days }] : [];
+  });
+  const lastOwnDay = endDay ?? startDay;
+  function zoneLabel(day: Date) {
+    const labels = zoneDays.filter((z) => day >= z.from && day <= z.to).map((z) => z.label);
+    if (ownZone !== undefined) {
+      if (!startDay || day < startDay || day > lastOwnDay!) return null;
+      labels.push(ownZone);
+    }
+    return labels.length ? [...new Set(labels)].sort().join(" & ") : null;
+  }
+  const zoned = zoneDays.length > 0 || (ownZone !== undefined && !!startDay);
   const underlayDays: UnderlayDays | null = underlay
     ? { ranges: underlay.dates.flatMap((d) => daysCovered(d) ?? []), color: underlay.color, amount: underlay.amount }
     : null;
@@ -346,6 +375,7 @@ export function DateRangePicker({
         monthAnchor={monthAnchor}
         jump={jump}
         underlay={underlayDays}
+        zoneLabel={zoned ? zoneLabel : null}
       >
         {prompt && promptTime && (
           <TimePromptPopover
@@ -423,6 +453,7 @@ function CalendarBody({
   monthAnchor,
   jump,
   underlay,
+  zoneLabel,
   children,
 }: {
   value: DateValue;
@@ -445,8 +476,12 @@ function CalendarBody({
   // A month to bring into view, when the month and year wheels pick one.
   jump: { month: Date; n: number } | null;
   underlay: UnderlayDays | null;
+  // Which parking zones are on a day (null: none) — given, the weeks are a
+  // line taller, for the zones' names.
+  zoneLabel: ((day: Date) => string | null) | null;
   children?: React.ReactNode;
 }) {
+  const ROW = zoneLabel ? ROW_ZONED : ROW_PLAIN;
   const firstDay = useMemo(() => weekStartsOn(), []);
   const frameRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -578,78 +613,107 @@ function CalendarBody({
           maskImage: editing ? "linear-gradient(to bottom, transparent, black 14px, black calc(100% - 14px), transparent)" : undefined,
         }}
       >
-        {weeks.map((week) => (
-          <div key={week.getTime()} className="grid snap-start grid-cols-7" style={{ height: ROW }}>
-            {Array.from({ length: 7 }, (_, i) => addDays(week, i)).map((day) => {
-              const inRange = !!shownStart && !!shownEnd && day >= shownStart && day <= shownEnd;
-              const isFirst = !!shownStart && sameDay(day, shownStart);
-              const isLast = !!shownEnd && sameDay(day, shownEnd);
-              const canPick = editing && !!mode && available(day);
-              const ownDay = (startDay && sameDay(day, startDay)) || (lastDay && sameDay(day, lastDay));
-              // Closed, the picked-out days are what opens it; open, the
-              // event's own days (to let go of) or any day that can be picked.
-              const pressable = editing ? (mode ? canPick : !!ownDay) : inRange;
-              return (
-                <div key={day.getTime()} className="relative flex flex-col items-center">
-                  {/* Faintly, beneath everything, other dates that fall
-                      here (see Underlay): a pill round each run of them. */}
-                  {underlay?.ranges
-                    .filter((r) => day >= r.from && day <= r.to)
-                    .map((r) => {
-                      const first = sameDay(day, r.from);
-                      const last = sameDay(day, r.to);
-                      return (
-                        <span
-                          key={r.from.getTime()}
-                          aria-hidden
-                          className={cn("absolute", first && "rounded-l-full", last && "rounded-r-full")}
-                          style={{
-                            top: 2,
-                            height: CIRCLE,
-                            left: first ? `calc(50% - ${CIRCLE / 2}px)` : 0,
-                            right: last ? `calc(50% - ${CIRCLE / 2}px)` : 0,
-                            background: `color-mix(in srgb, ${underlay.color} ${underlay.amount}%, transparent)`,
-                          }}
-                        />
-                      );
-                    })}
-                  {/* The pill joining the event's days, behind their circles;
-                      it starts and stops at the first and last circles' middles. */}
-                  {inRange && !sameDay(shownStart!, shownEnd!) && (
-                    <span
-                      aria-hidden
-                      className="absolute bg-accent/24"
-                      style={{ top: 2, height: CIRCLE, left: isFirst ? "50%" : 0, right: isLast ? "50%" : 0 }}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    tabIndex={pressable ? 0 : -1}
-                    disabled={!pressable}
-                    onClick={(e) => pressDay(day, e.currentTarget)}
-                    aria-label={editing ? day.toDateString() : `${day.toDateString()} — edit dates`}
-                    className="no-press relative mt-[2px] rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default"
-                  >
-                    <DayCircle
-                      day={day}
-                      kind={isFirst || isLast ? "edge" : inRange ? "inside" : "outside"}
-                      dim={editing && (day.getMonth() !== viewMonth.getMonth() || day.getFullYear() !== viewMonth.getFullYear())}
-                      // Open with nothing being picked yet, the start and end
-                      // take turns fading, to show they're what to tap.
-                      breathe={editing && !mode ? (isFirst ? "a" : isLast ? "b" : undefined) : undefined}
-                    />
-                    {canPick && <span aria-hidden className="day-available absolute inset-0 rounded-full" />}
-                  </button>
-                  {((isFirst && startTime) || (isLast && endTime)) && (
-                    <span className="relative mt-0.5 text-[10px] font-semibold leading-none tabular-nums text-accent">
-                      {isFirst && startTime ? startTime : endTime}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+        {weeks.map((week) => {
+          // The week's zones, as runs of days with the same ones on: each
+          // named once, centred under its run.
+          const labels = Array.from({ length: 7 }, (_, i) => zoneLabel?.(addDays(week, i)) ?? null);
+          const runs: { col: number; length: number; label: string }[] = [];
+          labels.forEach((label, col) => {
+            if (!label) return;
+            const run = runs[runs.length - 1];
+            if (run && run.label === label && run.col + run.length === col) run.length++;
+            else runs.push({ col, length: 1, label });
+          });
+          return (
+            <div key={week.getTime()} className="relative grid snap-start grid-cols-7" style={{ height: ROW }}>
+              {runs.map((run) => (
+                <span
+                  key={run.col}
+                  aria-hidden
+                  // Centred under its run, and past it either side when it's
+                  // longer (one day's "BioCo & Kino").
+                  className="pointer-events-none absolute flex justify-center whitespace-nowrap text-[10px] font-semibold leading-none"
+                  style={{
+                    top: ROW_PLAIN - 1,
+                    left: `${(run.col / 7) * 100}%`,
+                    width: `${(run.length / 7) * 100}%`,
+                    color: "color-mix(in srgb, var(--date-yellow) 70%, var(--foreground))",
+                  }}
+                >
+                  {run.label}
+                </span>
+              ))}
+              {Array.from({ length: 7 }, (_, i) => addDays(week, i)).map((day) => {
+                const inRange = !!shownStart && !!shownEnd && day >= shownStart && day <= shownEnd;
+                const isFirst = !!shownStart && sameDay(day, shownStart);
+                const isLast = !!shownEnd && sameDay(day, shownEnd);
+                const canPick = editing && !!mode && available(day);
+                const ownDay = (startDay && sameDay(day, startDay)) || (lastDay && sameDay(day, lastDay));
+                // Closed, the picked-out days are what opens it; open, the
+                // event's own days (to let go of) or any day that can be picked.
+                const pressable = editing ? (mode ? canPick : !!ownDay) : inRange;
+                return (
+                  <div key={day.getTime()} className="relative flex flex-col items-center">
+                    {/* Faintly, beneath everything, other dates that fall
+                        here (see Underlay): a pill round each run of them. */}
+                    {underlay?.ranges
+                      .filter((r) => day >= r.from && day <= r.to)
+                      .map((r) => {
+                        const first = sameDay(day, r.from);
+                        const last = sameDay(day, r.to);
+                        return (
+                          <span
+                            key={r.from.getTime()}
+                            aria-hidden
+                            className={cn("absolute", first && "rounded-l-full", last && "rounded-r-full")}
+                            style={{
+                              top: 2,
+                              height: CIRCLE,
+                              left: first ? `calc(50% - ${CIRCLE / 2}px)` : 0,
+                              right: last ? `calc(50% - ${CIRCLE / 2}px)` : 0,
+                              background: `color-mix(in srgb, ${underlay.color} ${underlay.amount}%, transparent)`,
+                            }}
+                          />
+                        );
+                      })}
+                    {/* The pill joining the event's days, behind their circles;
+                        it starts and stops at the first and last circles' middles. */}
+                    {inRange && !sameDay(shownStart!, shownEnd!) && (
+                      <span
+                        aria-hidden
+                        className="absolute bg-accent/24"
+                        style={{ top: 2, height: CIRCLE, left: isFirst ? "50%" : 0, right: isLast ? "50%" : 0 }}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      tabIndex={pressable ? 0 : -1}
+                      disabled={!pressable}
+                      onClick={(e) => pressDay(day, e.currentTarget)}
+                      aria-label={editing ? day.toDateString() : `${day.toDateString()} — edit dates`}
+                      className="no-press relative mt-[2px] rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default"
+                    >
+                      <DayCircle
+                        day={day}
+                        kind={isFirst || isLast ? "edge" : inRange ? "inside" : "outside"}
+                        dim={editing && (day.getMonth() !== viewMonth.getMonth() || day.getFullYear() !== viewMonth.getFullYear())}
+                        // Open with nothing being picked yet, the start and end
+                        // take turns fading, to show they're what to tap.
+                        breathe={editing && !mode ? (isFirst ? "a" : isLast ? "b" : undefined) : undefined}
+                      />
+                      {canPick && <span aria-hidden className="day-available absolute inset-0 rounded-full" />}
+                    </button>
+                    {((isFirst && startTime) || (isLast && endTime)) && (
+                      <span className="relative mt-0.5 text-[10px] font-semibold leading-none tabular-nums text-accent">
+                        {isFirst && startTime ? startTime : endTime}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
 
       {/* Closed, the weeks either side fade out under blurred edges; open,

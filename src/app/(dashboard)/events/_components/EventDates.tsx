@@ -27,3 +27,11 @@ export type DateValue = {
   startsTimeSet: boolean;
   endsTimeSet: boolean;
 };
+
+// The parking closures' zones, by the Checkliste option each is ticked
+// with (PARKING_SIDES), as the calendars name them under the days they're
+// on — "BioCo & Kino" where both are.
+export const PARKING_ZONES: Record<string, string> = {
+  "parkplatzsperrung-ladezone-benoetigt/seite-kino": "Kino",
+  "parkplatzsperrung-ladezone-benoetigt/seite-biocompany": "BioCo",
+};
