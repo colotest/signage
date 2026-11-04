@@ -20,6 +20,7 @@ import {
   WC_SERVICE,
   WAGENHALLE_EXKLUSIV,
   WAGENHALLE_NICHT_EXKLUSIV,
+  parkingDatesKey,
   pinKey,
   sectionByKey,
 } from "@/lib/checkliste";
@@ -27,6 +28,7 @@ import { cn } from "@/lib/utils/cn";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
 import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
 import type { ChecklistState } from "./checklistState";
+import { ParkingDates } from "./ParkingDates";
 import { MapCard } from "./VenueMap";
 
 // How the venue map's standing pins tie into the open event's Checkliste.
@@ -50,8 +52,10 @@ import { MapCard } from "./VenueMap";
 // - Küche, Main Bar: on ticks it under "Gastroflächen"; open, the Küche
 //   what's planned for catering, the Main Bar the drinks. Anything done
 //   with either scrolls the Checkliste to "Catering und Getränke".
+// - Both Parkv.: on ticks their side's closure; open, the days it's
+//   registered for, on a yellow calendar (ParkingDates).
 // And with a switch alone: Sicherheit (Ja or Nein on "Security / Ordner"),
-// both Parkv. (their side's closure), both Eingänge (which the list keeps
+// both Eingänge (which the list keeps
 // one of open — see withConsequences), Barrierefreiheit, Banner Indoor,
 // Projektion Indoor, Halle Geteilt (the Wagenhalle nicht exklusiv, off
 // exklusiv — shown only while that's a question, see hallSplitCase), the
@@ -62,6 +66,7 @@ import { MapCard } from "./VenueMap";
 type PinLink =
   | { kind: "saal"; field: string }
   | { kind: "check"; field: string }
+  | { kind: "parking"; field: string }
   | { kind: "yesno"; section: string }
   | { kind: "art"; section: string }
   | { kind: "wc"; field: string }
@@ -83,8 +88,8 @@ const PIN_LINKS: Record<string, PinLink> = {
     fields: [`${BRANDING}/banner-outdoor-oben`, `${BRANDING}/banner-outdoor-unten`],
   },
   sicherheit: { kind: "yesno", section: SECURITY },
-  "parken-kino": { kind: "check", field: `${PARKING}/seite-kino` },
-  "parken-bioco": { kind: "check", field: `${PARKING}/seite-biocompany` },
+  "parken-kino": { kind: "parking", field: `${PARKING}/seite-kino` },
+  "parken-bioco": { kind: "parking", field: `${PARKING}/seite-biocompany` },
   "eingang-gleimstr": { kind: "check", field: ENTRANCES[0] },
   "eingang-schoenhauser": { kind: "check", field: ENTRANCES[1] },
   barrierefreiheit: { kind: "check", field: BARRIEREFREI },
@@ -120,6 +125,7 @@ export function pinIsOn(pinId: string, answer: (key: string) => true | string | 
   switch (link.kind) {
     case "saal":
     case "check":
+    case "parking":
     case "wc":
     case "gastro":
       return ticked(link.field);
@@ -149,6 +155,8 @@ export function pinAnswerKeys(pinId: string): string[] {
     case "check":
     case "wc":
       return [link.field];
+    case "parking":
+      return [link.field, parkingDatesKey(link.field)];
     case "yesno":
     case "art":
       return (sectionByKey(link.section)?.fields ?? []).map((f) => f.key);
@@ -246,7 +254,7 @@ export function LinkedPinCard({
     turnOn: Patch,
     turnOff: Patch,
     content: ReactNode,
-    extra?: { adornment?: ReactNode },
+    extra?: { adornment?: ReactNode; openWidth?: number },
   ) => {
     const switchOn = () => {
       save(turnOn);
@@ -266,6 +274,7 @@ export function LinkedPinCard({
         onTitlePress={pressTitle}
         arrow={false}
         adornment={extra?.adornment}
+        openWidth={extra?.openWidth}
         control={<Switch label={pin.title} value={on} onPress={pressSwitch} />}
       >
         {content}
@@ -301,6 +310,17 @@ export function LinkedPinCard({
           };
         })}
       />,
+    );
+  }
+
+  if (link.kind === "parking") {
+    return expandable(
+      ticked(link.field),
+      { [link.field]: true },
+      { [link.field]: null },
+      <ParkingDates side={link.field} state={state} className="pb-1" />,
+      // As wide as the calendar needs: a week across, seven days.
+      { openWidth: 312 },
     );
   }
 

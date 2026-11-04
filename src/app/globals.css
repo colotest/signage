@@ -1376,6 +1376,19 @@ button[data-landing]::after {
   }
 }
 
+/* A calendar picked out in iOS's yellow rather than the accent — the
+   Parkv. pins' closures (ParkingDates) — dark text on its filled days. */
+.tone-yellow {
+  --accent: #ffcc00;
+  --accent-contrast: #1c1c1e;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tone-yellow {
+    --accent: #ffd60a;
+  }
+}
+
 /* A day that can be picked, while an event's start or end is being picked
    again on its calendar (EventCalendar): a soft ring, its edge feathered,
    breathing in and out. */

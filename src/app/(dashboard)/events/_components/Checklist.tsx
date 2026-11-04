@@ -6,6 +6,7 @@ import {
   CHECKLISTE,
   MAX_CHECKLIST_TEXT,
   NOT_STEP_FREE,
+  PARKING_SIDES,
   ROOM_REQUIREMENTS,
   roomsWith,
   type ChecklistField,
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils/cn";
 import { CheckIcon } from "@/components/icons/PlaybackIcons";
 import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
 import { useChecklist, type Answer } from "./checklistState";
+import { ParkingDates } from "./ParkingDates";
 
 // How long typing in a text field rests before it's saved (leaving the
 // field saves at once).
@@ -57,6 +59,7 @@ function Section({
   answer: (key: string) => Answer;
   onSave: (key: string, value: Answer) => void;
 }) {
+  const state = useChecklist();
   // A follow-up question (@wenn), only once what it follows is ticked.
   if (section.when && answer(section.when) !== true) return null;
   const stepFree = answer(BARRIEREFREI) === true;
@@ -84,6 +87,12 @@ function Section({
               />
             ) : (
               <TextRow field={field} value={(answer(field.key) as string | null) ?? ""} onSave={(text) => onSave(field.key, text || null)} />
+            )}
+            {/* A parking side's closure, while it's ticked: the days it's
+                registered for, under its title — as an event's are under
+                its own (see ParkingDates). */}
+            {PARKING_SIDES.includes(field.key) && answer(field.key) === true && (
+              <ParkingDates side={field.key} state={state} className="pb-3 pl-[42px] pr-3" />
             )}
           </li>
         ))}

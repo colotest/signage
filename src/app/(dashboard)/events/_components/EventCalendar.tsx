@@ -7,6 +7,7 @@ import { sameDay, weekStartsOn } from "@/components/MonthCalendar";
 import { CheckIcon, CloseIcon } from "@/components/icons/PlaybackIcons";
 import { Menu } from "@/components/ui/Menu";
 import { updateEvent } from "@/lib/actions/events";
+import type { DateRange } from "@/lib/checkliste";
 import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
 import { effectiveEnd, effectiveStart, nextFullHour, type DateValue } from "./EventDates";
@@ -70,16 +71,16 @@ function rangeLabel(from: Date, to: Date) {
   return `${monthName(from.getMonth())} ${from.getFullYear()}`;
 }
 
-// The event's own dates, as stored, turned into what's edited. A blank
-// time still needs hours behind it, for when one's added: the next full
-// hour for the start, a few hours on for the end.
-function toDateValue(event: EventSummary): DateValue {
+// Dates as stored, turned into what's edited. A blank time still needs
+// hours behind it, for when one's added: the next full hour for the start,
+// a few hours on for the end.
+function toDateValue(dates: DateRange): DateValue {
   const fallback = nextFullHour();
-  const startsAt = event.startsAt ? new Date(event.startsAt) : null;
-  if (startsAt && !event.startsTimeSet) startsAt.setHours(fallback.getHours(), 0, 0, 0);
-  const endsAt = event.endsAt ? new Date(event.endsAt) : null;
-  if (endsAt && !event.endsTimeSet) endsAt.setHours(Math.min(23, (startsAt ?? fallback).getHours() + 4), 0, 0, 0);
-  return { startsAt, endsAt, startsTimeSet: event.startsTimeSet, endsTimeSet: event.endsTimeSet };
+  const startsAt = dates.startsAt ? new Date(dates.startsAt) : null;
+  if (startsAt && !dates.startsTimeSet) startsAt.setHours(fallback.getHours(), 0, 0, 0);
+  const endsAt = dates.endsAt ? new Date(dates.endsAt) : null;
+  if (endsAt && !dates.endsTimeSet) endsAt.setHours(Math.min(23, (startsAt ?? fallback).getHours() + 4), 0, 0, 0);
+  return { startsAt, endsAt, startsTimeSet: dates.startsTimeSet, endsTimeSet: dates.endsTimeSet };
 }
 
 // The day an end falls on, for drawing: ending at midnight is ending on
@@ -134,6 +135,19 @@ type TimePrompt = {
 // The end works the same way, from the start on. Every change is saved as
 // it's made; the ✓ closes the calendar again.
 export function EventDatesSection({ event }: { event: EventSummary }) {
+  return <DateRangePicker dates={event} onSave={(patch) => updateEvent(event.id, patch)} />;
+}
+
+// The calendar itself, for any start and end (the Parkv. pins' closures
+// too — see ParkingDates): onSave gets each change, and may come back with
+// an error message to show.
+export function DateRangePicker({
+  dates,
+  onSave,
+}: {
+  dates: DateRange;
+  onSave: (patch: DateRange) => Promise<string | null> | void;
+}) {
   const isClient = useIsClient();
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState<Mode>(null);
@@ -150,13 +164,13 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
   // comes back — dropped once the event's own dates change (and the
   // calendar's closed), as the saved ones are then the same.
   const [draft, setDraft] = useState<DateValue | null>(null);
-  const datesKey = [event.startsAt, event.endsAt, event.startsTimeSet, event.endsTimeSet].join("|");
+  const datesKey = [dates.startsAt, dates.endsAt, dates.startsTimeSet, dates.endsTimeSet].join("|");
   const [syncedKey, setSyncedKey] = useState(datesKey);
   if (datesKey !== syncedKey) {
     setSyncedKey(datesKey);
     if (!editing) setDraft(null);
   }
-  const value = draft ?? toDateValue(event);
+  const value = draft ?? toDateValue(dates);
   // Saves go one after another, so quick changes land in order.
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
 
@@ -187,7 +201,7 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
       startsTimeSet: next.startsTimeSet,
       endsTimeSet: next.endsTimeSet,
     };
-    const run = queueRef.current.then(() => updateEvent(event.id, patch));
+    const run = queueRef.current.then(async () => (await onSave(patch)) ?? null);
     queueRef.current = run.catch(() => {});
     // The action's revalidatePath brings the fresh page back by itself.
     run.then(

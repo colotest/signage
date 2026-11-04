@@ -318,6 +318,11 @@ export const BARRIEREFREI = "barrierefreiheit/barrierefrei";
 export const GARDEROBE_KIND = "garderobenart";
 export const AKKREDITIERUNG_KIND = "akkreditierungsart";
 export const PARKING = "parkplatzsperrung-ladezone-benoetigt";
+// Each side's closure, and the days it's registered for (see DateRange),
+// picked on its Parkv. pin or under its option in the list.
+export const PARKING_SIDES = [`${PARKING}/seite-kino`, `${PARKING}/seite-biocompany`];
+export const parkingDatesKey = (sideKey: string) => `${sideKey}/termin`;
+const PARKING_DATES = new Set(PARKING_SIDES.map(parkingDatesKey));
 export const SECURITY = "security-ordner-benoetigt";
 export const WC_POSITIONS = "wc-positionen";
 export const WC_SERVICE = "wc-service-reinigung-waehrend-event";
@@ -421,10 +426,38 @@ function isPinKey(key: string) {
   return FIELDS.get(part) !== undefined && SECTION_OF.get(part)?.key === ROOM_REQUIREMENTS;
 }
 
+// A start and end picked on a calendar like an event's own (see
+// EventCalendar), stored as an answer: as JSON, its times ISO, and whether
+// each has a time of day or is just a day. Null without a start.
+export type DateRange = { startsAt: string | null; endsAt: string | null; startsTimeSet: boolean; endsTimeSet: boolean };
+
+const isTime = (v: unknown): v is string => typeof v === "string" && !Number.isNaN(Date.parse(v));
+
+export function parseDateRange(value: unknown): DateRange | null {
+  if (typeof value !== "string") return null;
+  try {
+    const { startsAt, endsAt, startsTimeSet, endsTimeSet } = JSON.parse(value) as Record<string, unknown>;
+    if (!isTime(startsAt) || (endsAt !== null && !isTime(endsAt))) return null;
+    return { startsAt, endsAt, startsTimeSet: startsTimeSet === true, endsTimeSet: endsTimeSet === true };
+  } catch {
+    return null;
+  }
+}
+
+export function dateRangeAnswer(range: DateRange): string | null {
+  if (!range.startsAt) return null;
+  const { startsAt, endsAt, startsTimeSet, endsTimeSet } = range;
+  return JSON.stringify({ startsAt, endsAt, startsTimeSet, endsTimeSet });
+}
+
 // One answer as it may be stored: null when it's blank (or isn't valid for
 // that field), so it's left out.
 export function cleanAnswer(key: string, value: unknown): true | string | null {
   if (key.startsWith("pin:")) return isPinKey(key) && value === true ? true : null;
+  if (PARKING_DATES.has(key)) {
+    const range = parseDateRange(value);
+    return range ? dateRangeAnswer(range) : null;
+  }
   const field = FIELDS.get(key);
   if (!field) return null;
   if (field.kind === "check") return value === true ? true : null;
