@@ -69,10 +69,12 @@ const COLOSSEUM: MapFloor[] = FLOORS.map((floor) => {
 // a fraction of its width and height, and on which floor (the ground floor
 // if none). Placed as the pins of an untitled event without a date and
 // copied out (see copyPins). Those whose id PinMenus knows (PIN_LINKS)
-// work the open event's Checkliste; the rest are names.
+// work the open event's Checkliste; the rest are names. Where two meet, the
+// later one's drawn over the earlier (Banner Outdoor over Haustechnik K1).
 const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: Floor }[] = [
   { id: "banner-indoor", title: "Banner Indoor", u: 0.1392, v: 0.3728 },
   { id: "projektion-indoor", title: "Projektion Indoor", u: 0.4925, v: 0.6599 },
+  { id: "haustechnik-k1", title: "Haustechnik K1", u: 0.5759, v: 0.8443 },
   { id: "banner-outdoor", title: "Banner Outdoor", u: 0.5676, v: 0.8777 },
   { id: "kino-5", title: "Kino 5", u: 0.1153, v: 0.242 },
   { id: "kino-4", title: "Kino 4", u: 0.206, v: 0.2833 },
@@ -117,7 +119,6 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: F
   { id: "barrierefreiheit", title: "Barrierefreiheit", u: 0.4652, v: 0.8454 },
   { id: "parken-kino", title: "Parkv. Kino", u: 0.6388, v: 0.9521 },
   { id: "parken-bioco", title: "Parkv. BioCo", u: 0.3724, v: 0.9559 },
-  { id: "haustechnik-k1", title: "Haustechnik K1", u: 0.5759, v: 0.8443 },
 ];
 
 // Standing pins shown as their dot alone, to keep the map clear: a tap on
