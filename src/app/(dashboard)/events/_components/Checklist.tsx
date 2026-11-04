@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   BARRIEREFREI,
   CHECKLISTE,
+  hallTakenWhole,
   MAX_CHECKLIST_TEXT,
   NOT_STEP_FREE,
   PARKING_SIDES,
   ROOM_REQUIREMENTS,
   roomsWith,
+  WAGENHALLE_EXKLUSIV,
   type ChecklistField,
   type ChecklistSection,
 } from "@/lib/checkliste";
@@ -25,8 +27,9 @@ const TEXT_SAVE_MS = 800;
 // An event's Checkliste (src/lib/checkliste.ts): every category in one long
 // list, each of its sections a card of options. A box is saved the moment
 // it's ticked; text as it's typed. Its answers are the page's (see
-// checklistState), shared with the map's pins. Each category can be
-// scrolled to by its id, checkliste-<key> (the Gastro pin does).
+// checklistState), shared with the map's pins. Each category and section
+// can be scrolled to by its id, checkliste-<key> (the pins do — see
+// pinChecklistAnchor); the two never share a key.
 export function Checklist() {
   const { answer, save: saveAll, error } = useChecklist();
   const save = (key: string, value: Answer) => saveAll({ [key]: value });
@@ -64,7 +67,7 @@ function Section({
   if (section.when && answer(section.when) !== true) return null;
   const stepFree = answer(BARRIEREFREI) === true;
   return (
-    <div>
+    <div id={`checkliste-${section.key}`} className="scroll-mt-4">
       <h3 className="mb-1.5 px-1 text-[15px] font-semibold">{section.title}</h3>
       {section.note && <Note text={section.note} />}
       <ul
@@ -81,8 +84,15 @@ function Section({
                 checked={answer(field.key) === true}
                 onChange={(on) => onSave(field.key, on || null)}
                 // Which rooms on the map asked for this one, for the room
-                // requirements.
-                aside={section.key === ROOM_REQUIREMENTS ? roomsWith(field.key, answer).join(", ") || null : null}
+                // requirements; why the Wagenhalle's exklusiv, while it
+                // has to be.
+                aside={
+                  section.key === ROOM_REQUIREMENTS
+                    ? roomsWith(field.key, answer).join(", ") || null
+                    : field.key === WAGENHALLE_EXKLUSIV && hallTakenWhole(answer)
+                      ? "West und Ost belegt"
+                      : null
+                }
                 notStepFree={stepFree && NOT_STEP_FREE.has(field.key)}
               />
             ) : (

@@ -381,6 +381,18 @@ export function hallSplitCase(answer: (key: string) => true | string | null): "H
   return (on(saal(2)) || on(saal(3))) && schoenh ? "HO" : null;
 }
 
+// Whether the hall can't be shared at all: its west (Kino 4, Kino 5, Main
+// Bar or WC Halle/Hof) and its east (Kino 1–3, or the Schönhauser
+// entrance) both taken. While that holds it's "Wagenhalle exklusiv",
+// whatever's picked for it (see withConsequences) — and Halle Geteilt's
+// pin, with no question to ask, isn't shown.
+export function hallTakenWhole(answer: (key: string) => true | string | null): boolean {
+  const on = (key: string) => answer(key) === true;
+  const west = [saal(4), saal(5), MAINBAR, WC_HALLE_HOF].some(on);
+  const east = [saal(1), saal(2), saal(3), ENTRANCES[1]].some(on);
+  return west && east;
+}
+
 // Whether the hall's split, where that's a question: unless it's taken
 // whole ("Wagenhalle exklusiv").
 export function hallSplit(answer: (key: string) => true | string | null): boolean {
@@ -391,8 +403,10 @@ export function hallSplit(answer: (key: string) => true | string | null): boolea
 // upstairs brings the Galerie along; the venue always has an entrance
 // open — taking the only one away opens the other, and the first place
 // picked with none open yet opens the Gleimstraße one; and the Wagenhalle
-// is exklusiv or nicht exklusiv, never both — and once its split is a
-// question (hallSplitCase), one or the other, nicht exklusiv to begin with.
+// is exklusiv or nicht exklusiv, never both — exklusiv, held there, while
+// it's taken whole (hallTakenWhole), and let go of once it isn't — and
+// once its split is a question (hallSplitCase), one or the other, nicht
+// exklusiv to begin with.
 export function withConsequences(
   patch: Record<string, true | string | null>,
   answer: (key: string) => true | string | null,
@@ -412,6 +426,12 @@ export function withConsequences(
   const [whole, shared] = [WAGENHALLE_EXKLUSIV, WAGENHALLE_NICHT_EXKLUSIV];
   if (full[whole] === true) full[shared] = null;
   else if (full[shared] === true) full[whole] = null;
+  if (hallTakenWhole(after)) {
+    full[whole] = true;
+    full[shared] = null;
+  } else if (hallTakenWhole(answer) && !(whole in patch) && !(shared in patch)) {
+    full[whole] = null;
+  }
   if (hallSplitCase(after)) {
     if (full[shared] === null && !(whole in patch)) full[whole] = true;
     else if (full[whole] === null && !(shared in patch)) full[shared] = true;

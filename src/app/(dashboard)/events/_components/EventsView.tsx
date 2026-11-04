@@ -23,7 +23,7 @@ import {
 import { formatScrubMoment } from "./eventFormat";
 import { EventsPane } from "./EventsPane";
 import { EventDatesContext } from "./ParkingDates";
-import { LinkedPinCard, pinAnswerKeys, pinIsOn } from "./PinMenus";
+import { LinkedPinCard, pinAnswerKeys, pinChecklistAnchor, pinIsOn } from "./PinMenus";
 import { ScreenPin } from "./ScreenPin";
 import { MapCard, VenueMap, type MapFloor, type MapSpot, type PlanGeo } from "./VenueMap";
 
@@ -150,6 +150,30 @@ const SCREEN_PINS: Record<string, string> = {
 // the floor shown then, if it's been switched since), or add a corner to
 // the area being drawn (its corners so far).
 type Placing = { kind: "new" } | { kind: "move"; id: string } | { kind: "area"; points: AreaPoint[] };
+
+// Following the map with the Checkliste (see followMap): another pin's part
+// of the list takes over only once its pin is this much nearer the map's
+// middle than the one followed, so the list doesn't jump back and forth
+// with the middle halfway between two.
+const FOLLOW_SWITCH = 0.85;
+// Followed whether they're on the map or not: Halle Geteilt while the
+// hall's split isn't a question, and the Galerie Fläche from the floors
+// below it.
+const ALWAYS_FOLLOWED = new Set(["halle-geteilt", "galerie-flaeche"]);
+
+// Scrolls the Checkliste to a category's or section's heading, just below
+// the page's title bar, which stays over the top of the list. (Not with
+// scrollIntoView, which would scroll whatever holds the list as well.)
+function scrollChecklistTo(key: string) {
+  const heading = document.getElementById(`checkliste-${key}`);
+  let scroller = heading?.parentElement ?? null;
+  while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+  if (!heading || !scroller) return;
+  const bar = scroller.querySelector(".sticky")?.getBoundingClientRect().height ?? 0;
+  const top =
+    heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - bar - 8;
+  scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
 
 // The Events page: the events on one side (top on a phone, left on an iPad
 // or desktop), each opening into its own setup pages, and the venue map on
@@ -409,6 +433,39 @@ export function EventsView({
       // Halle Geteilt, only while the hall could be shared.
       (pin.id !== "halle-geteilt" || editing || (!!answersOnShow && hallSplitCase(answersOnShow) !== null)),
   );
+
+  // While the map's moved by hand with the Checkliste open, the list keeps
+  // to the part whose pin (on the floor on show, or one of ALWAYS_FOLLOWED)
+  // is nearest the map's middle — scrolled there each time that changes.
+  // Once the map comes to rest the list is left alone, to be scrolled as
+  // anyone likes; the next move starts following afresh.
+  const followed = useRef<string | null>(null);
+  function followMap(centre: { u: number; v: number } | null) {
+    if (!centre) {
+      followed.current = null;
+      return;
+    }
+    if (!pinState) return;
+    // Nearest by the plan's own lengths (it's wider than it's tall), each
+    // part by the nearest of its pins.
+    const { width, height } = COLOSSEUM[0].plan;
+    const near = new Map<string, number>();
+    const followable = [...standing, ...DEFAULT_PINS.filter((p) => ALWAYS_FOLLOWED.has(p.id) && !standing.includes(p))];
+    for (const pin of followable) {
+      const anchor = pinChecklistAnchor(pin.id);
+      if (!anchor) continue;
+      const d = Math.hypot((pin.u - centre.u) * width, (pin.v - centre.v) * height);
+      near.set(anchor, Math.min(d, near.get(anchor) ?? Infinity));
+    }
+    let best: string | null = null;
+    for (const [anchor, d] of near) if (best === null || d < near.get(best)!) best = anchor;
+    if (best === null || best === followed.current) return;
+    const current = followed.current !== null ? near.get(followed.current) : undefined;
+    if (current !== undefined && near.get(best)! > current * FOLLOW_SWITCH) return;
+    followed.current = best;
+    scrollChecklistTo(best);
+  }
+
   const spots: MapSpot[] = [
     ...standing.map((pin) => {
       const screen = !event ? screenByPin.get(pin.id) : undefined;
@@ -515,6 +572,7 @@ export function EventsView({
               onFloorChange={pickFloor}
               focus={null}
               onBackgroundTap={onMapTap}
+              onHandMove={followMap}
               spots={spots}
               areas={shownAreas}
               selectedArea={editing ? selectedArea : null}

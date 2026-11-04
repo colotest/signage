@@ -121,6 +121,7 @@ export function VenueMap({
   draft = null,
   focus,
   onBackgroundTap,
+  onHandMove,
   className,
 }: {
   // The building's floors, bottom up, and which is picked: drawn in full,
@@ -143,6 +144,10 @@ export function VenueMap({
   // plan it landed — as a fraction of its width and height, like a spot's
   // u and v (outside 0–1 when it's off the plan).
   onBackgroundTap?: (at: { u: number; v: number } | null) => void;
+  // While the map's moved by hand (dragged, pinched, scrolled, or gliding on
+  // after a drag's let go), where on the plan its middle is, as a spot's u
+  // and v, each time it's drawn — and null once it's come to rest.
+  onHandMove?: (centre: { u: number; v: number } | null) => void;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -171,6 +176,9 @@ export function VenueMap({
   // Until someone moves the map it stays fitted to its box, through any
   // resize; after that a resize keeps whatever's in the middle there.
   const touchedRef = useRef(false);
+  // Whether the map's being moved by hand, until it comes to rest (see
+  // onHandMove).
+  const handRef = useRef(false);
 
   const floorIndex = Math.max(floors.findIndex((f) => f.id === floor), 0);
   const plan = floors[floorIndex].plan;
@@ -226,9 +234,11 @@ export function VenueMap({
 
   const spotsRef = useRef(spots);
   const onBackgroundTapRef = useRef(onBackgroundTap);
+  const onHandMoveRef = useRef(onHandMove);
   useEffect(() => {
     spotsRef.current = spots;
     onBackgroundTapRef.current = onBackgroundTap;
+    onHandMoveRef.current = onHandMove;
   });
 
   // --- geometry -----------------------------------------------------------
@@ -237,6 +247,24 @@ export function VenueMap({
     const c = Math.cos(v.r), s = Math.sin(v.r);
     return { x: v.x + (px * c - py * s) * v.s, y: v.y + (px * s + py * c) * v.s };
   };
+
+  // Back from the screen to the plan, as a fraction of its width and
+  // height: the inverse of toScreen.
+  const toPlan = (v: View, x: number, y: number) => {
+    const dx = x - v.x, dy = y - v.y;
+    const c = Math.cos(v.r), s = Math.sin(v.r);
+    return { u: (dx * c + dy * s) / v.s / plan.width, v: (-dx * s + dy * c) / v.s / plan.height };
+  };
+
+  // The map's moved by hand from here until it comes to rest (see settle).
+  function byHand() {
+    handRef.current = true;
+  }
+  function handDone() {
+    if (!handRef.current) return;
+    handRef.current = false;
+    onHandMoveRef.current?.(null);
+  }
 
   function placeSpot(el: HTMLElement, spot: MapSpot) {
     const v = viewRef.current;
@@ -264,6 +292,10 @@ export function VenueMap({
       needleRef.current.style.transform = `rotate(${v.r + (northRef.current * Math.PI) / 180}rad)`;
     }
     placeYou();
+    if (handRef.current) {
+      const { w, h } = sizeRef.current;
+      onHandMoveRef.current?.(toPlan(v, w / 2, h / 2));
+    }
   }
 
   // The device's dot, and its ring as wide as the fix may be out (in the
@@ -298,7 +330,9 @@ export function VenueMap({
   // Chrome kept redrawing a layer that had been through a zoom while the
   // next zoom was still under way.
   function settle() {
-    if (pointersRef.current.size > 0 || motionRef.current !== null || followingRef.current) {
+    const still = pointersRef.current.size === 0 && motionRef.current === null;
+    if (still) handDone();
+    if (!still || followingRef.current) {
       settleTimer.current = setTimeout(settle, SETTLE_MS);
       return;
     }
@@ -393,6 +427,7 @@ export function VenueMap({
 
   function animateTo(target: View, ms = 480) {
     stopMotion();
+    handDone();
     touchedRef.current = true;
     const from = viewRef.current;
     if (!from) return;
@@ -488,6 +523,7 @@ export function VenueMap({
       if (gesturing && e.ctrlKey) return;
       stopMotion();
       touchedRef.current = true;
+      byHand();
       const rect = el.getBoundingClientRect();
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.height : 1;
       if (e.ctrlKey || e.metaKey || wheelKind(e) === "mouse") {
@@ -510,6 +546,7 @@ export function VenueMap({
       const v = viewRef.current;
       if (!last || !v) return;
       touchedRef.current = true;
+      byHand();
       const rect = el.getBoundingClientRect();
       const cx = g.clientX - rect.left, cy = g.clientY - rect.top;
       let next = zoomAbout(v, cx, cy, g.scale / last.scale);
@@ -601,6 +638,7 @@ export function VenueMap({
 
     if (!g.moved && Math.hypot(p.x - g.start.x, p.y - g.start.y) < TAP_SLOP_PX) return;
     g.moved = true;
+    byHand();
 
     if (pointers.size === 1) {
       if (g.rotateMode && !followingRef.current) {
@@ -667,17 +705,7 @@ export function VenueMap({
       } else {
         lastTapRef.current = p;
         const v = viewRef.current;
-        let at: { u: number; v: number } | null = null;
-        if (v) {
-          // Back from the screen to the plan: the inverse of toScreen.
-          const dx = p.x - v.x, dy = p.y - v.y;
-          const c = Math.cos(v.r), s = Math.sin(v.r);
-          at = {
-            u: (dx * c + dy * s) / v.s / plan.width,
-            v: (-dx * s + dy * c) / v.s / plan.height,
-          };
-        }
-        onBackgroundTapRef.current?.(at);
+        onBackgroundTapRef.current?.(v ? toPlan(v, p.x, p.y) : null);
       }
       return;
     }

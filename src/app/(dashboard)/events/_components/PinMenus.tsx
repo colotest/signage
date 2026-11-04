@@ -122,6 +122,28 @@ const PIN_LINKS: Record<string, PinLink> = {
   "halle-geteilt": { kind: "split" },
 };
 
+// The part of the Checkliste each of these pins belongs to, by the key of
+// its category or section (whose heading has the id checkliste-<key>): as
+// the map's moved by hand, the list keeps to the one whose pin is nearest
+// the map's middle (see EventsView). Technik's and the Telekollegen's
+// titles scroll there too; the rest are only followed.
+const LOGISTICS_CATEGORY = "logistik-und-service";
+const FURNITURE_SECTION = "mobiliarbedarf";
+const PIN_ANCHORS: Record<string, string> = {
+  technik: "technik",
+  telekollegen: "technik",
+  "eingang-gleimstr": LOGISTICS_CATEGORY,
+  "eingang-schoenhauser": LOGISTICS_CATEGORY,
+  "main-bar": DRINKS_SECTION,
+  kueche: CATERING_SECTION,
+  "halle-geteilt": FURNITURE_SECTION,
+  "galerie-flaeche": FURNITURE_SECTION,
+};
+
+export function pinChecklistAnchor(pinId: string): string | null {
+  return PIN_ANCHORS[pinId] ?? null;
+}
+
 // Whether a pin with a switch is switched on, by the event's answers —
 // null for a pin with no switch (a name, or Technik).
 export function pinIsOn(pinId: string, answer: (key: string) => true | string | null): boolean | null {
