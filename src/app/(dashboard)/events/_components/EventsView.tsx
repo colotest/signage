@@ -12,9 +12,17 @@ import { hallSplitCase } from "@/lib/checkliste";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { useScreenStatuses } from "@/lib/realtime/useScreenStatuses";
 import type { VenueScreens } from "@/lib/venueScreens";
-import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
+import {
+  ChecklistReviewContext,
+  ChecklistStateContext,
+  reviewTypeIn,
+  useChecklistReview,
+  useChecklistState,
+  type ChecklistState,
+} from "./checklistState";
 import { formatScrubMoment } from "./eventFormat";
 import { EventsPane } from "./EventsPane";
+import { EventDatesContext } from "./ParkingDates";
 import { LinkedPinCard, pinAnswerKeys, pinIsOn } from "./PinMenus";
 import { ScreenPin } from "./ScreenPin";
 import { MapCard, VenueMap, type MapFloor, type MapSpot, type PlanGeo } from "./VenueMap";
@@ -200,8 +208,12 @@ export function EventsView({
   const floorPins = pins.filter((p) => floorOf(p) === floor);
   const floorAreas = areas.filter((a) => floorOf(a) === floor);
   const [editing, setEditing] = useState(false);
-  // The open event's Checkliste, shared by its setup page and the pins.
-  const checklist = useChecklistState(event);
+  // The open event's Checkliste, shared by its setup page and the pins —
+  // while a type switch is being reviewed, as that would leave it (unsaved,
+  // see ChecklistReview), on the map as on the list.
+  const savedChecklist = useChecklistState(event);
+  const review = useChecklistReview(event, reviewTypeIn(params, event), savedChecklist);
+  const checklist = review?.state ?? savedChecklist;
   const previewChecklist: ChecklistState | null =
     previewEvents.length > 0
       ? {
@@ -478,194 +490,199 @@ export function EventsView({
   ];
 
   return (
+    <ChecklistReviewContext.Provider value={review}>
     <ChecklistStateContext.Provider value={checklist}>
-      {/* Fills the page's scroll area edge to edge (undoing its padding): each
-          half scrolls or pans on its own instead. */}
-      <div className="-mx-5 -my-6 flex h-[calc(100%+3rem)] flex-col md:flex-row">
-        <div className="min-h-0 flex-1 border-b border-border md:w-[420px] md:flex-none md:border-b-0 md:border-r lg:w-[460px]">
-          <EventsPane
-            events={events}
-            people={people}
-            previewIds={previewEvents.map((e) => e.id)}
-            previewAt={previewAt}
-            onPreview={preview}
-          />
-        </div>
+      {/* The open event's dates, for its parking calendars to show under theirs. */}
+      <EventDatesContext.Provider value={event ?? null}>
+        {/* Fills the page's scroll area edge to edge (undoing its padding): each
+            half scrolls or pans on its own instead. */}
+        <div className="-mx-5 -my-6 flex h-[calc(100%+3rem)] flex-col md:flex-row">
+          <div className="min-h-0 flex-1 border-b border-border md:w-[420px] md:flex-none md:border-b-0 md:border-r lg:w-[460px]">
+            <EventsPane
+              events={events}
+              people={people}
+              previewIds={previewEvents.map((e) => e.id)}
+              previewAt={previewAt}
+              onPreview={preview}
+            />
+          </div>
 
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <VenueMap
-            className="min-h-0 flex-1"
-            floors={COLOSSEUM}
-            floor={floor}
-            onFloorChange={pickFloor}
-            focus={null}
-            onBackgroundTap={onMapTap}
-            spots={spots}
-            areas={shownAreas}
-            selectedArea={editing ? selectedArea : null}
-            draft={draft}
-          />
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <VenueMap
+              className="min-h-0 flex-1"
+              floors={COLOSSEUM}
+              floor={floor}
+              onFloorChange={pickFloor}
+              focus={null}
+              onBackgroundTap={onMapTap}
+              spots={spots}
+              areas={shownAreas}
+              selectedArea={editing ? selectedArea : null}
+              draft={draft}
+            />
 
-          {previewAt && (
-            // The moment scrubbed to on the Events list's calendar, to the
-            // minute, set like the map's controls.
-            <div className="pointer-events-none absolute left-3 top-3 z-20 flex h-11 items-center rounded-[var(--radius-md)] border border-border glass-material px-3.5 text-[15px] font-semibold tabular-nums shadow-[var(--shadow-float)]">
-              {formatScrubMoment(previewAt)}
-            </div>
-          )}
-
-          {/* Along the map's bottom, with an event open: "Bearbeiten" — and
-              while editing, "+ Pin" and "+ Fläche" (or what a tap on the map
-              is about to do), deleting the area picked out, for now copying
-              the pins out, and "Fertig". Clear of the floor picker in the
-              corner. */}
-          <div className="pointer-events-none absolute bottom-3 left-3 right-[68px] z-20 flex flex-wrap items-end gap-2">
-            {event && !editing && (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenSpot(null);
-                  setEditing(true);
-                }}
-                className={PILL}
-              >
-                Bearbeiten
-              </button>
+            {previewAt && (
+              // The moment scrubbed to on the Events list's calendar, to the
+              // minute, set like the map's controls.
+              <div className="pointer-events-none absolute left-3 top-3 z-20 flex h-11 items-center rounded-[var(--radius-md)] border border-border glass-material px-3.5 text-[15px] font-semibold tabular-nums shadow-[var(--shadow-float)]">
+                {formatScrubMoment(previewAt)}
+              </div>
             )}
-            {event && editing && (
-              <>
-                {placing?.kind === "area" ? (
-                  <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
-                    <span>
-                      {placing.points.length < 3
-                        ? "Tippe die Ecken der Fläche auf den Plan"
-                        : "Weiter Ecken setzen – oder auf die erste tippen, um zu schließen"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setPlacing({ kind: "area", points: placing.points.slice(0, -1) })}
-                      disabled={placing.points.length === 0}
-                      className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)] disabled:opacity-40"
-                    >
-                      Zurück
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPlacing(null)}
-                      className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)]"
-                    >
-                      Abbrechen
-                    </button>
-                  </div>
-                ) : placing ? (
-                  <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
-                    <span>{placing.kind === "new" ? "Tippe auf den Plan, um den Pin zu setzen" : "Tippe auf die neue Stelle"}</span>
-                    <button
-                      type="button"
-                      onClick={() => setPlacing(null)}
-                      className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)]"
-                    >
-                      Abbrechen
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenSpot(null);
-                        setSelectedArea(null);
-                        setPlacing({ kind: "new" });
-                      }}
-                      disabled={pins.length >= MAX_PINS}
-                      title={`Pin für ${event.title ?? "dieses Event"} setzen`}
-                      className={ADD_BUTTON}
-                    >
-                      + Pin
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenSpot(null);
-                        setSelectedArea(null);
-                        setPlacing({ kind: "area", points: [] });
-                      }}
-                      disabled={areas.length >= MAX_AREAS}
-                      title={`Fläche für ${event.title ?? "dieses Event"} markieren`}
-                      className={ADD_BUTTON}
-                    >
-                      + Fläche
-                    </button>
-                    {selectedArea && (
-                      <div className="pop-in pointer-events-auto flex items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
-                        <span>Fläche</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            saveAreas(areas.filter((a) => a.id !== selectedArea));
-                            setSelectedArea(null);
-                          }}
-                          className="rounded-full bg-danger/10 px-3 py-1.5 font-medium text-danger hover:bg-danger/15"
-                        >
-                          Löschen
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-                {/* TEMPORARY: see copyPins. */}
-                <button type="button" onClick={copyPins} className={PILL}>
-                  Pins kopieren
-                </button>
+
+            {/* Along the map's bottom, with an event open: "Bearbeiten" — and
+                while editing, "+ Pin" and "+ Fläche" (or what a tap on the map
+                is about to do), deleting the area picked out, for now copying
+                the pins out, and "Fertig". Clear of the floor picker in the
+                corner. */}
+            <div className="pointer-events-none absolute bottom-3 left-3 right-[68px] z-20 flex flex-wrap items-end gap-2">
+              {event && !editing && (
                 <button
                   type="button"
                   onClick={() => {
-                    setEditing(false);
-                    setPlacing(null);
                     setOpenSpot(null);
-                    setSelectedArea(null);
+                    setEditing(true);
                   }}
-                  className={cn(PILL, "font-semibold text-accent")}
+                  className={PILL}
                 >
-                  Fertig
+                  Bearbeiten
                 </button>
-              </>
-            )}
-            {previewEvents.length > 0 && (
-              // Which event the map's showing, scrubbed to on the calendar.
-              <div className="pop-in pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
-                <span className="text-muted">Vorschau</span>
-                <span className="min-w-0 truncate font-semibold">
-                  {previewEvents.map((e) => e.title?.trim() || "Untitled Event").join(" + ")}
-                </span>
+              )}
+              {event && editing && (
+                <>
+                  {placing?.kind === "area" ? (
+                    <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                      <span>
+                        {placing.points.length < 3
+                          ? "Tippe die Ecken der Fläche auf den Plan"
+                          : "Weiter Ecken setzen – oder auf die erste tippen, um zu schließen"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPlacing({ kind: "area", points: placing.points.slice(0, -1) })}
+                        disabled={placing.points.length === 0}
+                        className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)] disabled:opacity-40"
+                      >
+                        Zurück
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPlacing(null)}
+                        className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)]"
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  ) : placing ? (
+                    <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                      <span>{placing.kind === "new" ? "Tippe auf den Plan, um den Pin zu setzen" : "Tippe auf die neue Stelle"}</span>
+                      <button
+                        type="button"
+                        onClick={() => setPlacing(null)}
+                        className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)]"
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenSpot(null);
+                          setSelectedArea(null);
+                          setPlacing({ kind: "new" });
+                        }}
+                        disabled={pins.length >= MAX_PINS}
+                        title={`Pin für ${event.title ?? "dieses Event"} setzen`}
+                        className={ADD_BUTTON}
+                      >
+                        + Pin
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenSpot(null);
+                          setSelectedArea(null);
+                          setPlacing({ kind: "area", points: [] });
+                        }}
+                        disabled={areas.length >= MAX_AREAS}
+                        title={`Fläche für ${event.title ?? "dieses Event"} markieren`}
+                        className={ADD_BUTTON}
+                      >
+                        + Fläche
+                      </button>
+                      {selectedArea && (
+                        <div className="pop-in pointer-events-auto flex items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                          <span>Fläche</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              saveAreas(areas.filter((a) => a.id !== selectedArea));
+                              setSelectedArea(null);
+                            }}
+                            className="rounded-full bg-danger/10 px-3 py-1.5 font-medium text-danger hover:bg-danger/15"
+                          >
+                            Löschen
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {/* TEMPORARY: see copyPins. */}
+                  <button type="button" onClick={copyPins} className={PILL}>
+                    Pins kopieren
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(false);
+                      setPlacing(null);
+                      setOpenSpot(null);
+                      setSelectedArea(null);
+                    }}
+                    className={cn(PILL, "font-semibold text-accent")}
+                  >
+                    Fertig
+                  </button>
+                </>
+              )}
+              {previewEvents.length > 0 && (
+                // Which event the map's showing, scrubbed to on the calendar.
+                <div className="pop-in pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                  <span className="text-muted">Vorschau</span>
+                  <span className="min-w-0 truncate font-semibold">
+                    {previewEvents.map((e) => e.title?.trim() || "Untitled Event").join(" + ")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => preview([])}
+                    aria-label="Vorschau schließen"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:text-foreground"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              {checklist.error && (
+                <p role="alert" className="pointer-events-auto rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium text-danger shadow-[var(--shadow-float)]">
+                  {checklist.error}
+                </p>
+              )}
+              {message && (
                 <button
                   type="button"
-                  onClick={() => preview([])}
-                  aria-label="Vorschau schließen"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:text-foreground"
+                  onClick={() => setMessage(null)}
+                  className="pop-in pointer-events-auto rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
                 >
-                  ✕
+                  {message}
                 </button>
-              </div>
-            )}
-            {checklist.error && (
-              <p role="alert" className="pointer-events-auto rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium text-danger shadow-[var(--shadow-float)]">
-                {checklist.error}
-              </p>
-            )}
-            {message && (
-              <button
-                type="button"
-                onClick={() => setMessage(null)}
-                className="pop-in pointer-events-auto rounded-full border border-border glass-material px-3 py-1.5 text-[13px] font-medium shadow-[var(--shadow-float)]"
-              >
-                {message}
-              </button>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </EventDatesContext.Provider>
     </ChecklistStateContext.Provider>
+    </ChecklistReviewContext.Provider>
   );
 }
 

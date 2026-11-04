@@ -101,6 +101,16 @@ const DOUBLE_TAP_MS = 300;
 
 type Pointer = { x: number; y: number; t: number };
 
+// Whether there's something between a wheel's target and the map that
+// scrolls by itself, with more in it than shows.
+function scrollsItself(target: EventTarget | null, map: HTMLElement) {
+  for (let node = target instanceof Element ? target : null; node && node !== map; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) return true;
+  }
+  return false;
+}
+
 export function VenueMap({
   floors,
   floor,
@@ -469,6 +479,9 @@ export function VenueMap({
     const wheelKind = createWheelClassifier();
     let gesturing = false;
     const onWheel = (e: WheelEvent) => {
+      // Over something in a card that scrolls itself (a calendar's weeks,
+      // say), scrolling is its — a pinch or ⌘ still zooms the map.
+      if (!e.ctrlKey && !e.metaKey && scrollsItself(e.target, el)) return;
       e.preventDefault();
       const v = viewRef.current;
       if (!v) return;

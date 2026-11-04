@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { EdgeBand } from "@/components/EdgeBand";
 import { Wheel } from "@/components/DateTimePicker";
 import { sameDay, weekStartsOn } from "@/components/MonthCalendar";
 import { CheckIcon, CloseIcon } from "@/components/icons/PlaybackIcons";
 import { Menu } from "@/components/ui/Menu";
 import { updateEvent } from "@/lib/actions/events";
-import type { DateRange } from "@/lib/checkliste";
+import { PARKING_SIDES, parkingDatesKey, parseDateRange, type DateRange } from "@/lib/checkliste";
 import type { EventSummary } from "@/lib/events";
 import { cn } from "@/lib/utils/cn";
 import { effectiveEnd, effectiveStart, nextFullHour, type DateValue } from "./EventDates";
+import { ChecklistStateContext } from "./checklistState";
 import { useIsClient } from "./eventFormat";
 
 // One week row: the day circle and, under it, room for a time.
@@ -95,6 +96,20 @@ function endDayOf(value: DateValue) {
   return startOfDay(endsAt);
 }
 
+// The days some dates cover, first and last — null without a start.
+function daysCovered(dates: DateRange): { from: Date; to: Date } | null {
+  const value = toDateValue(dates);
+  if (!value.startsAt) return null;
+  const from = startOfDay(value.startsAt);
+  return { from, to: endDayOf(value) ?? from };
+}
+
+// Other dates to show faintly under a calendar's own, where they fall —
+// an event's under its parking closures', and the other way round: a CSS
+// colour, and how much of it.
+export type Underlay = { dates: DateRange[]; color: string; amount: number };
+type UnderlayDays = { ranges: { from: Date; to: Date }[]; color: string; amount: number };
+
 // Never ending before it starts: an end that would is pulled up to the
 // start.
 function settle(next: DateValue): DateValue {
@@ -134,8 +149,23 @@ type TimePrompt = {
 // into hour and minute wheels, ✕ to leave the time as it was, ✓ to set it.
 // The end works the same way, from the start on. Every change is saved as
 // it's made; the ✓ closes the calendar again.
+//
+// Under them, faintly in yellow, the days its parking closures are
+// registered for (see ParkingDates) — as the Checkliste has them on the
+// page, edits and all.
 export function EventDatesSection({ event }: { event: EventSummary }) {
-  return <DateRangePicker dates={event} onSave={(patch) => updateEvent(event.id, patch)} />;
+  const checklist = useContext(ChecklistStateContext);
+  const answer = (key: string) => (checklist ? checklist.answer(key) : (event.checklist[key] ?? null));
+  const closures = PARKING_SIDES.filter((side) => answer(side) === true).flatMap(
+    (side) => parseDateRange(answer(parkingDatesKey(side))) ?? [],
+  );
+  return (
+    <DateRangePicker
+      dates={event}
+      onSave={(patch) => updateEvent(event.id, patch)}
+      underlay={{ dates: closures, color: "var(--date-yellow)", amount: 30 }}
+    />
+  );
 }
 
 // The calendar itself, for any start and end (the Parkv. pins' closures
@@ -144,9 +174,11 @@ export function EventDatesSection({ event }: { event: EventSummary }) {
 export function DateRangePicker({
   dates,
   onSave,
+  underlay,
 }: {
   dates: DateRange;
   onSave: (patch: DateRange) => Promise<string | null> | void;
+  underlay?: Underlay;
 }) {
   const isClient = useIsClient();
   const [editing, setEditing] = useState(false);
@@ -176,6 +208,9 @@ export function DateRangePicker({
 
   const startDay = value.startsAt ? startOfDay(value.startsAt) : null;
   const endDay = endDayOf(value);
+  const underlayDays: UnderlayDays | null = underlay
+    ? { ranges: underlay.dates.flatMap((d) => daysCovered(d) ?? []), color: underlay.color, amount: underlay.amount }
+    : null;
   const oneDay = !!startDay && (!endDay || sameDay(startDay, endDay));
 
   function open() {
@@ -310,6 +345,7 @@ export function DateRangePicker({
         onOpenMonthPicker={() => setMonthPickerOpen(true)}
         monthAnchor={monthAnchor}
         jump={jump}
+        underlay={underlayDays}
       >
         {prompt && promptTime && (
           <TimePromptPopover
@@ -386,6 +422,7 @@ function CalendarBody({
   onOpenMonthPicker,
   monthAnchor,
   jump,
+  underlay,
   children,
 }: {
   value: DateValue;
@@ -407,6 +444,7 @@ function CalendarBody({
   monthAnchor: RefObject<HTMLButtonElement | null>;
   // A month to bring into view, when the month and year wheels pick one.
   jump: { month: Date; n: number } | null;
+  underlay: UnderlayDays | null;
   children?: React.ReactNode;
 }) {
   const firstDay = useMemo(() => weekStartsOn(), []);
@@ -553,6 +591,28 @@ function CalendarBody({
               const pressable = editing ? (mode ? canPick : !!ownDay) : inRange;
               return (
                 <div key={day.getTime()} className="relative flex flex-col items-center">
+                  {/* Faintly, beneath everything, other dates that fall
+                      here (see Underlay): a pill round each run of them. */}
+                  {underlay?.ranges
+                    .filter((r) => day >= r.from && day <= r.to)
+                    .map((r) => {
+                      const first = sameDay(day, r.from);
+                      const last = sameDay(day, r.to);
+                      return (
+                        <span
+                          key={r.from.getTime()}
+                          aria-hidden
+                          className={cn("absolute", first && "rounded-l-full", last && "rounded-r-full")}
+                          style={{
+                            top: 2,
+                            height: CIRCLE,
+                            left: first ? `calc(50% - ${CIRCLE / 2}px)` : 0,
+                            right: last ? `calc(50% - ${CIRCLE / 2}px)` : 0,
+                            background: `color-mix(in srgb, ${underlay.color} ${underlay.amount}%, transparent)`,
+                          }}
+                        />
+                      );
+                    })}
                   {/* The pill joining the event's days, behind their circles;
                       it starts and stops at the first and last circles' middles. */}
                   {inRange && !sameDay(shownStart!, shownEnd!) && (

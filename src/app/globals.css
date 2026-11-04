@@ -32,6 +32,11 @@
   --border: rgba(60, 60, 67, 0.13);
   --accent: #007aff;
   --accent-contrast: #ffffff;
+  /* The dates on the Events page's calendars: an event's own in the
+     accent's blue, a parking closure's in yellow (see .tone-yellow) — named
+     so each calendar can show the other's faintly under its own. */
+  --date-blue: #007aff;
+  --date-yellow: #ffcc00;
   --danger: #ff3b30;
   --success: #34c759;
 
@@ -115,6 +120,8 @@
     --border: rgba(84, 84, 88, 0.32);
     --accent: #0a84ff;
     --accent-contrast: #ffffff;
+    --date-blue: #0a84ff;
+    --date-yellow: #ffd60a;
     --danger: #ff453a;
     --success: #30d158;
 
@@ -1379,14 +1386,8 @@ button[data-landing]::after {
 /* A calendar picked out in iOS's yellow rather than the accent — the
    Parkv. pins' closures (ParkingDates) — dark text on its filled days. */
 .tone-yellow {
-  --accent: #ffcc00;
+  --accent: var(--date-yellow);
   --accent-contrast: #1c1c1e;
-}
-
-@media (prefers-color-scheme: dark) {
-  .tone-yellow {
-    --accent: #ffd60a;
-  }
 }
 
 /* A day that can be picked, while an event's start or end is being picked
