@@ -12,7 +12,14 @@ import { hallSplitCase } from "@/lib/checkliste";
 import type { EventPerson, EventSummary } from "@/lib/events";
 import { useScreenStatuses } from "@/lib/realtime/useScreenStatuses";
 import type { VenueScreens } from "@/lib/venueScreens";
-import { ChecklistStateContext, useChecklistState, type ChecklistState } from "./checklistState";
+import {
+  ChecklistReviewContext,
+  ChecklistStateContext,
+  reviewTypeIn,
+  useChecklistReview,
+  useChecklistState,
+  type ChecklistState,
+} from "./checklistState";
 import { formatScrubMoment } from "./eventFormat";
 import { EventsPane } from "./EventsPane";
 import { EventDatesContext } from "./ParkingDates";
@@ -201,8 +208,12 @@ export function EventsView({
   const floorPins = pins.filter((p) => floorOf(p) === floor);
   const floorAreas = areas.filter((a) => floorOf(a) === floor);
   const [editing, setEditing] = useState(false);
-  // The open event's Checkliste, shared by its setup page and the pins.
-  const checklist = useChecklistState(event);
+  // The open event's Checkliste, shared by its setup page and the pins —
+  // while a type switch is being reviewed, as that would leave it (unsaved,
+  // see ChecklistReview), on the map as on the list.
+  const savedChecklist = useChecklistState(event);
+  const review = useChecklistReview(event, reviewTypeIn(params, event), savedChecklist);
+  const checklist = review?.state ?? savedChecklist;
   const previewChecklist: ChecklistState | null =
     previewEvents.length > 0
       ? {
@@ -479,6 +490,7 @@ export function EventsView({
   ];
 
   return (
+    <ChecklistReviewContext.Provider value={review}>
     <ChecklistStateContext.Provider value={checklist}>
       {/* The open event's dates, for its parking calendars to show under theirs. */}
       <EventDatesContext.Provider value={event ?? null}>
@@ -670,6 +682,7 @@ export function EventsView({
         </div>
       </EventDatesContext.Provider>
     </ChecklistStateContext.Provider>
+    </ChecklistReviewContext.Provider>
   );
 }
 

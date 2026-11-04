@@ -8,6 +8,7 @@ import { Menu } from "@/components/ui/Menu";
 import { POPUP_WHITE_BUTTON } from "@/components/ui/Popup";
 import { archiveEvent, deleteEvent, unarchiveEvent, updateEvent, type EventPatch } from "@/lib/actions/events";
 import type { EventLead, EventPerson, EventSummary } from "@/lib/events";
+import type { EventTypeKey } from "@/lib/eventTypes";
 import { RoleDots } from "@/components/RoleDot";
 import { useOwnRoles } from "@/lib/auth/ViewerContext";
 import { cn } from "@/lib/utils/cn";
@@ -89,12 +90,16 @@ export function EventOverview({
   people,
   onBack,
   onOpenView,
+  onReviewType,
   onGone,
 }: {
   event: EventSummary;
   people: EventPerson[];
   onBack: () => void;
   onOpenView: (view: EventViewKey) => void;
+  // A switch to this type would untick some of the Checkliste: to look it
+  // over first (see ChecklistReview).
+  onReviewType: (type: EventTypeKey) => void;
   onGone: () => void;
 }) {
   const isClient = useIsClient();
@@ -186,7 +191,11 @@ export function EventOverview({
               however tall the contact runs. */}
           <div className="flex gap-[15px] self-stretch pr-[10px]">
             <div className="self-start pt-1">
-              <EventTypeTile value={event.eventType} onPick={(eventType) => save({ eventType })} />
+              <EventTypeTile
+                value={event.eventType}
+                onPick={(eventType) => save({ eventType })}
+                onReview={onReviewType}
+              />
             </div>
             <div className="flex min-w-[72px] justify-center self-center">
               <PaxField value={event.pax} onSave={(pax) => save({ pax })} />

@@ -8,13 +8,18 @@ import { PageStack, type StackPage } from "./PageStack";
 import { eventTitle } from "./eventFormat";
 import { Checklist } from "./Checklist";
 import { ShareChecklist } from "./ShareChecklist";
+import { ChecklistReview } from "./ChecklistReview";
+import { reviewTypeIn } from "./checklistState";
+import { EVENT_TYPES, type EventTypeKey } from "@/lib/eventTypes";
 
-type Route = { eventId: string | null; view: EventViewKey | null; archived: boolean };
+// review: the Checkliste opened to review a switch to this type (see
+// ChecklistReview).
+type Route = { eventId: string | null; view: EventViewKey | null; review: EventTypeKey | null; archived: boolean };
 
 // The list side of the Events page: Events, then an event's own page, then
 // one of its setup views — each sliding in over the last.
 //
-// Where it is lives in the URL (?event=…&view=…, and &archive=1 for the
+// Where it is lives in the URL (?event=…&view=…[&review=…], and &archive=1 for the
 // Archive), not in component state: a reload — Next.js does a full one when
 // a save's answer comes from a newer deployment than the page — lands back
 // on the same page instead of the Events list, and the browser's back and
@@ -39,6 +44,7 @@ export function EventsPane({
   const route: Route = {
     eventId: params.get("event"),
     view: EVENT_VIEWS.find((v) => v.key === params.get("view"))?.key ?? null,
+    review: EVENT_TYPES.find((t) => t.key === params.get("review"))?.key ?? null,
     archived: params.get("archive") === "1",
   };
   const archived = route.archived;
@@ -46,10 +52,11 @@ export function EventsPane({
   function setRoute(next: Partial<Route>) {
     const merged = { ...route, ...next };
     const url = new URL(window.location.href);
-    for (const key of ["event", "view", "archive"]) url.searchParams.delete(key);
+    for (const key of ["event", "view", "review", "archive"]) url.searchParams.delete(key);
     if (merged.archived) url.searchParams.set("archive", "1");
     if (merged.eventId) url.searchParams.set("event", merged.eventId);
     if (merged.eventId && merged.view) url.searchParams.set("view", merged.view);
+    if (merged.eventId && merged.view && merged.review) url.searchParams.set("review", merged.review);
     window.history.pushState(null, "", url);
   }
   // An event that's gone (deleted elsewhere) takes its pages with it.
@@ -66,7 +73,7 @@ export function EventsPane({
           onOpen={(eventId) => {
             // Opened, it's the event the map shows anyway.
             onPreview([]);
-            setRoute({ eventId, view: null });
+            setRoute({ eventId, view: null, review: null });
           }}
           previewIds={previewIds}
           previewAt={previewAt}
@@ -82,21 +89,33 @@ export function EventsPane({
         <EventOverview
           event={event}
           people={people}
-          onBack={() => setRoute({ eventId: null, view: null })}
-          onOpenView={(view) => setRoute({ eventId: event.id, view })}
-          onGone={() => setRoute({ eventId: null, view: null })}
+          onBack={() => setRoute({ eventId: null, view: null, review: null })}
+          onOpenView={(view) => setRoute({ eventId: event.id, view, review: null })}
+          onReviewType={(review) => setRoute({ eventId: event.id, view: "checkliste", review })}
+          onGone={() => setRoute({ eventId: null, view: null, review: null })}
         />
       ),
     });
     const view = EVENT_VIEWS.find((v) => v.key === route.view);
-    if (view) {
+    if (view?.key === "checkliste" && reviewTypeIn(params, event)) {
+      pages.push({
+        key: `event:${event.id}:checkliste:review:${route.review}`,
+        node: (
+          <ChecklistReview
+            event={event}
+            onBack={() => setRoute({ eventId: event.id, view: null, review: null })}
+            onDone={() => setRoute({ eventId: event.id, view: null, review: null })}
+          />
+        ),
+      });
+    } else if (view) {
       pages.push({
         key: `event:${event.id}:${view.key}`,
         node: (
           <SubPage
             title={view.label}
             backLabel={`Back to ${eventTitle(event)}`}
-            onBack={() => setRoute({ eventId: event.id, view: null })}
+            onBack={() => setRoute({ eventId: event.id, view: null, review: null })}
             trailing={view.key === "checkliste" ? <ShareChecklist event={event} people={people} /> : undefined}
           >
             {view.key === "checkliste" ? (

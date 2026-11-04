@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, useContext, useRef, useState } from "react";
-import { updateChecklist } from "@/lib/actions/events";
-import { exclusiveWith, withConsequences } from "@/lib/checkliste";
+import { updateChecklist, updateEvent } from "@/lib/actions/events";
+import { expandChange, presetChange } from "@/lib/checklistPresets";
 import type { EventSummary } from "@/lib/events";
+import { EVENT_TYPES, type EventTypeKey } from "@/lib/eventTypes";
 
 export type Answer = true | string | null;
 
@@ -13,8 +14,10 @@ export type Answer = true | string | null;
 export type ChecklistState = {
   answer: (key: string) => Answer;
   // Several fields at once (a pin that ticks one box and unticks another);
-  // null clears one.
-  save: (patch: Record<string, Answer>) => void;
+  // null clears one. exact: saved just as it is, without what would
+  // follow from it — a change that already has its consequences in it (a
+  // reviewed type switch).
+  save: (patch: Record<string, Answer>, exact?: boolean) => void;
   error: string | null;
 };
 
@@ -43,23 +46,103 @@ export function useChecklistState(event: EventSummary | undefined): ChecklistSta
   const answer = (key: string): Answer => (key in edits ? edits[key] : (event?.checklist[key] ?? null));
   return {
     answer,
-    save: (change) => {
+    save: (change, exact = false) => {
       if (!event) return;
       const id = event.id;
       // With what follows from it (Kino 2 or 3 bringing Wagenhalle 'Kino',
-      // the halls deciding exklusiv) — saved as one change.
-      const patch = withConsequences(change, answer);
-      // In a one-answer section a tick takes the others' away (the server
-      // does the same; this shows it at once).
-      const full = { ...patch };
-      for (const [key, value] of Object.entries(patch)) {
-        if (value === true) for (const other of exclusiveWith(key)) if (!(other in patch)) full[other] = null;
-      }
-      setEdits((all) => ({ ...all, ...full }));
+      // the halls deciding exklusiv; in a one-answer section, a tick taking
+      // the others away) — saved as one change.
+      const patch = exact ? change : expandChange(change, answer);
+      setEdits((all) => ({ ...all, ...patch }));
       saveChain.current = saveChain.current
         .then(async () => setError(await updateChecklist(id, patch)))
         .catch(() => setError("Konnte nicht gespeichert werden"));
     },
     error,
+  };
+}
+
+// The type a switch to which is being reviewed (see ChecklistReview), by
+// the URL (?view=checkliste&review=…) — not one the event has already
+// (come back to after it was saved): that's just its Checkliste.
+export function reviewTypeIn(params: URLSearchParams, event: EventSummary | undefined): EventTypeKey | null {
+  if (!event || params.get("view") !== "checkliste") return null;
+  const type = EVENT_TYPES.find((t) => t.key === params.get("review"))?.key ?? null;
+  return type !== event.eventType ? type : null;
+}
+
+// The options a reviewed switch ticks (shown green while they stay ticked)
+// and unticks (red, with an ✕, while they stay unticked) — on the
+// Checkliste and the map's pins alike.
+export type ReviewMarks = { checked: Set<string>; unchecked: Set<string> };
+
+export type ChecklistReviewState = {
+  type: EventTypeKey;
+  marks: ReviewMarks;
+  // The Checkliste as the switch leaves it: changed here, saved nowhere.
+  state: ChecklistState;
+  // Saves it, and the type.
+  commit: () => void;
+};
+
+export const ChecklistReviewContext = createContext<ChecklistReviewState | null>(null);
+
+export function useReviewMarks(): ReviewMarks | null {
+  return useContext(ChecklistReviewContext)?.marks ?? null;
+}
+
+// A switch to type being reviewed, as a draft over the event's own answers
+// (real): worked out as the list stands when the review opens, and dropped
+// when it closes.
+export function useChecklistReview(
+  event: EventSummary | undefined,
+  type: EventTypeKey | null,
+  real: ChecklistState,
+): ChecklistReviewState | null {
+  const key = event && type ? `${event.id}:${type}` : null;
+  const [review, setReview] = useState<{
+    key: string;
+    marks: ReviewMarks;
+    displaced: Record<string, string[]>;
+    draft: Record<string, Answer>;
+  } | null>(null);
+  if ((review?.key ?? null) !== key) {
+    if (!event || !type || !key) setReview(null);
+    else {
+      const change = presetChange(event.eventType, type, real.answer);
+      setReview({
+        key,
+        marks: { checked: new Set(change.checked), unchecked: new Set(change.unchecked) },
+        displaced: change.displaced,
+        draft: change.patch,
+      });
+    }
+  }
+  if (!event || !type || !review || review.key !== key) return null;
+
+  const { draft } = review;
+  const answer = (k: string): Answer => (k in draft ? draft[k] : real.answer(k));
+  return {
+    type,
+    marks: review.marks,
+    state: {
+      answer,
+      save: (change) => {
+        // An option the switch ticked, unticked again, brings back what it
+        // pushed out (see presetChange) — as the list's own rules have it.
+        const full = { ...change };
+        for (const [k, value] of Object.entries(change)) {
+          if (value !== null || answer(k) !== true) continue;
+          for (const out of review.displaced[k] ?? []) if (!(out in full) && answer(out) !== true) full[out] = true;
+        }
+        setReview((r) => (r ? { ...r, draft: { ...r.draft, ...expandChange(full, answer) } } : r));
+      },
+      error: real.error,
+    },
+    commit: () => {
+      const changed = Object.fromEntries(Object.entries(draft).filter(([k, value]) => value !== real.answer(k)));
+      if (Object.keys(changed).length) real.save(changed, true);
+      void updateEvent(event.id, { eventType: type }).catch(() => {});
+    },
   };
 }

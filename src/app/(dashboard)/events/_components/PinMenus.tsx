@@ -25,9 +25,9 @@ import {
   sectionByKey,
 } from "@/lib/checkliste";
 import { cn } from "@/lib/utils/cn";
-import { CheckIcon } from "@/components/icons/PlaybackIcons";
+import { CheckIcon, CloseIcon } from "@/components/icons/PlaybackIcons";
 import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
-import type { ChecklistState } from "./checklistState";
+import { useReviewMarks, type ChecklistState } from "./checklistState";
 import { ParkingDates } from "./ParkingDates";
 import { MapCard } from "./VenueMap";
 
@@ -63,6 +63,12 @@ import { MapCard } from "./VenueMap";
 // Zwischenebene (theirs under "Welche Flächen sind interessant?") and the
 // DJ Position ("DJ / Partytechnik"). Technik's and the Telekollegen's
 // titles scroll the Checkliste to Technik.
+//
+// While a type switch is being reviewed (see ChecklistReview), the pins
+// show the list as it would leave it, marked as the list is: a switch it
+// turns on green (rather than blue) with a ✓ on its knob, one it turns off
+// red with an ✕ — and the boxes inside likewise, green ticked or red
+// crossed.
 type PinLink =
   | { kind: "saal"; field: string }
   | { kind: "check"; field: string }
@@ -179,6 +185,8 @@ const ROOM_LABELS: Record<string, string> = {
 
 type Patch = Record<string, true | null>;
 
+type Mark = "added" | "removed" | null;
+
 // A standing pin's card, tied to the Checkliste as above — or, for a pin
 // with no ties (or no event open to tie into), just its name.
 export function LinkedPinCard({
@@ -195,11 +203,25 @@ export function LinkedPinCard({
   onOpenChange: (open: boolean) => void;
   onShowCategory: (categoryKey: string) => void;
 }) {
+  const marks = useReviewMarks();
   const link = PIN_LINKS[pin.id];
   const plain = <MapCard title={pin.title} open={false} onToggle={() => onOpenChange(false)} />;
   if (!state || !link) return plain;
   const { answer } = state;
   const ticked = (key: string) => answer(key) === true;
+  // A switch, by whether it's on and the options behind it: turned on by
+  // the switch being reviewed (one of them newly ticked), or off (one of
+  // them unticked).
+  const markOf = (on: boolean, keys: string[]): Mark =>
+    !marks
+      ? null
+      : on
+        ? keys.some((key) => marks.checked.has(key) && ticked(key))
+          ? "added"
+          : null
+        : keys.some((key) => marks.unchecked.has(key) && !ticked(key))
+          ? "removed"
+          : null;
   // Anything done with a Küche or Main Bar pin brings the list along.
   const save = (patch: Patch) => {
     state.save(patch);
@@ -213,26 +235,28 @@ export function LinkedPinCard({
   }
 
   // A pin with nothing more to pick: its switch, and its title the same.
-  const switchCard = (on: boolean | null, toggle: () => void) => (
+  const switchCard = (on: boolean | null, toggle: () => void, keys: string[]) => (
     <MapCard
       title={pin.title}
       open={false}
       onToggle={toggle}
       onTitlePress={toggle}
-      control={<Switch label={pin.title} value={on} onPress={toggle} />}
+      control={<Switch label={pin.title} value={on} onPress={toggle} mark={markOf(on === true, keys)} />}
     />
   );
 
   if (link.kind === "check") {
     const on = ticked(link.field);
-    return switchCard(on, () => save({ [link.field]: on ? null : true }));
+    return switchCard(on, () => save({ [link.field]: on ? null : true }), [link.field]);
   }
 
   // Halle Geteilt: on, the Wagenhalle's shared (nicht exklusiv); off, it's
   // taken whole (exklusiv) — the one unticks the other (withConsequences).
   if (link.kind === "split") {
     const on = ticked(WAGENHALLE_NICHT_EXKLUSIV);
-    return switchCard(on, () => save({ [on ? WAGENHALLE_EXKLUSIV : WAGENHALLE_NICHT_EXKLUSIV]: true }));
+    return switchCard(on, () => save({ [on ? WAGENHALLE_EXKLUSIV : WAGENHALLE_NICHT_EXKLUSIV]: true }), [
+      WAGENHALLE_NICHT_EXKLUSIV,
+    ]);
   }
 
   if (link.kind === "yesno") {
@@ -243,14 +267,16 @@ export function LinkedPinCard({
     const yes = section.fields.find((f) => f.label === "Ja")!.key;
     const no = section.fields.find((f) => f.label === "Nein")!.key;
     const value = ticked(yes) ? true : ticked(no) ? false : null;
-    return switchCard(value, () => save({ [value ? no : yes]: true }));
+    return switchCard(value, () => save({ [value ? no : yes]: true }), [yes]);
   }
 
   // The rest open as they're switched on. Off, title and switch turn one on
   // and open it; on, the title opens or closes it, and the switch turns it
   // off (and closes it).
+  // keys: the options the switch stands for (see markOf).
   const expandable = (
     on: boolean,
+    keys: string[],
     turnOn: Patch,
     turnOff: Patch,
     content: ReactNode,
@@ -275,7 +301,7 @@ export function LinkedPinCard({
         arrow={false}
         adornment={extra?.adornment}
         openWidth={extra?.openWidth}
-        control={<Switch label={pin.title} value={on} onPress={pressSwitch} />}
+        control={<Switch label={pin.title} value={on} onPress={pressSwitch} mark={markOf(on, keys)} />}
       >
         {content}
       </MapCard>
@@ -294,6 +320,7 @@ export function LinkedPinCard({
     }
     return expandable(
       ticked(link.field),
+      [link.field],
       { [link.field]: true },
       off,
       <OptionList
@@ -316,6 +343,7 @@ export function LinkedPinCard({
   if (link.kind === "parking") {
     return expandable(
       ticked(link.field),
+      [link.field],
       { [link.field]: true },
       { [link.field]: null },
       <ParkingDates side={link.field} state={state} className="pb-1" />,
@@ -330,6 +358,7 @@ export function LinkedPinCard({
     const fields = section.fields;
     return expandable(
       fields.some((f) => ticked(f.key)),
+      fields.map((f) => f.key),
       { [fields[0].key]: true },
       Object.fromEntries(fields.map((f) => [f.key, null])),
       <OptionList
@@ -353,6 +382,7 @@ export function LinkedPinCard({
     const flagged = ticked(BARRIEREFREI) && NOT_STEP_FREE.has(link.field);
     return expandable(
       ticked(link.field),
+      [link.field],
       { [link.field]: true },
       { [link.field]: null },
       yes && no ? (
@@ -382,6 +412,7 @@ export function LinkedPinCard({
     const [top, bottom] = link.fields;
     return expandable(
       ticked(top) || ticked(bottom),
+      [top, bottom],
       { [top]: true },
       { [top]: null, [bottom]: null },
       <OptionList
@@ -402,6 +433,7 @@ export function LinkedPinCard({
   if (!section) return plain;
   return expandable(
     ticked(link.field),
+    [link.field],
     { [link.field]: true },
     { [link.field]: null },
     <OptionList
@@ -418,18 +450,35 @@ export function LinkedPinCard({
   );
 }
 
-function TickBox({ checked, round = false, className }: { checked: boolean; round?: boolean; className?: string }) {
+function TickBox({
+  checked,
+  round = false,
+  mark = null,
+  className,
+}: {
+  checked: boolean;
+  round?: boolean;
+  mark?: Mark;
+  className?: string;
+}) {
   return (
     <span
       aria-hidden
       className={cn(
         "flex h-[18px] w-[18px] shrink-0 items-center justify-center border-2 transition-colors",
         round ? "rounded-full" : "rounded-[5px]",
-        checked ? "border-accent bg-accent text-accent-contrast" : "border-muted/50",
+        mark === "added"
+          ? "border-success bg-success text-white"
+          : mark === "removed"
+            ? "border-danger bg-danger text-white"
+            : checked
+              ? "border-accent bg-accent text-accent-contrast"
+              : "border-muted/50",
         className,
       )}
     >
       {checked && <CheckIcon className="h-3 w-3" />}
+      {mark === "removed" && <CloseIcon className="h-3 w-3" />}
     </span>
   );
 }
@@ -442,6 +491,9 @@ function OptionList({
   options: { key: string; label: ReactNode; checked: boolean; onToggle: () => void }[];
   round?: boolean;
 }) {
+  const marks = useReviewMarks();
+  const markOf = (key: string, checked: boolean): Mark =>
+    !marks ? null : checked ? (marks.checked.has(key) ? "added" : null) : marks.unchecked.has(key) ? "removed" : null;
   return (
     <ul className="-mx-1 flex flex-col">
       {options.map((option) => (
@@ -453,7 +505,7 @@ function OptionList({
             onClick={option.onToggle}
             className="press-ghost-fit flex w-full items-center gap-2.5 rounded-[var(--radius-sm,8px)] px-1 py-1.5 text-left text-[14px]"
           >
-            <TickBox checked={option.checked} round={round} />
+            <TickBox checked={option.checked} round={round} mark={markOf(option.key, option.checked)} />
             <span className="min-w-0 flex-1">{option.label}</span>
           </button>
         </li>
@@ -462,8 +514,20 @@ function OptionList({
   );
 }
 
-// An iOS-style switch. value null: not answered yet — shown off, faded.
-function Switch({ label, value, onPress }: { label: string; value: boolean | null; onPress: () => void }) {
+// An iOS-style switch, blue when on (green is a review's). value null: not
+// answered yet — shown off, faded. mark: turned on by a type switch being
+// reviewed (green, a ✓ on its knob), or off (red, an ✕ on its knob).
+function Switch({
+  label,
+  value,
+  onPress,
+  mark = null,
+}: {
+  label: string;
+  value: boolean | null;
+  onPress: () => void;
+  mark?: Mark;
+}) {
   const on = value === true;
   return (
     <button
@@ -474,17 +538,27 @@ function Switch({ label, value, onPress }: { label: string; value: boolean | nul
       onClick={onPress}
       className={cn(
         "no-press relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200",
-        on ? "bg-[#34c759]" : "bg-black/15 dark:bg-white/20",
-        value === null && "opacity-50",
+        mark === "added"
+          ? "bg-success"
+          : on
+            ? "bg-accent"
+            : mark === "removed"
+              ? "bg-danger"
+              : "bg-black/15 dark:bg-white/20",
+        value === null && mark !== "removed" && "opacity-50",
       )}
     >
       <span
         aria-hidden
         className={cn(
-          "absolute left-[2px] top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-transform duration-200",
+          "absolute left-[2px] top-[2px] flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-transform duration-200",
           on && "translate-x-4",
+          mark === "added" ? "text-success" : "text-danger",
         )}
-      />
+      >
+        {mark === "added" && <CheckIcon className="h-3 w-3" />}
+        {mark === "removed" && <CloseIcon className="h-3 w-3" />}
+      </span>
     </button>
   );
 }

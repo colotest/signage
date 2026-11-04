@@ -2,20 +2,34 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import { Menu } from "@/components/ui/Menu";
+import { presetChange } from "@/lib/checklistPresets";
 import { EVENT_TYPES, type EventTypeKey } from "@/lib/eventTypes";
 import { cn } from "@/lib/utils/cn";
+import { useChecklist } from "./checklistState";
 
 // The event's type: a rounded square with the type's icon and name — or,
 // before one's picked, just "Typ", breathing like the other fields still
 // to fill in. Pressed, a grid of the six types pops up from it to pick from.
+//
+// Picking one ticks its most common options on the Checkliste (see
+// CHECKLIST_PRESETS) straight away — as long as that only adds to it. A
+// switch that would untick something asks first, in the same popup
+// ("! Angebotsänderungen"): Überprüfen opens the list to look it over
+// (onReview, see ChecklistReview), where the switch is saved; Abbrechen
+// leaves the type as it was.
 export function EventTypeTile({
   value,
   onPick,
+  onReview,
 }: {
   value: string | null;
   onPick: (type: EventTypeKey) => void;
+  onReview: (type: EventTypeKey) => void;
 }) {
+  const checklist = useChecklist();
   const [open, setOpen] = useState(false);
+  // A switch asking first, and how many options it would untick.
+  const [asking, setAsking] = useState<{ type: EventTypeKey; unchecked: number } | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
   // Shown at once, rather than after the save comes back.
   const [picked, setPicked] = useState<string | null>(null);
@@ -31,7 +45,10 @@ export function EventTypeTile({
       <button
         ref={anchorRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) setAsking(null);
+          setOpen((o) => !o);
+        }}
         aria-expanded={open}
         aria-label={current ? `Type: ${current.label}` : "Pick a type"}
         // Just an outline, the icon in the text's own colour (white in dark
@@ -52,38 +69,101 @@ export function EventTypeTile({
       </button>
 
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} align="center" dragSelect={false} className="p-2">
-        <div role="radiogroup" aria-label="Type" className="grid w-[264px] grid-cols-3 gap-2">
-          {EVENT_TYPES.map((type) => {
-            const selected = type.key === current?.key;
-            return (
-              <button
-                key={type.key}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => {
-                  setOpen(false);
-                  if (selected) return;
-                  setPicked(type.key);
-                  onPick(type.key);
-                }}
-                className={cn(
-                  "no-press flex aspect-square flex-col items-center justify-center gap-1.5 rounded-[var(--radius-sm)] p-1.5 transition-colors",
-                  selected
-                    ? "bg-accent text-accent-contrast shadow-[var(--shadow-control)]"
-                    : "bg-black/[.04] hover:bg-black/[.07] dark:bg-white/[.06] dark:hover:bg-white/[.1]",
-                )}
-              >
-                <EventTypeIcon type={type.key} className={cn("h-7 w-7", !selected && "text-accent")} />
-                <span className="whitespace-pre-line text-center text-[11px] font-semibold leading-tight">
-                  {stacked(type)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {asking ? (
+          <ChangesAlert
+            type={asking.type}
+            unchecked={asking.unchecked}
+            onReview={() => {
+              setOpen(false);
+              onReview(asking.type);
+            }}
+            onCancel={() => setOpen(false)}
+          />
+        ) : (
+          <div role="radiogroup" aria-label="Type" className="grid w-[264px] grid-cols-3 gap-2">
+            {EVENT_TYPES.map((type) => {
+              const selected = type.key === current?.key;
+              return (
+                <button
+                  key={type.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => {
+                    if (selected) return setOpen(false);
+                    const change = presetChange(current?.key ?? null, type.key, checklist.answer);
+                    if (change.unchecked.length) {
+                      setAsking({ type: type.key, unchecked: change.unchecked.length });
+                      return;
+                    }
+                    setOpen(false);
+                    setPicked(type.key);
+                    onPick(type.key);
+                    if (Object.keys(change.patch).length) checklist.save(change.patch, true);
+                  }}
+                  className={cn(
+                    "no-press flex aspect-square flex-col items-center justify-center gap-1.5 rounded-[var(--radius-sm)] p-1.5 transition-colors",
+                    selected
+                      ? "bg-accent text-accent-contrast shadow-[var(--shadow-control)]"
+                      : "bg-black/[.04] hover:bg-black/[.07] dark:bg-white/[.06] dark:hover:bg-white/[.1]",
+                  )}
+                >
+                  <EventTypeIcon type={type.key} className={cn("h-7 w-7", !selected && "text-accent")} />
+                  <span className="whitespace-pre-line text-center text-[11px] font-semibold leading-tight">
+                    {stacked(type)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </Menu>
     </>
+  );
+}
+
+// Asked before a type switch that would untick some of the Checkliste.
+function ChangesAlert({
+  type,
+  unchecked,
+  onReview,
+  onCancel,
+}: {
+  type: EventTypeKey;
+  unchecked: number;
+  onReview: () => void;
+  onCancel: () => void;
+}) {
+  const label = EVENT_TYPES.find((t) => t.key === type)?.label ?? type;
+  return (
+    <div role="alertdialog" aria-labelledby="angebotsaenderungen" className="pop-in w-[264px] px-1.5 pb-1 pt-1">
+      <p id="angebotsaenderungen" className="flex items-center gap-2 text-[16px] font-semibold">
+        <span aria-hidden className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-danger text-[13px] font-bold text-white">
+          !
+        </span>
+        Angebotsänderungen
+      </p>
+      <p className="mt-1.5 text-[13px] leading-snug text-muted">
+        Der Wechsel zu {label} wählt {unchecked === 1 ? "eine Option" : `${unchecked} Optionen`} der Checkliste ab.
+      </p>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 rounded-full bg-[var(--control-fill)] px-3 py-1.5 text-[14px] font-medium hover:bg-[var(--control-fill-hover)]"
+        >
+          Abbrechen
+        </button>
+        <button
+          type="button"
+          onClick={onReview}
+          autoFocus
+          className="flex-1 rounded-full bg-accent px-3 py-1.5 text-[14px] font-medium text-accent-contrast shadow-[var(--shadow-control)] hover:opacity-90"
+        >
+          Überprüfen
+        </button>
+      </div>
+    </div>
   );
 }
 

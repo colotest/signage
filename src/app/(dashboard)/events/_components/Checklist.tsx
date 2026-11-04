@@ -13,9 +13,9 @@ import {
   type ChecklistSection,
 } from "@/lib/checkliste";
 import { cn } from "@/lib/utils/cn";
-import { CheckIcon } from "@/components/icons/PlaybackIcons";
+import { CheckIcon, CloseIcon } from "@/components/icons/PlaybackIcons";
 import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
-import { useChecklist, type Answer } from "./checklistState";
+import { useChecklist, useReviewMarks, type Answer } from "./checklistState";
 import { ParkingDates } from "./ParkingDates";
 
 // How long typing in a text field rests before it's saved (leaving the
@@ -138,6 +138,15 @@ function CheckRow({
   aside?: string | null;
   notStepFree?: boolean;
 }) {
+  // While a type switch is being reviewed (see ChecklistReview): green for
+  // what it ticks, red with an ✕ for what it unticks — either, tapped,
+  // looks like any other again.
+  const marks = useReviewMarks();
+  const mark = !marks
+    ? null
+    : checked
+      ? marks.checked.has(field.key) && "added"
+      : marks.unchecked.has(field.key) && "removed";
   return (
     <button
       type="button"
@@ -151,10 +160,17 @@ function CheckRow({
         className={cn(
           "flex h-[22px] w-[22px] shrink-0 items-center justify-center border-2 transition-colors",
           single ? "rounded-full" : "rounded-[7px]",
-          checked ? "border-accent bg-accent text-accent-contrast" : "border-border",
+          mark === "added"
+            ? "border-success bg-success text-white"
+            : mark === "removed"
+              ? "border-danger bg-danger text-white"
+              : checked
+                ? "border-accent bg-accent text-accent-contrast"
+                : "border-border",
         )}
       >
         {checked && <CheckIcon className="h-3.5 w-3.5" />}
+        {mark === "removed" && <CloseIcon className="h-3.5 w-3.5" />}
       </span>
       <span className="min-w-0 flex-1">
         {field.label}
