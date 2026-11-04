@@ -434,21 +434,37 @@ export function cleanAnswer(key: string, value: unknown): true | string | null {
   return text.trim() ? text : null;
 }
 
-export type FilledLine = { kind: "check" | "text" | "date" | "textarea"; text: string };
+// A line under a section: what's been ticked ("no" for a ticked Nein) or
+// written — or, in a section with nothing filled in yet, "none".
+export type FilledLine = { kind: "check" | "no" | "text" | "date" | "textarea" | "none"; text: string };
 export type FilledCategory = { title: string; sections: { title: string; lines: FilledLine[] }[] };
 
-// The Checkliste as filled in: each category with what's been ticked or
-// written under its sections, leaving out whatever's still blank.
-export function filledChecklist(answer: (key: string) => true | string | null): FilledCategory[] {
+// The category that's the team's own notes on the event, for no one else.
+export const INTERNAL_CATEGORY = "interne-notizen-und-einschaetzung";
+
+// The Checkliste as filled in, every section of it (but those @wenn keeps
+// out of the list for now): what's been ticked or written under each, a
+// room requirement with the rooms that asked for it in brackets after it,
+// and "-" where nothing has been yet. internal: with the team's own notes
+// (INTERNAL_CATEGORY).
+export function filledChecklist(answer: (key: string) => true | string | null, internal = true): FilledCategory[] {
   const categories: FilledCategory[] = [];
   for (const category of CHECKLISTE) {
+    if (!internal && category.key === INTERNAL_CATEGORY) continue;
     const sections: FilledCategory["sections"] = [];
     for (const section of category.sections) {
+      if (section.when && answer(section.when) !== true) continue;
       const lines: FilledLine[] = [];
       for (const field of section.fields) {
         const value = answer(field.key);
         if (value === null || value === "") continue;
-        if (field.kind === "check") lines.push({ kind: "check", text: field.label });
+        if (field.kind === "check") {
+          const rooms = section.key === ROOM_REQUIREMENTS ? roomsWith(field.key, answer) : [];
+          lines.push({
+            kind: field.label === "Nein" ? "no" : "check",
+            text: rooms.length ? `${field.label} (${rooms.join(", ")})` : field.label,
+          });
+        }
         else if (field.kind === "date") {
           // Formatted from its parts, not a Date: a server runs in UTC.
           const [y, m, d] = String(value).split("-");
@@ -456,31 +472,33 @@ export function filledChecklist(answer: (key: string) => true | string | null): 
         } else if (field.kind === "textarea") lines.push({ kind: "textarea", text: String(value) });
         else lines.push({ kind: "text", text: `${field.label}: ${value}` });
       }
-      if (lines.length) sections.push({ title: section.title, lines });
+      sections.push({ title: section.title, lines: lines.length ? lines : [{ kind: "none", text: "-" }] });
     }
     if (sections.length) categories.push({ title: category.title, sections });
   }
   return categories;
 }
 
-export const EMPTY_CHECKLIST = "Noch nichts ausgefüllt.";
-
 // The same as plain text (an email's body).
-export function checklistText(answer: (key: string) => true | string | null): string {
-  const blocks = filledChecklist(answer).map(
+export function checklistText(answer: (key: string) => true | string | null, internal = true): string {
+  const blocks = filledChecklist(answer, internal).map(
     (category) =>
       `${category.title.toUpperCase()}\n\n${category.sections
         .map((section) => {
           const lines = section.lines.flatMap((line) =>
             line.kind === "check"
               ? [`  • ${line.text}`]
-              : line.text.split("\n").map((l) => `  ${l}`),
+              : line.kind === "no"
+                ? [`  ✕ ${line.text}`]
+                : line.kind === "none"
+                  ? [`  ? ${line.text}`]
+                  : line.text.split("\n").map((l) => `  ${l}`),
           );
           return `${section.title}\n${lines.join("\n")}`;
         })
         .join("\n\n")}`,
   );
-  return blocks.length ? blocks.join("\n\n\n") : EMPTY_CHECKLIST;
+  return blocks.join("\n\n\n");
 }
 
 // Whatever's stored, as answers: unknown keys and malformed values dropped.

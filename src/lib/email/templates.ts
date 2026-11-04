@@ -1,5 +1,5 @@
 import "server-only";
-import { EMPTY_CHECKLIST, checklistText, filledChecklist } from "@/lib/checkliste";
+import { checklistText, filledChecklist } from "@/lib/checkliste";
 import { siteOrigin } from "@/lib/origin";
 import type { Email } from "./send";
 
@@ -13,6 +13,7 @@ function escape(text: string) {
 const LIGHT = { page: "#f2f2f7", card: "#ffffff", well: "#f2f2f7", text: "#1c1c1e", muted: "#8e8e93", rule: "#e5e5ea" };
 const DARK = { page: "#000000", card: "#1c1c1e", well: "#2c2c2e", text: "#ffffff", muted: "#8e8e93", rule: "#38383a" };
 const ACCENT = "#007aff";
+const DANGER = "#ff3b30";
 const SYSTEM_FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif";
 // The brand's Compacta, as served for emails (public/email); where a mail
 // app won't load web fonts, the nearest condensed heavies it might have.
@@ -177,48 +178,53 @@ export function signupInviteEmail(url: string, inviter: string, nickname: string
 
 // The Checkliste as filled in, from whoever sent it (who replies go to):
 // each category under a small grey title, as the app's sections are, and
-// each of its sections a rounded grey box, like iOS's grouped lists.
+// each of its sections a rounded grey box, like iOS's grouped lists — a
+// grey "?" and "-" in one with nothing filled in yet. internal: with the
+// team's own notes, for the team alone (see filledChecklist).
 export function checklistEmail({
   title,
   when,
   sender,
   answer,
+  internal,
 }: {
   title: string;
   when: string | null;
   sender: string;
   answer: (key: string) => true | string | null;
+  internal: boolean;
 }): Message {
   const subject = `Checkliste – ${title}`;
-  const categories = filledChecklist(answer);
-  const body = categories.length
-    ? categories
-        .map(
-          (category) =>
-            `<p class="muted" style="margin:28px 0 8px 4px;font-size:12px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:${LIGHT.muted};">${escape(category.title)}</p>` +
-            category.sections
-              .map(
-                (section) =>
-                  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;">
+  const body = filledChecklist(answer, internal)
+    .map(
+      (category) =>
+        `<p class="muted" style="margin:28px 0 8px 4px;font-size:12px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:${LIGHT.muted};">${escape(category.title)}</p>` +
+        category.sections
+          .map(
+            (section) =>
+              `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;">
 <tr><td class="well" style="background:${LIGHT.well};border-radius:16px;padding:12px 16px;">
 <p class="fg" style="margin:0 0 4px;font-size:14px;font-weight:600;line-height:1.4;color:${LIGHT.text};">${escape(section.title)}</p>` +
-                  section.lines
-                    .map((line) =>
-                      line.kind === "check"
-                        ? `<p class="fg" style="margin:0;font-size:14px;line-height:1.6;color:${LIGHT.text};"><span style="color:${ACCENT};font-weight:700;">✓</span>&nbsp;&nbsp;${escape(line.text)}</p>`
+              section.lines
+                .map((line) =>
+                  line.kind === "check"
+                    ? `<p class="fg" style="margin:0;font-size:14px;line-height:1.6;color:${LIGHT.text};"><span style="color:${ACCENT};font-weight:700;">✓</span>&nbsp;&nbsp;${escape(line.text)}</p>`
+                    : line.kind === "no"
+                      ? `<p class="fg" style="margin:0;font-size:14px;line-height:1.6;color:${LIGHT.text};"><span style="color:${DANGER};font-weight:700;">✕</span>&nbsp;&nbsp;${escape(line.text)}</p>`
+                      : line.kind === "none"
+                        ? `<p class="muted" style="margin:0;font-size:14px;line-height:1.6;color:${LIGHT.muted};"><span style="font-weight:700;">?</span>&nbsp;&nbsp;${escape(line.text)}</p>`
                         : `<p class="fg" style="margin:0;font-size:14px;line-height:1.6;color:${LIGHT.text};white-space:pre-wrap;">${escape(line.text)}</p>`,
-                    )
-                    .join("") +
-                  `</td></tr></table>`,
-              )
-              .join(""),
-        )
-        .join("")
-    : paragraph(EMPTY_CHECKLIST);
+                )
+                .join("") +
+              `</td></tr></table>`,
+          )
+          .join(""),
+    )
+    .join("");
 
   return {
     subject,
-    text: [subject, when, `Von ${sender}`, "", checklistText(answer)].filter((l) => l !== null).join("\n"),
+    text: [subject, when, `Von ${sender}`, "", checklistText(answer, internal)].filter((l) => l !== null).join("\n"),
     html: layout({
       preview: [when, `Von ${sender}`].filter(Boolean).join(" · "),
       body:

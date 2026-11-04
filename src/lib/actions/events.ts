@@ -265,10 +265,11 @@ export async function addChecklistEmail(id: string, email: string): Promise<stri
 // Management, the event's contact, and addresses kept for the event (see
 // addChecklistEmail). Only to them — Events Management's addresses are
 // looked up here, and any other is checked against the event's own, so
-// this can't mail anyone else. `when` is the event's dates as the sender's
-// page shows them, in the venue's own time (a server would only have UTC).
-// Replies go to the sender. Resolves to an error message to show, or null
-// once sent.
+// this can't mail anyone else. The team gets it whole; everyone else, in
+// an email of their own, without the team's internal notes. `when` is the
+// event's dates as the sender's page shows them, in the venue's own time
+// (a server would only have UTC). Replies go to the sender. Resolves to an
+// error message to show, or null once sent.
 export async function emailChecklist(
   id: string,
   recipientIds: string[],
@@ -292,25 +293,31 @@ export async function emailChecklist(
         .filter(isEmail)
         .map((e) => [e.toLowerCase(), e]),
     );
-    const others = emails.flatMap((e) => {
-      const found = known.get(e.trim().toLowerCase());
-      return found ? [found] : [];
-    });
-    const to = [...new Map([...team, ...others].map((e) => [e.toLowerCase(), e])).values()];
+    const unique = (list: string[]) => [...new Map(list.map((e) => [e.toLowerCase(), e])).values()];
+    const teamTo = unique(team);
+    // Anyone on the team as well is sent the team's.
+    const teamAddresses = new Set(teamTo.map((e) => e.toLowerCase()));
+    const othersTo = unique(
+      emails.flatMap((e) => {
+        const found = known.get(e.trim().toLowerCase());
+        return found ? [found] : [];
+      }),
+    ).filter((e) => !teamAddresses.has(e.toLowerCase()));
+    const to = [...teamTo, ...othersTo];
     if (to.length === 0) throw new Error("Pick someone to send it to.");
 
     const clean = parseChecklist(answers);
     const title = event.title?.trim() || "Untitled Event";
-    await sendEmail({
-      to,
-      replyTo: user.email,
-      ...checklistEmail({
+    const message = (internal: boolean) =>
+      checklistEmail({
         title,
         when: when ? when.slice(0, MAX_TEXT) : null,
         sender: displayNameOf(user),
         answer: (key) => clean[key] ?? null,
-      }),
-    });
+        internal,
+      });
+    if (teamTo.length) await sendEmail({ to: teamTo, replyTo: user.email, ...message(true) });
+    if (othersTo.length) await sendEmail({ to: othersTo, replyTo: user.email, ...message(false) });
     recordActivity(user, {
       action: "event.checklist_email",
       summary: `Emailed the Checkliste of ${quote(title)} to ${to.length === 1 ? quote(to[0]) : `${to.length} people`}`,
