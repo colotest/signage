@@ -442,11 +442,12 @@ export type FilledCategory = { title: string; sections: { title: string; lines: 
 // The category that's the team's own notes on the event, for no one else.
 export const INTERNAL_CATEGORY = "interne-notizen-und-einschaetzung";
 
-// The Checkliste as filled in, every section of it (but those @wenn keeps
-// out of the list for now): what's been ticked or written under each, a
-// room requirement with the rooms that asked for it in brackets after it,
-// and "-" where nothing has been yet. internal: with the team's own notes
-// (INTERNAL_CATEGORY).
+// The Checkliste as filled in: what's been ticked or written under each of
+// its sections (but those @wenn keeps out of the list for now), a room
+// requirement with the rooms that asked for it in brackets after it.
+// internal — for the team: every section, "-" in those with nothing in
+// them yet, and the team's own notes (INTERNAL_CATEGORY). Otherwise only
+// what's been filled in, and never those notes.
 export function filledChecklist(answer: (key: string) => true | string | null, internal = true): FilledCategory[] {
   const categories: FilledCategory[] = [];
   for (const category of CHECKLISTE) {
@@ -472,12 +473,15 @@ export function filledChecklist(answer: (key: string) => true | string | null, i
         } else if (field.kind === "textarea") lines.push({ kind: "textarea", text: String(value) });
         else lines.push({ kind: "text", text: `${field.label}: ${value}` });
       }
-      sections.push({ title: section.title, lines: lines.length ? lines : [{ kind: "none", text: "-" }] });
+      if (lines.length) sections.push({ title: section.title, lines });
+      else if (internal) sections.push({ title: section.title, lines: [{ kind: "none", text: "-" }] });
     }
     if (sections.length) categories.push({ title: category.title, sections });
   }
   return categories;
 }
+
+export const EMPTY_CHECKLIST = "Noch nichts ausgefüllt.";
 
 // The same as plain text (an email's body).
 export function checklistText(answer: (key: string) => true | string | null, internal = true): string {
@@ -498,7 +502,7 @@ export function checklistText(answer: (key: string) => true | string | null, int
         })
         .join("\n\n")}`,
   );
-  return blocks.join("\n\n\n");
+  return blocks.length ? blocks.join("\n\n\n") : EMPTY_CHECKLIST;
 }
 
 // Whatever's stored, as answers: unknown keys and malformed values dropped.
