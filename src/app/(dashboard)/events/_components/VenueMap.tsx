@@ -117,11 +117,14 @@ export function VenueMap({
   onFloorChange,
   spots,
   areas = [],
+  faintAreas = [],
   selectedArea = null,
   draft = null,
   focus,
+  controls = true,
   onBackgroundTap,
   onHandMove,
+  fitInsetLeft,
   className,
 }: {
   // The building's floors, bottom up, and which is picked: drawn in full,
@@ -136,6 +139,8 @@ export function VenueMap({
   // Highlighted areas, drawn on the plan beneath the spots (see PlanAreas);
   // the selected one outlined, and an area being drawn as far as it's got.
   areas?: MapArea[];
+  // Drawn faintly beneath those, unblurred: places a tap would pick out.
+  faintAreas?: MapArea[];
   selectedArea?: string | null;
   draft?: AreaPoint[] | null;
   // Bump the nonce to bring a spot into view (and the id to pick which).
@@ -148,6 +153,12 @@ export function VenueMap({
   // after a drag's let go), where on the plan its middle is, as a spot's u
   // and v, each time it's drawn — and null once it's come to rest.
   onHandMove?: (centre: { u: number; v: number } | null) => void;
+  // false: the zoom, compass and floor buttons fade away (the map as a
+  // backdrop, not to be handled yet).
+  controls?: boolean;
+  // How much of the box's left side, for a box this wide, the plan is
+  // fitted clear of — covered or faded out there.
+  fitInsetLeft?: (width: number) => number;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -235,10 +246,12 @@ export function VenueMap({
   const spotsRef = useRef(spots);
   const onBackgroundTapRef = useRef(onBackgroundTap);
   const onHandMoveRef = useRef(onHandMove);
+  const fitInsetLeftRef = useRef(fitInsetLeft);
   useEffect(() => {
     spotsRef.current = spots;
     onBackgroundTapRef.current = onBackgroundTap;
     onHandMoveRef.current = onHandMove;
+    fitInsetLeftRef.current = fitInsetLeft;
   });
 
   // --- geometry -----------------------------------------------------------
@@ -412,10 +425,12 @@ export function VenueMap({
     return { ...v, r: v.r + da, x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
   }
 
-  // The whole plan, upright and centred.
+  // The whole plan, upright and centred (in what's left of the box beside
+  // fitInsetLeft).
   function fitView(w: number, h: number): View {
-    const s = Math.min(w / plan.width, h / plan.height) * 0.94;
-    return { s, r: 0, x: (w - plan.width * s) / 2, y: (h - plan.height * s) / 2 };
+    const left = Math.min(Math.max(fitInsetLeftRef.current?.(w) ?? 0, 0), w / 2);
+    const s = Math.min((w - left) / plan.width, h / plan.height) * 0.94;
+    return { s, r: 0, x: left + (w - left - plan.width * s) / 2, y: (h - plan.height * s) / 2 };
   }
 
   // --- motion ---------------------------------------------------------------
@@ -952,7 +967,7 @@ export function VenueMap({
             </Fragment>
           );
         })}
-        {ready && <PlanAreas plan={plan} areas={areas} selected={selectedArea} draft={draft} />}
+        {ready && <PlanAreas plan={plan} areas={areas} faint={faintAreas} selected={selectedArea} draft={draft} />}
       </div>
 
       {!loaded && (
@@ -1004,7 +1019,11 @@ export function VenueMap({
 
       <div
         onPointerDown={(e) => e.stopPropagation()}
-        className="absolute right-3 top-3 z-20 flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-border glass-material shadow-[var(--shadow-float)]"
+        inert={!controls}
+        className={cn(
+          "absolute right-3 top-3 z-20 flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-border glass-material shadow-[var(--shadow-float)] transition-opacity duration-300",
+          !controls && "opacity-0",
+        )}
       >
         <MapButton label="Vergrößern" onClick={() => zoomBy(1.6)}>
           <path d="M12 6v12M6 12h12" />
@@ -1069,7 +1088,11 @@ export function VenueMap({
           role="group"
           aria-label="Etage"
           onPointerDown={(e) => e.stopPropagation()}
-          className="absolute bottom-3 right-3 z-20 flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-border glass-material shadow-[var(--shadow-float)]"
+          inert={!controls}
+          className={cn(
+            "absolute bottom-3 right-3 z-20 flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-border glass-material shadow-[var(--shadow-float)] transition-opacity duration-300",
+            !controls && "opacity-0",
+          )}
         >
           {[...floors].reverse().map((f, i) => (
             <Fragment key={f.id}>
@@ -1132,6 +1155,7 @@ export function VenueMap({
 // are filled this strongly.
 const AREA_SOFTNESS = 23;
 const AREA_OPACITY = 0.27;
+const FAINT_AREA_OPACITY = 0.08;
 
 // The areas, drawn in the plan's own units over the picture, so they slide,
 // zoom and turn with it: each a blue fill blurred at its edges, the
@@ -1140,15 +1164,17 @@ const AREA_OPACITY = 0.27;
 function PlanAreas({
   plan,
   areas,
+  faint,
   selected,
   draft,
 }: {
   plan: FloorPlan;
   areas: MapArea[];
+  faint: MapArea[];
   selected: string | null;
   draft: AreaPoint[] | null;
 }) {
-  if (areas.length === 0 && !draft?.length) return null;
+  if (areas.length === 0 && faint.length === 0 && !draft?.length) return null;
   const toPoints = (pts: AreaPoint[]) => pts.map((p) => `${p.u * plan.width},${p.v * plan.height}`).join(" ");
   const pad = AREA_SOFTNESS * 3;
   return (
@@ -1179,6 +1205,13 @@ function PlanAreas({
           );
         })}
       </defs>
+      {faint.map((area) => (
+        <polygon
+          key={area.id}
+          points={toPoints(area.points)}
+          style={{ fill: "var(--accent)", fillOpacity: FAINT_AREA_OPACITY }}
+        />
+      ))}
       {areas.map((area) => (
         <polygon
           key={area.id}

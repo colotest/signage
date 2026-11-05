@@ -17,12 +17,15 @@ import { AccountDialog, type AccountChange } from "./AccountDialog";
 
 // Users lives in the account menu rather than here (see UserMenu).
 const NAV_PAGES = PAGES.filter((page) => page.key !== "users");
+// The venue for guests (open to anyone, signed in or not), first and for
+// everyone.
+const GUEST_PAGE = { label: "Guest", href: "/guest" };
 
 export function Header() {
   const pathname = usePathname();
   const viewer = useViewer();
   // Pages the viewer's roles don't reach aren't shown at all.
-  const navItems = NAV_PAGES.filter((page) => viewer.access.pages[page.key]);
+  const navItems = [GUEST_PAGE, ...NAV_PAGES.filter((page) => viewer.access.pages[page.key])];
   const headerRef = useRef<HTMLElement | null>(null);
 
   // Installed to the Home Screen this header lies over the page rather than
