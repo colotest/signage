@@ -18,7 +18,7 @@ import type { MapArea } from "@/lib/eventAreas";
 // the Schönhauser entrance), ZW and HZW on the mezzanine, and the upper
 // floor's own — and, drawn on the "Halle" event afterwards, one more on
 // the ground floor for the upper floor without the Halle's cinema side.
-const AREAS = {
+export const VENUE_AREAS = {
   HU: {
     id: "venue:hu",
     floor: "eg",
@@ -199,20 +199,20 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
   const split = hallSplit(answer);
 
   const shown: MapArea[] = [];
-  if (upstairs) shown.push(AREAS.OG, on(ZWISCHENEBENE) ? AREAS.ZW : AREAS.HZW);
-  else if (on(ZWISCHENEBENE)) shown.push(AREAS.ZW);
+  if (upstairs) shown.push(VENUE_AREAS.OG, on(ZWISCHENEBENE) ? VENUE_AREAS.ZW : VENUE_AREAS.HZW);
+  else if (on(ZWISCHENEBENE)) shown.push(VENUE_AREAS.ZW);
   if (upstairs && !groundRooms) {
-    if (schoenh) shown.push(AREAS.SCHOENH_OG, AREAS.S);
-    else if (gleim) shown.push(AREAS.GLEIM_OG);
+    if (schoenh) shown.push(VENUE_AREAS.SCHOENH_OG, VENUE_AREAS.S);
+    else if (gleim) shown.push(VENUE_AREAS.GLEIM_OG);
   } else if (west && !eastKinos && !schoenh) {
-    shown.push(split ? AREAS.HU : AREAS.H);
+    shown.push(split ? VENUE_AREAS.HU : VENUE_AREAS.H);
   } else if (west) {
-    shown.push(AREAS.H);
-    if (schoenh) shown.push(AREAS.S);
+    shown.push(VENUE_AREAS.H);
+    if (schoenh) shown.push(VENUE_AREAS.S);
   } else if ((on(saal(2)) || on(saal(3))) && schoenh) {
-    shown.push(split ? AREAS.HO : AREAS.H, AREAS.S);
+    shown.push(split ? VENUE_AREAS.HO : VENUE_AREAS.H, VENUE_AREAS.S);
   } else if ((on(saal(2)) || on(saal(3))) && gleim) {
-    shown.push(AREAS.HOG);
+    shown.push(VENUE_AREAS.HOG);
   }
   if (
     upstairs &&
@@ -221,7 +221,7 @@ export function linkedAreas(answer: ((key: string) => true | string | null) | nu
     any([saal(4), saal(5), MAINBAR]) &&
     !any([saal(1), saal(2), saal(3), WC_HALLE_KINO])
   ) {
-    shown.push(AREAS.UP_WITHOUT_HALLE_KINO);
+    shown.push(VENUE_AREAS.UP_WITHOUT_HALLE_KINO);
   }
   return shown;
 }
