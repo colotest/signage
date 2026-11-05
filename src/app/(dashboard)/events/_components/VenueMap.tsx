@@ -124,6 +124,7 @@ export function VenueMap({
   controls = true,
   onBackgroundTap,
   onHandMove,
+  fitInsetLeft,
   className,
 }: {
   // The building's floors, bottom up, and which is picked: drawn in full,
@@ -155,6 +156,9 @@ export function VenueMap({
   // false: the zoom, compass and floor buttons fade away (the map as a
   // backdrop, not to be handled yet).
   controls?: boolean;
+  // How much of the box's left side, for a box this wide, the plan is
+  // fitted clear of — covered or faded out there.
+  fitInsetLeft?: (width: number) => number;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -242,10 +246,12 @@ export function VenueMap({
   const spotsRef = useRef(spots);
   const onBackgroundTapRef = useRef(onBackgroundTap);
   const onHandMoveRef = useRef(onHandMove);
+  const fitInsetLeftRef = useRef(fitInsetLeft);
   useEffect(() => {
     spotsRef.current = spots;
     onBackgroundTapRef.current = onBackgroundTap;
     onHandMoveRef.current = onHandMove;
+    fitInsetLeftRef.current = fitInsetLeft;
   });
 
   // --- geometry -----------------------------------------------------------
@@ -419,10 +425,12 @@ export function VenueMap({
     return { ...v, r: v.r + da, x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
   }
 
-  // The whole plan, upright and centred.
+  // The whole plan, upright and centred (in what's left of the box beside
+  // fitInsetLeft).
   function fitView(w: number, h: number): View {
-    const s = Math.min(w / plan.width, h / plan.height) * 0.94;
-    return { s, r: 0, x: (w - plan.width * s) / 2, y: (h - plan.height * s) / 2 };
+    const left = Math.min(Math.max(fitInsetLeftRef.current?.(w) ?? 0, 0), w / 2);
+    const s = Math.min((w - left) / plan.width, h / plan.height) * 0.94;
+    return { s, r: 0, x: left + (w - left - plan.width * s) / 2, y: (h - plan.height * s) / 2 };
   }
 
   // --- motion ---------------------------------------------------------------

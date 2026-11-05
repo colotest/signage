@@ -2,7 +2,7 @@ import type { AreaPoint } from "@/lib/eventAreas";
 import { VENUE_AREAS } from "@/lib/venueAreas";
 import type { Floor } from "@/lib/venueFloors";
 
-// What the Guests page (/guests) says, section by section, and where on the
+// What the Guest page (/guest) says, section by section, and where on the
 // venue map each part of it lies. Reading a section lights up all of its
 // places on the map; an entry's title, hovered (or tapped), lights up its
 // own and turns the section's picture carousel to its picture. A tap on a

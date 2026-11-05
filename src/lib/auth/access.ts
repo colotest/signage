@@ -122,9 +122,9 @@ export function canSeeGroup(access: Access, groupId: string) {
 }
 
 // Where someone lands after logging in: the first page they can reach, or
-// the Guests page (open to everyone) when they can't reach any.
+// the Guest page (open to everyone) when they can't reach any.
 export function landingPath(access: Access) {
-  return PAGES.find((page) => access.pages[page.key])?.href ?? "/guests";
+  return PAGES.find((page) => access.pages[page.key])?.href ?? "/guest";
 }
 
 // Whether someone may rename, move, delete (or share) a file, PDF or
