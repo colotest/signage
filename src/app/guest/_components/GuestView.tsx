@@ -14,8 +14,8 @@ import { cn } from "@/lib/utils/cn";
 // The page opens on the ground floor's plan filling the screen, the title
 // over it. The first TRAVEL of the scroll (× the screen's height) turns
 // that into the page: the title shrinks to float along the top, and the
-// map into the right third, top to bottom, its left edge fading into the
-// content — or, on a narrow screen, a card in a band under the title —
+// map into the right MAP_SHARE of it, top to bottom, its left edge fading
+// over the content — or, on a narrow screen, a card in a band under the title —
 // where it stays while the content scrolls by.
 const TRAVEL = 0.7;
 const SMALL_TITLE_PX = 26;
@@ -26,8 +26,13 @@ const WIDE_PX = 768;
 const TITLE_Y = 38;
 const SWITCHER_Y = 94;
 const TOP_ZONE = 128;
-// Wide: how far the map reaches left over the content, fading in across it.
+// Wide: how much of the width the map takes, and how far beyond that it
+// reaches left over the content, fading in across it.
+const MAP_SHARE = 0.4;
 const FADE = 96;
+// The text column's widest, and its side padding (md:px-10), wide.
+const COLUMN_MAX = 680;
+const COLUMN_PAD = 40;
 // Narrow: the band the title docks in, and the map card under it.
 const BAR_H = 76;
 const DOCK_MIN_H = 380;
@@ -63,7 +68,7 @@ type Layout = {
 function layoutFor(w: number, h: number): Layout {
   const wide = w >= WIDE_PX;
   const dock: Rect = wide
-    ? { x: (w * 2) / 3 - FADE, y: 0, w: w / 3 + FADE, h }
+    ? { x: w * (1 - MAP_SHARE) - FADE, y: 0, w: w * MAP_SHARE + FADE, h }
     : { x: 12, y: BAR_H, w: w - 24, h: Math.round(Math.max(DOCK_MIN_H, h * 0.4)) };
   const contentTop = wide ? TOP_ZONE : dock.y + dock.h + 8;
   return {
@@ -187,8 +192,13 @@ export function GuestView() {
     const section = sectionOfEntry.get(entry.id);
     const carousel = section && carouselRefs.current.get(section.id);
     const slide = carousel?.querySelector<HTMLElement>(`[data-entry="${entry.id}"]`);
-    // The carousel is the slides' offset parent (it's positioned).
-    if (carousel && slide) carousel.scrollTo({ left: slide.offsetLeft, behavior: "smooth" });
+    // The carousel is the slides' offset parent (it's positioned); the slide
+    // comes to rest in line with the text, the run before it (scroll-padding)
+    // to its left.
+    if (carousel && slide) {
+      const before = parseFloat(getComputedStyle(carousel).scrollPaddingLeft) || 0;
+      carousel.scrollTo({ left: slide.offsetLeft - before, behavior: "smooth" });
+    }
   }
 
   function endSeekLater() {
@@ -389,6 +399,11 @@ export function GuestView() {
     else markRefs.current.delete(key);
   };
 
+  // Wide: the content's window, out to where the map is drawn in full, and
+  // how far past the text column's right edge that is.
+  const contentWidth = layout?.wide ? layout.dock.x + FADE : 0;
+  const bleed = layout?.wide ? (contentWidth - Math.min(COLUMN_MAX, contentWidth)) / 2 + COLUMN_PAD : 0;
+
   const switcher = (
     <SegmentedSlider label="Ansicht" options={MODES} value={mode} onChange={switchMode} className="w-[300px] max-w-full" />
   );
@@ -401,7 +416,9 @@ export function GuestView() {
         {layout && (
           <>
             <div aria-hidden style={{ height: layout.travel + layout.contentTop }} />
-            <div style={{ width: layout.wide ? layout.dock.x + FADE / 2 : "100%" }}>
+            {/* Wide: as far as the map's faded edge reaches, so what runs
+                past the text column (the carousels) goes on beneath it. */}
+            <div style={{ width: layout.wide ? contentWidth : "100%" }}>
               <div className="mx-auto max-w-[680px] px-6 md:px-10" style={{ paddingBottom: layout.h - layout.readingY }}>
                 {/* Narrow: the switcher heads the content (wide, it floats
                     under the title). */}
@@ -423,6 +440,7 @@ export function GuestView() {
                         onPick={pick}
                         onUnpick={() => setHovered(null)}
                         mark={mark}
+                        bleed={bleed}
                         carouselRef={(el) => {
                           if (el) carouselRefs.current.set(section.id, el);
                           else carouselRefs.current.delete(section.id);
@@ -587,6 +605,7 @@ function Section({
   onPick,
   onUnpick,
   mark,
+  bleed,
   carouselRef,
 }: {
   section: GuestSection;
@@ -596,6 +615,9 @@ function Section({
   onPick: (entry: GuestEntry) => void;
   onUnpick: () => void;
   mark: (key: string, el: HTMLElement | null) => void;
+  // How far past the text column the carousel runs on either side: out to
+  // the page's left edge, and on beneath the map's faded edge.
+  bleed: number;
   carouselRef: (el: HTMLDivElement | null) => void;
 }) {
   const sectionLit = lit?.kind === "section" && lit.id === section.id;
@@ -651,16 +673,20 @@ function Section({
       {/* One picture per entry, turned to by hovering its title. */}
       <div
         ref={carouselRef}
+        style={{ marginLeft: -bleed, marginRight: -bleed, scrollPaddingLeft: bleed }}
         className="relative mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
+        {bleed > 0 && <span aria-hidden className="shrink-0" style={{ width: bleed - 12 }} />}
         {section.entries.map((entry) => (
           <button
             key={entry.id}
             type="button"
             data-entry={entry.id}
             onClick={() => onPick(entry)}
+            // Sized to the text column, not the runs past it.
+            style={{ width: `calc((100% - ${bleed * 2}px) * 0.78)` }}
             className={cn(
-              "no-press relative aspect-[4/3] w-[78%] shrink-0 snap-start overflow-hidden rounded-[var(--radius-lg)] border transition-[border-color,box-shadow] duration-300",
+              "no-press relative aspect-[4/3] shrink-0 snap-start overflow-hidden rounded-[var(--radius-lg)] border transition-[border-color,box-shadow] duration-300",
               entryLit(entry) && !sectionLit ? "border-accent shadow-[0_0_0_2px_var(--accent)]" : "border-border",
             )}
           >
@@ -672,6 +698,8 @@ function Section({
             )}
           </button>
         ))}
+        {/* Room for the last picture to come out from under the map. */}
+        {bleed > 0 && <span aria-hidden className="shrink-0" style={{ width: bleed - 12 }} />}
       </div>
 
       {section.overlays && section.overlays.length > 0 && (
