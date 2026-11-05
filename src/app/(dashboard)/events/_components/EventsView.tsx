@@ -71,7 +71,8 @@ const COLOSSEUM: MapFloor[] = FLOORS.map((floor) => {
 // if none). Placed as the pins of an untitled event without a date and
 // copied out (see copyPins). Those whose id PinMenus knows (PIN_LINKS)
 // work the open event's Checkliste; the rest are names. Where two meet, the
-// later one's drawn over the earlier (Banner Outdoor over Haustechnik K1).
+// later one's drawn over the earlier (Banner Outdoor over Haustechnik K1,
+// Garderobe over Technik).
 const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: Floor }[] = [
   { id: "banner-indoor", title: "Banner Indoor", u: 0.1392, v: 0.3728 },
   { id: "projektion-indoor", title: "Projektion Indoor", u: 0.4925, v: 0.6599 },
@@ -85,6 +86,7 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: F
   { id: "wc-halle-hof", title: "WC Halle/Hof", u: 0.0839, v: 0.6887 },
   { id: "wc-kino", title: "WC Kino", u: 0.6558, v: 0.8845 },
   { id: "akkreditierung", title: "Akkreditierung", u: 0.4238, v: 0.7632 },
+  { id: "technik", title: "Technik", u: 0.4318, v: 0.5243 },
   { id: "garderobe", title: "Garderobe", u: 0.4669, v: 0.5777 },
   { id: "kueche", title: "Küche", u: 0.0961, v: 0.4337 },
   { id: "main-bar", title: "Main Bar", u: 0.1674, v: 0.4862 },
@@ -116,7 +118,6 @@ const DEFAULT_PINS: { id: string; title: string; u: number; v: number; floor?: F
   { id: "sicherheit", title: "Sicherheit", u: 0.4418, v: 0.8025 },
   { id: "zwischenebene", title: "Zwischenebene", u: 0.477, v: 0.5235, floor: "zwischen" },
   { id: "galerie-flaeche", title: "Galerie Fläche", u: 0.1941, v: 0.5202, floor: "og" },
-  { id: "technik", title: "Technik", u: 0.4318, v: 0.5243 },
   { id: "barrierefreiheit", title: "Barrierefreiheit", u: 0.4652, v: 0.8454 },
   { id: "parken-kino", title: "Parkv. Kino", u: 0.6388, v: 0.9521 },
   { id: "parken-bioco", title: "Parkv. BioCo", u: 0.3724, v: 0.9559 },
