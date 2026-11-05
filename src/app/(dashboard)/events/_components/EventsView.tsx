@@ -22,6 +22,7 @@ import {
 } from "./checklistState";
 import { formatScrubMoment } from "./eventFormat";
 import { EventsPane } from "./EventsPane";
+import { NotePin } from "./NotePin";
 import { EventDatesContext } from "./ParkingDates";
 import { LinkedPinCard, pinAnswerKeys, pinChecklistAnchor, pinIsOn } from "./PinMenus";
 import { ScreenPin } from "./ScreenPin";
@@ -147,10 +148,20 @@ const SCREEN_PINS: Record<string, string> = {
   "screen-popcornbar-r": "Popcornbar R",
 };
 
-// What the next tap on the map does: drop a new pin, move one there (onto
-// the floor shown then, if it's been switched since), or add a corner to
-// the area being drawn (its corners so far).
-type Placing = { kind: "new" } | { kind: "move"; id: string } | { kind: "area"; points: AreaPoint[] };
+// What the next tap on the map does: drop a new pin, or a note (see
+// NotePin), move one there (onto the floor shown then, if it's been
+// switched since), or add a corner to the area being drawn (its corners so
+// far).
+type Placing =
+  | { kind: "new" }
+  | { kind: "note" }
+  | { kind: "move"; id: string }
+  | { kind: "area"; points: AreaPoint[] };
+
+// The open event's own pins and areas are edited in edit mode
+// ("Bearbeiten") — hidden for now, with notes ("Notiz") in its place;
+// true brings it back.
+const SHOW_EDITING = false;
 
 // Following the map with the Checkliste (see followMap): another pin's part
 // of the list takes over only once its pin is this much nearer the map's
@@ -179,8 +190,9 @@ function scrollChecklistTo(key: string) {
 // The Events page: the events on one side (top on a phone, left on an iPad
 // or desktop), each opening into its own setup pages, and the venue map on
 // the other — with the open event's own pins and highlighted areas on it.
-// The standing pins work the open event's Checkliste (see PinMenus); its
-// own pins are named, moved and placed in edit mode ("Bearbeiten"), and its
+// The standing pins work the open event's Checkliste (see PinMenus). Notes
+// are put on the map with "Notiz" (see NotePin); its own pins are named,
+// moved and placed in edit mode ("Bearbeiten", hidden for now), and its
 // areas drawn there corner by corner (tapping the first corner again closes
 // one) or picked out with a tap to be deleted. With no event open, the map
 // shows the screens' pins, live — or, scrubbing the calendar to another
@@ -233,6 +245,8 @@ export function EventsView({
   const floorPins = pins.filter((p) => floorOf(p) === floor);
   const floorAreas = areas.filter((a) => floorOf(a) === floor);
   const [editing, setEditing] = useState(false);
+  // The note being written in, if any (see NotePin).
+  const [editingNote, setEditingNote] = useState<string | null>(null);
   // The open event's Checkliste, shared by its setup page and the pins —
   // while a type switch is being reviewed, as that would leave it (unsaved,
   // see ChecklistReview), on the map as on the list.
@@ -307,6 +321,7 @@ export function EventsView({
     setPlacing(null);
     setOpenSpot(null);
     setEditing(false);
+    setEditingNote(null);
     setSelectedArea(null);
     setRevealed(new Set());
   }
@@ -337,6 +352,24 @@ export function EventsView({
       else if (performance.now() - started < 1500) requestAnimationFrame(find);
     };
     requestAnimationFrame(find);
+  }
+
+  // A note's text as it's typed; and once it's left, kept — or, left empty,
+  // the note taken off the map. From the pins as they are by then (a note
+  // closing as another's placed, say), not as they were when it opened.
+  const pinsRef = useRef(pins);
+  useEffect(() => {
+    pinsRef.current = pins;
+  });
+  function saveNote(id: string, note: string) {
+    const current = pinsRef.current;
+    if (current.find((p) => p.id === id)?.note === note) return;
+    savePins(current.map((p) => (p.id === id ? { ...p, note } : p)));
+  }
+  function finishNote(id: string, note: string) {
+    setEditingNote((n) => (n === id ? null : n));
+    if (note.trim()) saveNote(id, note);
+    else savePins(pinsRef.current.filter((p) => p.id !== id));
   }
 
   function savePins(next: MapPin[]) {
@@ -388,7 +421,13 @@ export function EventsView({
       if (placing.points.length < MAX_AREA_POINTS) setPlacing({ kind: "area", points: [...placing.points, { u, v }] });
       return;
     }
-    if (placing.kind === "new") {
+    if (placing.kind === "note") {
+      // Opened at once, to be written in.
+      const pin: MapPin = { id: crypto.randomUUID(), title: "Notiz", u, v, floor, note: "" };
+      savePins([...pins, pin]);
+      setOpenSpot(`pin:${pin.id}`);
+      setEditingNote(pin.id);
+    } else if (placing.kind === "new") {
       const pin: MapPin = { id: crypto.randomUUID(), title: `Pin ${pins.length + 1}`, u, v, floor };
       savePins([...pins, pin]);
       setOpenSpot(`pin:${pin.id}`);
@@ -507,6 +546,29 @@ export function EventsView({
     }),
     ...floorPins.map((pin) => {
       const spotId = `pin:${pin.id}`;
+      if (pin.note !== undefined) {
+        return {
+          id: spotId,
+          u: pin.u,
+          v: pin.v,
+          front: openSpot === spotId,
+          node: (
+            <NotePin
+              note={pin.note}
+              open={openSpot === spotId}
+              editing={editingNote === pin.id}
+              canEdit={!!event}
+              onOpenChange={(open) => setOpenSpot((s) => (open ? spotId : s === spotId ? null : s))}
+              onEdit={() => {
+                setOpenSpot(spotId);
+                setEditingNote(pin.id);
+              }}
+              onSave={(text) => saveNote(pin.id, text)}
+              onDone={(text) => finishNote(pin.id, text)}
+            />
+          ),
+        };
+      }
       return {
         id: spotId,
         u: pin.u,
@@ -588,13 +650,40 @@ export function EventsView({
               </div>
             )}
 
-            {/* Along the map's bottom, with an event open: "Bearbeiten" — and
-                while editing, "+ Pin" and "+ Fläche" (or what a tap on the map
-                is about to do), deleting the area picked out, for now copying
-                the pins out, and "Fertig". Clear of the floor picker in the
-                corner. */}
+            {/* Along the map's bottom, with an event open: "Notiz" — or, with
+                SHOW_EDITING, "Bearbeiten", and while editing, "+ Pin" and
+                "+ Fläche" (or what a tap on the map is about to do),
+                deleting the area picked out, for now copying the pins out,
+                and "Fertig". Clear of the floor picker in the corner. */}
             <div className="pointer-events-none absolute bottom-3 left-3 right-[68px] z-20 flex flex-wrap items-end gap-2">
-              {event && !editing && (
+              {/* With an event open: "Notiz" puts a note on the map, a tap
+                  on the plan saying where (see NotePin). */}
+              {event && !editing &&
+                (placing?.kind === "note" ? (
+                  <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border glass-material py-1.5 pl-4 pr-1.5 text-[14px] shadow-[var(--shadow-float)]">
+                    <span>Tippe auf den Plan, um die Notiz zu setzen</span>
+                    <button
+                      type="button"
+                      onClick={() => setPlacing(null)}
+                      className="rounded-full bg-[var(--control-fill)] px-3 py-1.5 font-medium hover:bg-[var(--control-fill-hover)]"
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenSpot(null);
+                      setPlacing({ kind: "note" });
+                    }}
+                    disabled={pins.length >= MAX_PINS}
+                    className={cn(PILL, "disabled:opacity-40")}
+                  >
+                    Notiz
+                  </button>
+                ))}
+              {SHOW_EDITING && event && !editing && (
                 <button
                   type="button"
                   onClick={() => {

@@ -1336,7 +1336,9 @@ export function MapCard({
   // open width, or back to the title's own — handed back to the title
   // once it's there.
   const boxRef = useRef<HTMLDivElement>(null);
-  const shownOpen = useRef(open);
+  // Shown closed to begin with, so a card that comes onto the map open (a
+  // note just placed — see NotePin) widens as one opened would.
+  const shownOpen = useRef(false);
   // Once it's opened out, what's in it may reach past its edges (a
   // calendar's time wheels, say — see ParkingDates); while it's widening
   // or narrowing, it's kept inside them.
