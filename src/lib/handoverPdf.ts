@@ -1,12 +1,22 @@
 import "server-only";
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import fontkit from "@pdf-lib/fontkit";
+import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
+import { COLOSSEUM_MARK } from "@/lib/colosseumMark";
 import type { HandoverFormData, HandoverSection } from "@/lib/uebergabeprotokoll";
 
 // The Übergabeprotokoll as a PDF, for emailing: its title, who it's for and
 // when, then each part of the venue the event's Checkliste brings in, every
 // item with its ✓ and ✕ boxes as filled in (a failed one's note and photos
-// under it), and the signatures at the end. A4, in Helvetica — PDF's own,
-// which covers German (WinAnsi); anything it can't write comes out as "?".
+// under it), and the signatures at the end. A4, under the brand's band —
+// the Colo Cloud wordmark, "Colosseum Event Berlin" and the cursive
+// Colosseum — in the app's own fonts: Colo (Compacta) for the brand, and
+// for the rest Inter, the nearest to the app's SF Pro that may be embedded
+// (Apple's may not). Anything a font can't write comes out as "?".
+
+// In src/fonts, read from disk (next.config.ts ships them with the page).
+const FONT_FILES = { regular: "inter-400.woff", semibold: "inter-600.woff", brand: "colo.ttf" };
 
 const PAGE = { width: 595.28, height: 841.89 };
 const MARGIN = 48;
@@ -28,6 +38,9 @@ const BOX_GAP = 8;
 const NUMBER_WIDTH = 34;
 const PHOTO = { width: 150, height: 112, gap: 8 };
 const SIGNATURE_HEIGHT = 70;
+// The brand's band: the wordmark's size, the house's, and the cursive
+// mark's height.
+const BAND = { size: 22, house: 13, markHeight: 30 };
 
 export type HandoverPdfInput = {
   form: string;
@@ -47,8 +60,14 @@ export async function handoverPdf(input: HandoverPdfInput): Promise<Uint8Array> 
   const doc = await PDFDocument.create();
   doc.setTitle(`Übergabeprotokoll ${input.form} – ${input.title}`);
   doc.setCreator("Colo Cloud");
-  const regular = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  doc.registerFontkit(fontkit);
+  const embed = async (file: string) =>
+    doc.embedFont(await readFile(join(process.cwd(), "src/fonts", file)), { subset: true });
+  const [regular, bold, brand] = await Promise.all([
+    embed(FONT_FILES.regular),
+    embed(FONT_FILES.semibold),
+    embed(FONT_FILES.brand),
+  ]);
 
   let page: PDFPage = doc.addPage([PAGE.width, PAGE.height]);
   let y = PAGE.height - MARGIN;
@@ -64,16 +83,37 @@ export async function handoverPdf(input: HandoverPdfInput): Promise<Uint8Array> 
   const text = (s: string, x: number, size: number, font: PDFFont, color: RGB = TEXT) =>
     page.drawText(safe(font, s), { x, y, size, font, color });
 
-  // ── Title ──
-  y -= 24;
-  text("Übergabeprotokoll", MARGIN, 24, bold);
+  const centred = (s: string, size: number, font: PDFFont, color: RGB = TEXT) =>
+    text(s, (PAGE.width - font.widthOfTextAtSize(safe(font, s), size)) / 2, size, font, color);
+
+  // ── The brand's band: the wordmark at the left, the house in the
+  // middle, the cursive Colosseum at the right — all on one line. ──
+  y = PAGE.height - 34 - BAND.size;
+  text("COLO CLOUD", MARGIN, BAND.size, brand);
+  // Smaller, so raised to sit level with the wordmark's middle.
+  y += (BAND.size - BAND.house) * 0.36;
+  centred("COLOSSEUM EVENT BERLIN", BAND.house, brand);
+  y -= (BAND.size - BAND.house) * 0.36;
+  const markScale = BAND.markHeight / COLOSSEUM_MARK.height;
+  page.drawSvgPath(COLOSSEUM_MARK.path, {
+    x: PAGE.width - MARGIN - COLOSSEUM_MARK.width * markScale,
+    // Its top, the mark sitting a little below the line's cap height (its
+    // tail hangs down past the baseline).
+    y: y + BAND.size * 0.95,
+    scale: markScale,
+    color: TEXT,
+  });
+
+  // ── Title, centred ──
+  y -= 58;
+  centred("Übergabeprotokoll", 26, bold);
   y -= 22;
   for (const line of wrap(regular, `Kunde: ${input.customer ?? "–"}, Veranstaltung: ${input.title}`, 12, CONTENT)) {
-    text(line, MARGIN, 12, regular, MUTED);
+    centred(line, 12, regular, MUTED);
     y -= 16;
   }
-  text(`${input.form}, Datum: ${input.date}`, MARGIN, 12, regular, MUTED);
-  y -= 30;
+  centred(`${input.form}, Datum: ${input.date}`, 12, regular, MUTED);
+  y -= 40;
 
   const images = new Map<string, PDFImage | null>();
   async function photo(path: string) {
@@ -89,10 +129,8 @@ export async function handoverPdf(input: HandoverPdfInput): Promise<Uint8Array> 
     // The heading kept with at least its first row.
     ensure(60);
     y -= 4;
-    text(section.title, MARGIN, 15, bold);
-    y -= 8;
-    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE.width - MARGIN, y }, thickness: 0.8, color: TEXT });
-    y -= 16;
+    text(section.title, MARGIN, 16, bold);
+    y -= 26;
 
     for (const group of section.groups) {
       if (group.title) {
@@ -173,10 +211,8 @@ export async function handoverPdf(input: HandoverPdfInput): Promise<Uint8Array> 
   // ── Bestätigung ──
   ensure(SIGNATURE_HEIGHT + 120);
   y -= 4;
-  text("Bestätigung", MARGIN, 15, bold);
-  y -= 8;
-  page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE.width - MARGIN, y }, thickness: 0.8, color: TEXT });
-  y -= 22;
+  text("Bestätigung", MARGIN, 16, bold);
+  y -= 24;
   text(`Berlin, den ${input.date}`, MARGIN, 11, regular);
   y -= 16;
   const columnWidth = (CONTENT - 32) / 2;
@@ -242,22 +278,12 @@ function drawBox(page: PDFPage, x: number, top: number, kind: "ok" | "issue", pi
 }
 
 // What the font can write, the rest as "?" (an emoji in a note, say).
-const writable = new WeakMap<PDFFont, Map<string, boolean>>();
+const writable = new WeakMap<PDFFont, Set<number>>();
 function safe(font: PDFFont, s: string) {
   let known = writable.get(font);
-  if (!known) writable.set(font, (known = new Map()));
+  if (!known) writable.set(font, (known = new Set(font.getCharacterSet())));
   let out = "";
-  for (const ch of s.replace(/\t/g, " ")) {
-    if (!known.has(ch)) {
-      try {
-        font.encodeText(ch);
-        known.set(ch, true);
-      } catch {
-        known.set(ch, false);
-      }
-    }
-    out += known.get(ch) ? ch : "?";
-  }
+  for (const ch of s.replace(/\t/g, " ")) out += known.has(ch.codePointAt(0)!) ? ch : "?";
   return out;
 }
 

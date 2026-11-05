@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
     // copy expire after the 4h default.)
     minimumCacheTTL: 2678400, // 31 days
   },
+  // The fonts the Übergabeprotokoll's PDF is set in (src/lib/handoverPdf.ts),
+  // read from disk by the Events page's server actions: shipped with it.
+  outputFileTracingIncludes: { "/events": ["./src/fonts/**"] },
   // The Events page was the Forms page: old links and bookmarks still get
   // there, the event they had open and all (the query carries over).
   async redirects() {

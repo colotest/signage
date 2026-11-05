@@ -14,6 +14,7 @@ import {
   applyHandoverPatch,
   emptyHandoverForm,
   formatHandoverDay,
+  handoverAttachmentName,
   handoverFileName,
   handoverFormLabel,
   handoverPhotoPath,
@@ -156,7 +157,7 @@ export async function emailHandover(
       to,
       replyTo: user.email,
       ...handoverEmail({ subject: name, form: handoverFormLabel(form), title, customer, date, sender: displayNameOf(user) }),
-      attachments: [{ filename: `${name}.pdf`, content: Buffer.from(pdf).toString("base64") }],
+      attachments: [{ filename: handoverAttachmentName(form, title), content: Buffer.from(pdf).toString("base64") }],
     });
     recordActivity(user, {
       action: "event.handover_email",

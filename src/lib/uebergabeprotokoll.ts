@@ -365,7 +365,27 @@ export function formatHandoverDay(day: string) {
   return `${d}/${m}/${y}`;
 }
 
-// The file the protocol's emailed as, without its ".pdf".
+// What the protocol's emailed as (its subject), without ".pdf".
 export function handoverFileName(form: HandoverFormKey, eventTitle: string) {
   return `Übergabeprotokoll Colosseum ${handoverFormLabel(form)} ${eventTitle}`.replace(/[\\/:*?"<>|]+/g, "-").trim();
+}
+
+// The same as the attached file's name, in plain ASCII ("Uebergabeprotokoll
+// Colosseum Rueckgabe …"): a name with an umlaut goes out encoded (RFC
+// 2231), and a long one split in parts besides, which some mail apps show
+// as it's encoded ("utf-8''%C3%9Cbergabe…") rather than reading back.
+export function handoverAttachmentName(form: HandoverFormKey, eventTitle: string) {
+  const ascii = handoverFileName(form, eventTitle)
+    .replace(/Ä/g, "Ae")
+    .replace(/Ö/g, "Oe")
+    .replace(/Ü/g, "Ue")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/ +/g, " ")
+    .trim();
+  return `${ascii || "Uebergabeprotokoll"}.pdf`;
 }
