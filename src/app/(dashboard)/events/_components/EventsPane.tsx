@@ -9,6 +9,7 @@ import { eventTitle } from "./eventFormat";
 import { Checklist } from "./Checklist";
 import { ShareChecklist } from "./ShareChecklist";
 import { ChecklistReview } from "./ChecklistReview";
+import { HandoverPage } from "./HandoverProtocol";
 import { reviewTypeIn } from "./checklistState";
 import { EVENT_TYPES, type EventTypeKey } from "@/lib/eventTypes";
 
@@ -52,7 +53,7 @@ export function EventsPane({
   function setRoute(next: Partial<Route>) {
     const merged = { ...route, ...next };
     const url = new URL(window.location.href);
-    for (const key of ["event", "view", "review", "archive"]) url.searchParams.delete(key);
+    for (const key of ["event", "view", "review", "archive", "form"]) url.searchParams.delete(key);
     if (merged.archived) url.searchParams.set("archive", "1");
     if (merged.eventId) url.searchParams.set("event", merged.eventId);
     if (merged.eventId && merged.view) url.searchParams.set("view", merged.view);
@@ -105,6 +106,24 @@ export function EventsPane({
             event={event}
             onBack={() => setRoute({ eventId: event.id, view: null, review: null })}
             onDone={() => setRoute({ eventId: event.id, view: null, review: null })}
+          />
+        ),
+      });
+    } else if (view?.key === "uebergabeprotokoll") {
+      pages.push({
+        key: `event:${event.id}:${view.key}`,
+        node: (
+          <HandoverPage
+            event={event}
+            people={people}
+            onBack={() => setRoute({ eventId: event.id, view: null, review: null })}
+            // Replaced rather than pushed: back leaves the page, not the pick.
+            onPickForm={(form) => {
+              const url = new URL(window.location.href);
+              if (form === "ausgabe") url.searchParams.delete("form");
+              else url.searchParams.set("form", form);
+              window.history.replaceState(null, "", url);
+            }}
           />
         ),
       });

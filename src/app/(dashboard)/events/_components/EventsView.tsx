@@ -21,6 +21,10 @@ import {
   type ChecklistState,
 } from "./checklistState";
 import { formatScrubMoment } from "./eventFormat";
+import { handoverFormIn, HandoverStateContext, useHandoverState } from "./handoverState";
+import { scrollPageTo } from "./HandoverProtocol";
+import { HandoverPinCard } from "./HandoverPins";
+import { protocolPins, visibleProtocol } from "@/lib/uebergabeprotokoll";
 import { EventsPane } from "./EventsPane";
 import { NotePin } from "./NotePin";
 import { EventDatesContext } from "./ParkingDates";
@@ -213,6 +217,8 @@ export function EventsView({
   const params = useSearchParams();
   const eventId = params.get("event");
   const inChecklist = !!eventId && params.get("view") === "checkliste";
+  // Or its Übergabeprotokoll: the map's pins are that's parts, then.
+  const inHandover = !!eventId && params.get("view") === "uebergabeprotokoll";
   const event = eventId ? events.find((e) => e.id === eventId) : undefined;
   // The events on the day the Events list's calendar is being scrubbed
   // over: shown on the map as if open — their pins, their Checkliste on
@@ -254,6 +260,8 @@ export function EventsView({
   const savedChecklist = useChecklistState(event);
   const review = useChecklistReview(event, reviewTypeIn(params, event), savedChecklist);
   const checklist = review?.state ?? savedChecklist;
+  // Its Übergabeprotokoll, the form picked on its page (see HandoverPage).
+  const handover = useHandoverState(event, handoverFormIn(params));
   const previewChecklist: ChecklistState | null =
     previewEvents.length > 0
       ? {
@@ -469,6 +477,7 @@ export function EventsView({
   const standing = DEFAULT_PINS.filter(
     (pin) =>
       floorOf(pin) === floor &&
+      !(inHandover && event && !editing) &&
       (event || previewEvents.length > 0 || screenByPin.has(pin.id)) &&
       (inChecklist || editing || !answersOnShow || pinIsOn(pin.id, answersOnShow) !== false) &&
       // Halle Geteilt, only while the hall could be shared.
@@ -507,7 +516,36 @@ export function EventsView({
     scrollChecklistTo(best);
   }
 
+  // With the Übergabeprotokoll open, its parts the Checkliste brings in, each
+  // at the standing pin it stands in for (see protocolPins).
+  const handoverSpots: MapSpot[] =
+    inHandover && event && !editing
+      ? protocolPins(visibleProtocol(checklist.answer)).flatMap((part) => {
+          const at = DEFAULT_PINS.find((p) => p.id === part.pin);
+          if (!at || floorOf(at) !== floor) return [];
+          const spotId = `protokoll:${part.pin}`;
+          return [
+            {
+              id: spotId,
+              u: at.u,
+              v: at.v,
+              front: openSpot === spotId,
+              node: (
+                <HandoverPinCard
+                  pin={part}
+                  state={handover}
+                  open={openSpot === spotId}
+                  onOpenChange={(open) => setOpenSpot((s) => (open ? spotId : s === spotId ? null : s))}
+                  onShow={(anchor) => scrollPageTo(`protokoll-${anchor}`)}
+                />
+              ),
+            },
+          ];
+        })
+      : [];
+
   const spots: MapSpot[] = [
+    ...handoverSpots,
     ...standing.map((pin) => {
       const screen = !event ? screenByPin.get(pin.id) : undefined;
       return {
@@ -613,6 +651,7 @@ export function EventsView({
   return (
     <ChecklistReviewContext.Provider value={review}>
     <ChecklistStateContext.Provider value={checklist}>
+    <HandoverStateContext.Provider value={handover}>
       {/* The open event's dates, for its parking calendars to show under theirs. */}
       <EventDatesContext.Provider value={event ?? null}>
         {/* Fills the page's scroll area edge to edge (undoing its padding): each
@@ -830,6 +869,7 @@ export function EventsView({
           </div>
         </div>
       </EventDatesContext.Provider>
+    </HandoverStateContext.Provider>
     </ChecklistStateContext.Provider>
     </ChecklistReviewContext.Provider>
   );

@@ -5,6 +5,7 @@ import { quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
 import { EVENT_TYPES } from "@/lib/eventTypes";
 import { fetchLeadCandidates } from "@/lib/events";
+import { eventRecipients } from "@/lib/eventRecipients";
 import { isEmail, MAX_CHECKLIST_EMAILS, parseEmails } from "@/lib/eventEmails";
 import { parseAreas, type MapArea } from "@/lib/eventAreas";
 import { parsePins, type MapPin } from "@/lib/eventPins";
@@ -284,25 +285,7 @@ export async function emailChecklist(
     if (error) throw new Error(error.message);
     if (!event) throw new Error("That event no longer exists.");
 
-    const wanted = new Set(recipientIds);
-    const team = (await fetchLeadCandidates(admin, user))
-      .filter((p) => p.management && wanted.has(p.id))
-      .map((p) => p.email);
-    const known = new Map(
-      [event.contact_email?.trim() ?? "", ...parseEmails(event.checklist_emails)]
-        .filter(isEmail)
-        .map((e) => [e.toLowerCase(), e]),
-    );
-    const unique = (list: string[]) => [...new Map(list.map((e) => [e.toLowerCase(), e])).values()];
-    const teamTo = unique(team);
-    // Anyone on the team as well is sent the team's.
-    const teamAddresses = new Set(teamTo.map((e) => e.toLowerCase()));
-    const othersTo = unique(
-      emails.flatMap((e) => {
-        const found = known.get(e.trim().toLowerCase());
-        return found ? [found] : [];
-      }),
-    ).filter((e) => !teamAddresses.has(e.toLowerCase()));
+    const { team: teamTo, others: othersTo } = await eventRecipients(admin, user, event, recipientIds, emails);
     const to = [...teamTo, ...othersTo];
     if (to.length === 0) throw new Error("Pick someone to send it to.");
 

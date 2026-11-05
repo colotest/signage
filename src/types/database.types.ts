@@ -450,6 +450,7 @@ export type Database = {
           map_areas: Json;
           checklist_emails: Json;
           checklist: Json;
+          handover: Json;
         };
         Insert: {
           id?: string;
@@ -474,6 +475,7 @@ export type Database = {
           map_areas?: Json;
           checklist_emails?: Json;
           checklist?: Json;
+          handover?: Json;
         };
         Update: {
           id?: string;
@@ -498,6 +500,7 @@ export type Database = {
           map_areas?: Json;
           checklist_emails?: Json;
           checklist?: Json;
+          handover?: Json;
         };
         Relationships: [];
       };

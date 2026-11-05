@@ -31,6 +31,38 @@ function ShareIcon({ className }: { className?: string }) {
 // with replies going to whoever sent it.
 export function ShareChecklist({ event, people }: { event: EventSummary; people: EventPerson[] }) {
   const { answer } = useChecklist();
+  return (
+    <ShareMenu
+      event={event}
+      people={people}
+      label="Share checklist"
+      send={(ids, emails) => {
+        const answers: Record<string, true | string> = {};
+        for (const key of FIELD_KEYS) {
+          const value = answer(key);
+          if (value !== null && value !== "") answers[key] = value;
+        }
+        return emailChecklist(event.id, ids, emails, answers, formatEventRange(event));
+      }}
+    />
+  );
+}
+
+// A share button, and its menu of whom to send to (as above); send emails
+// them whatever it's for — the Checkliste, the Übergabeprotokoll — given
+// the people picked from Events Management by id and the other addresses,
+// and resolves to an error message, or null once sent.
+export function ShareMenu({
+  event,
+  people,
+  label,
+  send: sendTo,
+}: {
+  event: EventSummary;
+  people: EventPerson[];
+  label: string;
+  send: (ids: string[], emails: string[]) => Promise<string | null>;
+}) {
   const [open, setOpen] = useState(false);
   // Picked: "user:<id>" for Events Management, "email:<address>" otherwise.
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -84,17 +116,12 @@ export function ShareChecklist({ event, people }: { event: EventSummary; people:
   }
 
   async function send() {
-    const answers: Record<string, true | string> = {};
-    for (const key of FIELD_KEYS) {
-      const value = answer(key);
-      if (value !== null && value !== "") answers[key] = value;
-    }
     const ids = [...picked].filter((k) => k.startsWith("user:")).map((k) => k.slice(5));
     const emails = [...picked].filter((k) => k.startsWith("email:")).map((k) => k.slice(6));
     setSending("sending");
     setError(null);
-    const problem = await emailChecklist(event.id, ids, emails, answers, formatEventRange(event)).catch((err: unknown) =>
-      err instanceof Error ? err.message : "Couldn't send the Checkliste",
+    const problem = await sendTo(ids, emails).catch((err: unknown) =>
+      err instanceof Error ? err.message : "Couldn't send it",
     );
     if (problem) {
       setSending("idle");
@@ -116,8 +143,8 @@ export function ShareChecklist({ event, people }: { event: EventSummary; people:
         ref={anchorRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        title="Share checklist"
-        aria-label="Share checklist"
+        title={label}
+        aria-label={label}
         aria-expanded={open}
         className={POPUP_WHITE_BUTTON}
       >
@@ -130,7 +157,7 @@ export function ShareChecklist({ event, people }: { event: EventSummary; people:
         anchorRef={anchorRef}
         dragSelect={false}
         role="dialog"
-        aria-label="Share checklist"
+        aria-label={label}
         className="w-72 p-2"
       >
         <div className="flex items-center justify-between px-2 pb-1.5 pt-1">

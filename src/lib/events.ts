@@ -6,6 +6,7 @@ import { parseAreas, type MapArea } from "@/lib/eventAreas";
 import { parsePins, type MapPin } from "@/lib/eventPins";
 import { parseChecklist, type ChecklistAnswers } from "@/lib/checkliste";
 import { parseEmails } from "@/lib/eventEmails";
+import { parseHandover, type HandoverData } from "@/lib/uebergabeprotokoll";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -56,6 +57,8 @@ export type EventSummary = {
   checklistEmails: string[];
   // Its Checkliste as filled in so far (0039).
   checklist: ChecklistAnswers;
+  // Its Übergabeprotokoll, Ausgabe and Rückgabe (0046).
+  handover: HandoverData;
 };
 
 // Each user's roles, by id.
@@ -159,5 +162,7 @@ export async function fetchEvents(admin: Admin): Promise<EventSummary[]> {
     checklistEmails: parseEmails(e.checklist_emails),
     // Likewise empty before 0039.
     checklist: parseChecklist(e.checklist),
+    // Likewise empty before 0046.
+    handover: parseHandover(e.handover, e.id),
   }));
 }

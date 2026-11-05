@@ -240,3 +240,38 @@ export function checklistEmail({
     }),
   };
 }
+
+// The Übergabeprotokoll, as a PDF attached (see handoverPdf): a few lines
+// saying what it is, from whoever sent it (who replies go to).
+export function handoverEmail({
+  subject,
+  form,
+  title,
+  customer,
+  date,
+  sender,
+}: {
+  // The PDF's own name, without ".pdf".
+  subject: string;
+  form: string;
+  title: string;
+  customer: string | null;
+  date: string;
+  sender: string;
+}): Message {
+  const facts = [customer ? `Kunde: ${customer}` : null, `${form}, Datum: ${date}`].filter((l): l is string => !!l);
+  return {
+    subject,
+    text: [subject, ...facts, `Von ${sender}`, "", `Das Übergabeprotokoll (${form}) ist als PDF angehängt.`].join("\n"),
+    html: layout({
+      preview: [`${form}, ${date}`, `Von ${sender}`].join(" · "),
+      body:
+        `<p class="muted" style="margin:22px 0 2px;font-size:13px;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;color:${LIGHT.muted};">Übergabeprotokoll · ${escape(form)}</p>` +
+        `<h1 class="fg" style="margin:0;font-size:24px;line-height:1.25;font-weight:700;color:${LIGHT.text};">${escape(title)}</h1>` +
+        facts.map((f) => `<p class="muted" style="margin:4px 0 0;font-size:15px;color:${LIGHT.muted};">${escape(f)}</p>`).join("") +
+        `<div style="height:18px;"></div>` +
+        paragraph(`Das Übergabeprotokoll (${strong(form)}) ist als PDF angehängt.`),
+      footer: `Gesendet von ${escape(sender)} über Colo Cloud. Eine Antwort geht direkt an ${escape(sender)}.`,
+    }),
+  };
+}

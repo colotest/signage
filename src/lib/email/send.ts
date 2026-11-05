@@ -9,6 +9,8 @@ export type Email = {
   text: string;
   // Where a reply goes — the person who sent it, for one sent on their behalf.
   replyTo?: string;
+  // Files sent along (a PDF, say), their bytes as base64.
+  attachments?: { filename: string; content: string }[];
 };
 
 // Sent through Resend (resend.com), whose API is a single POST — no SDK
@@ -23,7 +25,7 @@ export async function sendEmail(email: Email): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     if (process.env.NODE_ENV === "production") throw new Error("Email isn't set up yet (RESEND_API_KEY is missing).");
-    console.info(`\n── Email (not sent: no RESEND_API_KEY) ──\nTo: ${[email.to].flat().join(", ")}\nSubject: ${email.subject}\n\n${email.text}\n──\n`);
+    console.info(`\n── Email (not sent: no RESEND_API_KEY) ──\nTo: ${[email.to].flat().join(", ")}\nSubject: ${email.subject}\n${(email.attachments ?? []).map((a) => `Attached: ${a.filename} (${Math.round((a.content.length * 3) / 4 / 1024)} KB)\n`).join("")}\n${email.text}\n──\n`);
     return;
   }
 
@@ -37,6 +39,7 @@ export async function sendEmail(email: Email): Promise<void> {
       html: email.html,
       text: email.text,
       reply_to: email.replyTo,
+      ...(email.attachments?.length ? { attachments: email.attachments } : {}),
     }),
   });
   if (!response.ok) {
