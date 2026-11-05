@@ -38,9 +38,10 @@ const BOX_GAP = 8;
 const NUMBER_WIDTH = 34;
 const PHOTO = { width: 150, height: 112, gap: 8 };
 const SIGNATURE_HEIGHT = 70;
-// The brand's band: the wordmark's size, the house's, and the cursive
-// mark's height.
-const BAND = { size: 22, house: 13, markHeight: 30 };
+// The brand's band, all three as tall as one another: Colo's size there,
+// its capitals' height (0.82 of it), which the cursive mark is fitted to
+// top to bottom; and the corner marks' strength, faint as a watermark.
+const BAND = { size: 22, capHeight: 22 * 0.817, cornerOpacity: 0.23 };
 
 export type HandoverPdfInput = {
   form: string;
@@ -80,28 +81,26 @@ export async function handoverPdf(input: HandoverPdfInput): Promise<Uint8Array> 
     if (y - height < BOTTOM) newPage();
   };
 
-  const text = (s: string, x: number, size: number, font: PDFFont, color: RGB = TEXT) =>
-    page.drawText(safe(font, s), { x, y, size, font, color });
+  const text = (s: string, x: number, size: number, font: PDFFont, color: RGB = TEXT, opacity = 1) =>
+    page.drawText(safe(font, s), { x, y, size, font, color, opacity });
 
   const centred = (s: string, size: number, font: PDFFont, color: RGB = TEXT) =>
     text(s, (PAGE.width - font.widthOfTextAtSize(safe(font, s), size)) / 2, size, font, color);
 
   // ── The brand's band: the wordmark at the left, the house in the
-  // middle, the cursive Colosseum at the right — all on one line. ──
+  // middle, the cursive Colosseum at the right — all on one line, as tall
+  // as one another, the two in the corners greyed back like a watermark. ──
   y = PAGE.height - 34 - BAND.size;
-  text("COLO CLOUD", MARGIN, BAND.size, brand);
-  // Smaller, so raised to sit level with the wordmark's middle.
-  y += (BAND.size - BAND.house) * 0.36;
-  centred("COLOSSEUM EVENT BERLIN", BAND.house, brand);
-  y -= (BAND.size - BAND.house) * 0.36;
-  const markScale = BAND.markHeight / COLOSSEUM_MARK.height;
+  text("COLO CLOUD", MARGIN, BAND.size, brand, TEXT, BAND.cornerOpacity);
+  centred("COLOSSEUM EVENT BERLIN", BAND.size, brand);
+  const markScale = BAND.capHeight / COLOSSEUM_MARK.height;
   page.drawSvgPath(COLOSSEUM_MARK.path, {
     x: PAGE.width - MARGIN - COLOSSEUM_MARK.width * markScale,
-    // Its top, the mark sitting a little below the line's cap height (its
-    // tail hangs down past the baseline).
-    y: y + BAND.size * 0.95,
+    // Its top, level with the capitals' (it's drawn downwards from there).
+    y: y + BAND.capHeight,
     scale: markScale,
     color: TEXT,
+    opacity: BAND.cornerOpacity,
   });
 
   // ── Title, centred ──
