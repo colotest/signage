@@ -1,12 +1,12 @@
 "use server";
 
-import { playlistName, recordActivity, screenName } from "@/lib/activity";
+import { playlistName, quote, recordActivity, screenName } from "@/lib/activity";
 import { assertScreenVisible, requirePage, requireSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // The longest window a timer can reserve — generous (a fortnight), just a
 // guard against a typo reserving a screen for years.
-const MAX_HOURS = 24 * 14;
+const MAX_MINUTES = 14 * 24 * 60;
 
 function timeLabel(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -18,10 +18,17 @@ function timeLabel(iso: string) {
   });
 }
 
-// Timed playback (see 0011 and 0022): the playlist replaces Now Playing at
-// runAt, and the screen stays reserved for `hours` — no other playlist can
-// be scheduled on it for any part of that window. Setting a new time for a
-// playlist that already has one on this screen replaces it.
+function lengthLabel(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return [h && `${h} h`, m && `${m} min`].filter(Boolean).join(" ");
+}
+
+// Timed playback (see 0011, 0022 and 0047): the playlist replaces Now
+// Playing at runAt, and the screen stays reserved for `minutes` — no other
+// timer can be set on it for any part of that window. A playlist can be
+// timed onto the same screen any number of times; passing timerId moves
+// that one timer instead of adding another.
 //
 // An overlap comes back as a message naming the schedule in the way rather
 // than as a thrown error, so the popup can show it and stay open. The
@@ -32,28 +39,28 @@ export async function schedulePlaylist(
   screenId: number,
   playlistId: string,
   runAtIso: string,
-  hours: number,
+  minutes: number,
+  timerId?: string,
 ): Promise<{ error: string } | { ok: true }> {
   const user = await requirePage("screens");
   assertScreenVisible(user, screenId);
   const runAt = new Date(runAtIso);
   if (Number.isNaN(runAt.getTime())) return { error: "That isn't a valid date." };
   if (runAt.getTime() <= Date.now()) return { error: "Pick a time in the future." };
-  if (!Number.isInteger(hours) || hours < 1) return { error: "Play it for at least 1 hour." };
-  if (hours > MAX_HOURS) return { error: `Play it for at most ${MAX_HOURS} hours.` };
-  const endsAt = new Date(runAt.getTime() + hours * 3_600_000);
+  if (!Number.isInteger(minutes) || minutes < 1) return { error: "Play it for at least 1 minute." };
+  if (minutes > MAX_MINUTES) return { error: `Play it for at most ${MAX_MINUTES / 60} hours.` };
+  const endsAt = new Date(runAt.getTime() + minutes * 60_000);
 
   const admin = createAdminClient();
 
-  const { data: clashes, error: clashError } = await admin
+  let clashQuery = admin
     .from("scheduled_playbacks")
     .select("run_at, ends_at, playlist:playlists(name)")
     .eq("screen_id", screenId)
-    .neq("playlist_id", playlistId)
     .lt("run_at", endsAt.toISOString())
-    .gt("ends_at", runAt.toISOString())
-    .order("run_at", { ascending: true })
-    .limit(1);
+    .gt("ends_at", runAt.toISOString());
+  if (timerId) clashQuery = clashQuery.neq("id", timerId);
+  const { data: clashes, error: clashError } = await clashQuery.order("run_at", { ascending: true }).limit(1);
   if (clashError) throw new Error(clashError.message);
   const clash = clashes?.[0] as unknown as { run_at: string; ends_at: string; playlist: { name: string } | null } | undefined;
   if (clash) {
@@ -62,16 +69,14 @@ export async function schedulePlaylist(
     };
   }
 
-  const { error } = await admin.from("scheduled_playbacks").upsert(
-    {
-      screen_id: screenId,
-      playlist_id: playlistId,
-      run_at: runAt.toISOString(),
-      ends_at: endsAt.toISOString(),
-      fired_at: null,
-    },
-    { onConflict: "screen_id,playlist_id" },
-  );
+  const window = { run_at: runAt.toISOString(), ends_at: endsAt.toISOString(), fired_at: null };
+  const { error } = timerId
+    ? await admin
+        .from("scheduled_playbacks")
+        .update({ ...window, playlist_id: playlistId })
+        .eq("id", timerId)
+        .eq("screen_id", screenId)
+    : await admin.from("scheduled_playbacks").insert({ ...window, screen_id: screenId, playlist_id: playlistId });
   if (error) {
     // 23P01: someone else booked an overlapping window in the meantime.
     if (error.code === "23P01") return { error: "Overlaps another schedule on this screen. Cancel that one first." };
@@ -80,7 +85,7 @@ export async function schedulePlaylist(
   recordActivity(user, {
     action: "schedule.set",
     summary: async (admin) =>
-      `Scheduled playlist ${await playlistName(admin, playlistId)} on screen ${await screenName(admin, screenId)} for ${timeLabel(runAt.toISOString())}, ${hours} h`,
+      `Scheduled playlist ${await playlistName(admin, playlistId)} on screen ${await screenName(admin, screenId)} for ${timeLabel(runAt.toISOString())}, ${lengthLabel(minutes)}`,
   });
   return { ok: true };
 }
@@ -88,20 +93,22 @@ export async function schedulePlaylist(
 // Frees the screen's window — whether the timer is still pending or already
 // playing. Cancelling one that's playing doesn't change what's on screen;
 // it just lets another playlist be scheduled into that time.
-export async function cancelScheduledPlayback(screenId: number, playlistId: string) {
+export async function cancelScheduledPlayback(screenId: number, timerId: string) {
   const user = await requirePage("screens");
   assertScreenVisible(user, screenId);
   const admin = createAdminClient();
-  const { error } = await admin
+  const { data: removed, error } = await admin
     .from("scheduled_playbacks")
     .delete()
     .eq("screen_id", screenId)
-    .eq("playlist_id", playlistId);
+    .eq("id", timerId)
+    .select("playlist_id");
   if (error) throw new Error(error.message);
+  const playlistId = removed?.[0]?.playlist_id as string | undefined;
   recordActivity(user, {
     action: "schedule.cancel",
     summary: async (admin) =>
-      `Cancelled the schedule for playlist ${await playlistName(admin, playlistId)} on screen ${await screenName(admin, screenId)}`,
+      `Cancelled a schedule for playlist ${playlistId ? await playlistName(admin, playlistId) : quote(undefined)} on screen ${await screenName(admin, screenId)}`,
   });
 }
 

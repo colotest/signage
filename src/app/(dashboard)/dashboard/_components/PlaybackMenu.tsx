@@ -120,10 +120,18 @@ function doneFadeDistance(done: HTMLElement) {
   return (parseFloat(getComputedStyle(done).getPropertyValue("--edge-plain-size")) || 0) + HEADER_TUCK;
 }
 
-// Pending timers by playlist — the ones that have fired stay listed until
-// their window ends (0022), but have no countdown left to show.
+// Each playlist's next pending timer — a playlist can be timed onto a
+// screen several times (0047), and its alarm button counts down to the
+// soonest. The ones that have fired stay listed until their window ends
+// (0022), but have no countdown left to show.
 function timersFrom(schedules: ScheduledPlayback[]) {
-  return new Map(schedules.filter((t) => !t.fired_at).map((t) => [t.playlist_id, new Date(t.run_at)]));
+  const next = new Map<string, ScheduledPlayback>();
+  for (const t of schedules) {
+    if (t.fired_at) continue;
+    const current = next.get(t.playlist_id);
+    if (!current || t.run_at < current.run_at) next.set(t.playlist_id, t);
+  }
+  return next;
 }
 
 // A screen's — or a group's — playback, in one popup: its "Now Playing"
@@ -850,37 +858,39 @@ export function PlaybackMenu({
   }
   // The alarm buttons' countdowns: only timers still waiting to fire.
   const timers = useMemo(() => timersFrom(localSchedules), [localSchedules]);
-  const [schedulingId, setSchedulingId] = useState<string | null>(null);
+  // The popup edits one timer (timerId) or sets up a new one for the
+  // playlist (timerId null).
+  const [scheduling, setScheduling] = useState<{ playlistId: string; timerId: string | null } | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const schedulingPlaylist = localPlaylists.find((p) => p.id === schedulingId);
-  const schedulingEntry = localSchedules.find((t) => t.playlist_id === schedulingId);
+  const schedulingPlaylist = localPlaylists.find((p) => p.id === scheduling?.playlistId);
+  const schedulingEntry = scheduling?.timerId ? localSchedules.find((t) => t.id === scheduling.timerId) : undefined;
 
-  function openSchedule(playlistId: string) {
-    setSchedulingId(playlistId);
+  function openSchedule(playlistId: string, timerId: string | null) {
+    setScheduling({ playlistId, timerId });
     setScheduleOpen(true);
   }
 
   // Resolves to an error message — an overlap with another schedule, most
   // likely — for the popup to show while it stays open, or null on success.
-  async function handleSchedule(runAt: Date, hours: number): Promise<string | null> {
-    if (!schedulingId) return null;
-    const playlistId = schedulingId;
+  async function handleSchedule(runAt: Date, minutes: number): Promise<string | null> {
+    if (!scheduling) return null;
+    const { playlistId, timerId } = scheduling;
     let result: { error: string } | { ok: true };
     try {
-      result = await schedulePlaylist(screenId!, playlistId, runAt.toISOString(), hours);
+      result = await schedulePlaylist(screenId!, playlistId, runAt.toISOString(), minutes, timerId ?? undefined);
     } catch (err) {
       console.error("Failed to schedule playlist", err);
       return `Couldn't set the timer: ${err instanceof Error ? err.message : "unknown error"}`;
     }
     if ("error" in result) return result.error;
     setLocalSchedules((current) => [
-      ...current.filter((t) => t.playlist_id !== playlistId),
+      ...current.filter((t) => t.id !== timerId),
       {
-        id: `optimistic-${playlistId}`,
+        id: timerId ?? `optimistic-${playlistId}-${runAt.getTime()}`,
         screen_id: screenId!,
         playlist_id: playlistId,
         run_at: runAt.toISOString(),
-        ends_at: new Date(runAt.getTime() + hours * 3_600_000).toISOString(),
+        ends_at: new Date(runAt.getTime() + minutes * 60_000).toISOString(),
         fired_at: null,
         created_at: new Date().toISOString(),
       },
@@ -890,10 +900,10 @@ export function PlaybackMenu({
     return null;
   }
 
-  async function cancelScheduleFor(playlistId: string) {
-    setLocalSchedules((current) => current.filter((t) => t.playlist_id !== playlistId));
+  async function cancelTimer(timerId: string) {
+    setLocalSchedules((current) => current.filter((t) => t.id !== timerId));
     try {
-      await cancelScheduledPlayback(screenId!, playlistId);
+      await cancelScheduledPlayback(screenId!, timerId);
     } catch (err) {
       console.error("Failed to cancel timer", err);
     }
@@ -901,9 +911,9 @@ export function PlaybackMenu({
   }
 
   async function handleCancelTimer() {
-    if (!schedulingId) return;
+    if (!scheduling?.timerId) return;
     setScheduleOpen(false);
-    await cancelScheduleFor(schedulingId);
+    await cancelTimer(scheduling.timerId);
   }
 
   // --- Playback settings (sliders button in the header) ----------------------
@@ -1243,7 +1253,10 @@ export function PlaybackMenu({
                     // Playlists with a timer running lead the list, soonest
                     // first, so an imminent change to the program is the
                     // first thing you see.
-                    pinOrder={(p) => timers.get(p.id)?.getTime() ?? null}
+                    pinOrder={(p) => {
+                      const next = timers.get(p.id);
+                      return next ? new Date(next.run_at).getTime() : null;
+                    }}
                     renderActions={(p) => (
                       <div className="flex shrink-0 items-center gap-2">
                         <button
@@ -1257,11 +1270,12 @@ export function PlaybackMenu({
                           <PlayIcon className="h-4 w-4 translate-x-px" />
                         </button>
                         {hasTimers && (() => {
-                          const runAt = timers.get(p.id);
+                          const next = timers.get(p.id);
+                          const runAt = next ? new Date(next.run_at) : undefined;
                           return (
                             <button
                               type="button"
-                              onClick={() => openSchedule(p.id)}
+                              onClick={() => openSchedule(p.id, next?.id ?? null)}
                               title={runAt ? `Plays ${runAt.toLocaleString()}` : "Schedule"}
                               aria-label={runAt ? `${p.name} plays ${runAt.toLocaleString()} — change timer` : `Schedule ${p.name}`}
                               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-white text-[#1d1d1f] shadow-sm hover:bg-neutral-50"
@@ -1304,7 +1318,7 @@ export function PlaybackMenu({
                       schedules={localSchedules}
                       playlists={localPlaylists}
                       onEdit={openSchedule}
-                      onCancel={cancelScheduleFor}
+                      onCancel={cancelTimer}
                     />
                   </div>
                 </>
@@ -1321,15 +1335,17 @@ export function PlaybackMenu({
         <ScheduleDialog
           open={scheduleOpen}
           onOpenChange={setScheduleOpen}
+          timerKey={schedulingEntry?.id ?? null}
           playlistName={schedulingPlaylist?.name ?? ""}
           runAt={schedulingEntry ? new Date(schedulingEntry.run_at) : null}
-          hours={
+          minutes={
             schedulingEntry
-              ? Math.round((new Date(schedulingEntry.ends_at).getTime() - new Date(schedulingEntry.run_at).getTime()) / 3_600_000)
+              ? Math.round((new Date(schedulingEntry.ends_at).getTime() - new Date(schedulingEntry.run_at).getTime()) / 60_000)
               : null
           }
           onSchedule={handleSchedule}
           onCancelTimer={handleCancelTimer}
+          onNewTimer={() => setScheduling((current) => current && { ...current, timerId: null })}
         />
       </DndContext>
     </Sheet>

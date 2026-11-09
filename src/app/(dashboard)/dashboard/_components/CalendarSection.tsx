@@ -51,8 +51,8 @@ export function CalendarSection({
   minHeight?: number;
   schedules: ScheduledPlayback[];
   playlists: PlaylistWithEntries[];
-  onEdit: (playlistId: string) => void;
-  onCancel: (playlistId: string) => void;
+  onEdit: (playlistId: string, timerId: string) => void;
+  onCancel: (timerId: string) => void;
 }) {
   const [selected, setSelected] = useState(() => startOfDay(new Date()));
   const [confirmingCancel, setConfirmingCancel] = useState<string | null>(null);
@@ -121,7 +121,7 @@ export function CalendarSection({
                             type="button"
                             onClick={() => {
                               setConfirmingCancel(null);
-                              onCancel(t.playlist_id);
+                              onCancel(t.id);
                             }}
                             className="press-ghost font-medium text-danger hover:opacity-70"
                           >
@@ -139,7 +139,7 @@ export function CalendarSection({
                         <div className="flex shrink-0 items-center gap-3 text-[13px]">
                           <button
                             type="button"
-                            onClick={() => onEdit(t.playlist_id)}
+                            onClick={() => onEdit(t.playlist_id, t.id)}
                             className="press-ghost font-medium text-accent hover:opacity-70"
                           >
                             Edit

@@ -7,7 +7,7 @@ import { AlarmClockIcon } from "@/components/icons/PlaybackIcons";
 import { cn } from "@/lib/utils/cn";
 
 // How long a new timer reserves its screen for, unless changed.
-const DEFAULT_HOURS = 4;
+const DEFAULT_MINUTES = 4 * 60;
 
 // The next full hour — a sensible "later today" starting point that's
 // always in the future.
@@ -29,22 +29,30 @@ function nextFullHour() {
 export function ScheduleDialog({
   open,
   onOpenChange,
+  timerKey,
   playlistName,
   runAt,
-  hours,
+  minutes,
   onSchedule,
   onCancelTimer,
+  onNewTimer,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // Which timer the form is showing (null for a new one), so switching to
+  // "Another Time" starts the form afresh.
+  timerKey: string | null;
   playlistName: string;
   runAt: Date | null;
   // The existing timer's window, when editing one.
-  hours: number | null;
+  minutes: number | null;
   // Resolves to an error message (an overlapping schedule, say) to show
   // while the popup stays open, or null once it's saved.
-  onSchedule: (runAt: Date, hours: number) => Promise<string | null>;
+  onSchedule: (runAt: Date, minutes: number) => Promise<string | null>;
   onCancelTimer: () => void;
+  // Leaves the timer being edited as it is and sets up another one for the
+  // same playlist — a playlist can be timed onto a screen any number of times.
+  onNewTimer: () => void;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -58,11 +66,13 @@ export function ScheduleDialog({
           {/* Radix unmounts this while closed, so the form's state starts
               fresh from runAt on every open. */}
           <ScheduleForm
+            key={timerKey ?? "new"}
             playlistName={playlistName}
             runAt={runAt}
-            hours={hours}
+            minutes={minutes}
             onSchedule={onSchedule}
             onCancelTimer={onCancelTimer}
+            onNewTimer={onNewTimer}
           />
         </Dialog.Content>
       </Dialog.Portal>
@@ -73,31 +83,42 @@ export function ScheduleDialog({
 function ScheduleForm({
   playlistName,
   runAt,
-  hours,
+  minutes,
   onSchedule,
   onCancelTimer,
+  onNewTimer,
 }: {
   playlistName: string;
   runAt: Date | null;
-  hours: number | null;
-  onSchedule: (runAt: Date, hours: number) => Promise<string | null>;
+  minutes: number | null;
+  onSchedule: (runAt: Date, minutes: number) => Promise<string | null>;
   onCancelTimer: () => void;
+  onNewTimer: () => void;
 }) {
   const [value, setValue] = useState(() => runAt ?? nextFullHour());
-  // Kept as the raw text, so clearing the field to type a new number
-  // doesn't snap it straight back to something.
-  const [hoursText, setHoursText] = useState(() => String(hours ?? DEFAULT_HOURS));
+  // Kept as the raw text, so clearing a field to type a new number doesn't
+  // snap it straight back to something.
+  const initialMinutes = minutes ?? DEFAULT_MINUTES;
+  const [hoursText, setHoursText] = useState(() => String(Math.floor(initialMinutes / 60)));
+  const [minutesText, setMinutesText] = useState(() => String(initialMinutes % 60));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const now = useNow();
   const inFuture = value.getTime() > now;
-  const parsedHours = Number(hoursText);
-  const hoursValid = Number.isInteger(parsedHours) && parsedHours >= 1;
+  const parsedHours = Number(hoursText || 0);
+  const parsedMinutes = Number(minutesText || 0);
+  const totalMinutes = parsedHours * 60 + parsedMinutes;
+  const lengthValid =
+    Number.isInteger(parsedHours) &&
+    Number.isInteger(parsedMinutes) &&
+    parsedHours >= 0 &&
+    parsedMinutes >= 0 &&
+    totalMinutes >= 1;
 
   async function save() {
     setSaving(true);
     setError(null);
-    const message = await onSchedule(value, parsedHours);
+    const message = await onSchedule(value, totalMinutes);
     setSaving(false);
     if (message) setError(message);
   }
@@ -109,6 +130,16 @@ function ScheduleForm({
         <Dialog.Title className="min-w-0 flex-1 truncate text-[15px] font-semibold">
           Play “{playlistName}” at…
         </Dialog.Title>
+        {/* Editing one of its timers: leave that one be and add another. */}
+        {runAt && (
+          <button
+            type="button"
+            onClick={onNewTimer}
+            className="press-ghost shrink-0 text-[13px] font-medium text-accent hover:opacity-70"
+          >
+            + Another Time
+          </button>
+        )}
       </div>
 
       <DateTimePicker
@@ -124,30 +155,49 @@ function ScheduleForm({
           afterwards until something replaces it. */}
       <div className="mt-3 flex items-center justify-between border-t border-border px-1 pt-3">
         <span className="text-[17px]">For</span>
-        <label className="flex items-center gap-2 text-[17px] text-muted">
-          <input
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            value={hoursText}
-            onChange={(e) => {
-              setHoursText(e.target.value);
-              setError(null);
-            }}
-            aria-label="Hours"
-            className="w-16 rounded-[8px] bg-black/[.05] px-2 py-1.5 text-right tabular-nums text-foreground outline-none focus:ring-1 focus:ring-accent dark:bg-white/[.08]"
-          />
-          hour{parsedHours === 1 ? "" : "s"}
-        </label>
+        <div className="flex items-center gap-2 text-[17px] text-muted">
+          <label className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              value={hoursText}
+              onChange={(e) => {
+                setHoursText(e.target.value);
+                setError(null);
+              }}
+              aria-label="Hours"
+              className="w-14 rounded-[8px] bg-black/[.05] px-2 py-1.5 text-right tabular-nums text-foreground outline-none focus:ring-1 focus:ring-accent dark:bg-white/[.08]"
+            />
+            h
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={59}
+              step={5}
+              inputMode="numeric"
+              value={minutesText}
+              onChange={(e) => {
+                setMinutesText(e.target.value);
+                setError(null);
+              }}
+              aria-label="Minutes"
+              className="w-14 rounded-[8px] bg-black/[.05] px-2 py-1.5 text-right tabular-nums text-foreground outline-none focus:ring-1 focus:ring-accent dark:bg-white/[.08]"
+            />
+            min
+          </label>
+        </div>
       </div>
 
       <p className={cn("mt-3 text-[12px]", error ? "text-danger" : "text-muted")}>
         {error ??
           (!inFuture
             ? "Pick a time in the future."
-            : !hoursValid
-              ? "Play it for at least 1 whole hour."
+            : !lengthValid
+              ? "Play it for at least 1 minute."
               : "Now Playing will be replaced with this playlist at that time, and the screen reserved for it until the window ends.")}
       </p>
 
@@ -161,11 +211,12 @@ function ScheduleForm({
             Cancel Timer
           </button>
         )}
+
         <div className="flex-1" />
         <Dialog.Close className="press-ghost text-[15px] text-muted hover:opacity-70">Close</Dialog.Close>
         <button
           type="button"
-          disabled={!inFuture || !hoursValid || saving}
+          disabled={!inFuture || !lengthValid || saving}
           onClick={save}
           className={cn(
             "rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-contrast transition-opacity hover:opacity-90",
