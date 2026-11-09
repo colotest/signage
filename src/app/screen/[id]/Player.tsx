@@ -624,6 +624,30 @@ export function Player({
         { event: "UPDATE", schema: "public", table: "screens", filter: `id=eq.${screen.id}` },
         refetch,
       )
+      // A Replace in the Library (or through an upload link) repoints the
+      // media_items row at a new file and leaves playlist_items untouched,
+      // so neither listener above hears about it. Watched unfiltered — a
+      // filter on the ids playing would mean resubscribing on every
+      // playlist change — and narrowed down here instead: only a new file
+      // under something this screen is actually playing is worth a
+      // refetch, not a rename or a change to anything else in the library.
+      // The refetched playlist differs in storage_path, which samePlayback
+      // treats as a change, so the slide picks up the new file in place.
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "media_items" },
+        (payload) => {
+          const updated = payload.new as Partial<MediaItem>;
+          const playing = playlistRef.current.find((item) => item.media_item_id === updated.id);
+          if (
+            playing &&
+            (playing.media_item.storage_path !== updated.storage_path ||
+              playing.media_item.media_type !== updated.media_type)
+          ) {
+            refetch();
+          }
+        },
+      )
       .subscribe((status) => {
         // Websocket reconnects don't replay missed deltas, so reconcile
         // with a full refetch every time the channel (re)connects — this
@@ -710,7 +734,13 @@ export function Player({
   // and placeholder over the top.
   const nativeHandleRef = useRef(0);
   const nativeShownRef = useRef<PlaylistItemWithMedia | null>(null);
-  const nativeKey = nativeMedia ? (current ? `${current.id}:${reloadToken}` : "none") : null;
+  // The file is part of the key too, so a Replace of the slide that's on
+  // screen gets the app showing the new one (as a cut, like a remount).
+  const nativeKey = nativeMedia
+    ? current
+      ? `${current.id}:${current.media_item.storage_path}:${reloadToken}`
+      : "none"
+    : null;
   const nativeCurrentKind = nativeMedia && current ? nativeKind(current.media_item) : "none";
   const fitMode = screen.fit_mode;
   const rotation = screen.rotation ?? 0;
@@ -783,7 +813,9 @@ export function Player({
   });
 
   // Kicks off the playback loop, and restarts it promptly if the currently
-  // shown item's own duration is edited mid-display. Once started,
+  // shown item's own duration is edited mid-display — or its file is
+  // replaced with one of another type, since a video swapped for an image
+  // would otherwise sit waiting for an "ended" that never comes. Once started,
   // scheduleTick() re-arms itself directly (see above) — this effect does
   // not need to fire again just to keep the cycle going.
   useEffect(() => {
@@ -792,7 +824,7 @@ export function Player({
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, current?.duration_seconds]);
+  }, [current?.id, current?.duration_seconds, current?.media_item.media_type]);
 
   // No animation at all unless a slide is actually on its way out, so an
   // ordinary single-item playlist (or a cut) renders exactly as before.
