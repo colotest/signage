@@ -3,6 +3,20 @@
 /* Installed to the Home Screen (no Safari around the app): the media query,
    or data-standalone, set on <html> by the head script in layout.tsx from
    iOS's own navigator.standalone, in case the query doesn't match. */
+/* Dark: the device's own setting — or a page that sets its own theme,
+   whatever the device's: inside .theme-dark always, inside .theme-light
+   never (see the Datenraum page). */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:not(.theme-light, .theme-light *)) {
+      @slot;
+    }
+  }
+  &:where(.theme-dark, .theme-dark *) {
+    @slot;
+  }
+}
+
 @custom-variant standalone {
   @media (display-mode: standalone) {
     @slot;
@@ -12,7 +26,13 @@
   }
 }
 
-:root {
+/* Declared on .theme-light and .theme-dark as well as :root, so a page with
+   its own theme gets the whole set — the shadows too, which are worked out
+   from the rest where they're declared and would otherwise carry :root's
+   colours in. */
+:root,
+.theme-light,
+.theme-dark {
   --background: #f2f2f7;
   --surface: #ffffff;
   --surface-elevated: rgba(255, 255, 255, 0.72);
@@ -106,10 +126,8 @@
     "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   color-scheme: light;
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
+  @variant dark {
     --background: #000000;
     --surface: #1c1c1e;
     --surface-elevated: rgba(28, 28, 30, 0.72);

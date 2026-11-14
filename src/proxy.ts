@@ -12,16 +12,23 @@ import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth/session";
 // folder's upload link, whose token is checked by the page and its actions.
 // /forgot, /reset/* and /confirm-email/* too: forgetting a password, or
 // opening an emailed link on a device that isn't signed in.
-// /guest is the venue for guests, open to anyone — and where the site's
-// root leads — with /venues/*, the floor plans its map draws.
+// /datenraum is the venue for guests, open to anyone (said any which way:
+// /Datenraum and the old /guest lead there too), with /venues/*, the floor
+// plans its map draws.
 // And /tv.apk, the Fire TV app, fetched by a stick's Downloader with no
 // session (see android/), and /email/*, what emails load from the site
 // (the brand font) — a mail app has no session either.
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname === "/") {
-    return NextResponse.redirect(new URL("/guest", request.url));
+  const lower = pathname.toLowerCase();
+  if (lower === "/datenraum" || lower === "/guest") {
+    if (pathname !== "/datenraum") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/datenraum";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
   }
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -46,6 +53,6 @@ export const config = {
     // The Home Screen files are fetched by iOS itself, which doesn't carry
     // the session cookie — gated, they came back as a redirect to /login,
     // so the web app got no icon at all and no manifest to install from.
-    "/((?!screen|signup|upload/|forgot|reset/|confirm-email/|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|tv.apk|email/|guest|venues/).*)",
+    "/((?!screen|signup|upload/|forgot|reset/|confirm-email/|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|tv.apk|email/|venues/).*)",
   ],
 };

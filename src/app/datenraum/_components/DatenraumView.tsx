@@ -7,9 +7,10 @@ import { VenueMap, type MapSpot } from "@/app/(dashboard)/events/_components/Ven
 import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
 import { areaContains, type MapArea } from "@/lib/eventAreas";
 import { brandFont } from "@/lib/fonts";
-import { GUEST_SECTIONS, type GuestEntry, type GuestOverlay, type GuestPlace, type GuestSection } from "@/lib/guestContent";
+import { DATENRAUM_SECTIONS, type DatenraumEntry, type DatenraumOverlay, type DatenraumPlace, type DatenraumSection } from "@/lib/datenraumContent";
 import type { Floor } from "@/lib/venueFloors";
 import { cn } from "@/lib/utils/cn";
+import { DatenraumThemeToggle } from "./DatenraumTheme";
 
 // The page opens on the ground floor's plan filling the screen, the title
 // over it. The first TRAVEL of the scroll (× the screen's height) turns
@@ -91,33 +92,33 @@ const clamp01 = (t: number) => Math.min(Math.max(t, 0), 1);
 // read), one entry, or those whose pictures are in view.
 type Lit = { kind: "section"; id: string } | { kind: "entry"; id: string } | { kind: "entries"; ids: string[] } | null;
 
-const sectionById = new Map(GUEST_SECTIONS.map((s) => [s.id, s]));
-const entryById = new Map(GUEST_SECTIONS.flatMap((s) => s.entries.map((e) => [e.id, e] as const)));
-const sectionOfEntry = new Map(GUEST_SECTIONS.flatMap((s) => s.entries.map((e) => [e.id, s] as const)));
-const ALL_ENTRIES = GUEST_SECTIONS.flatMap((s) => s.entries);
+const sectionById = new Map(DATENRAUM_SECTIONS.map((s) => [s.id, s]));
+const entryById = new Map(DATENRAUM_SECTIONS.flatMap((s) => s.entries.map((e) => [e.id, e] as const)));
+const sectionOfEntry = new Map(DATENRAUM_SECTIONS.flatMap((s) => s.entries.map((e) => [e.id, s] as const)));
+const ALL_ENTRIES = DATENRAUM_SECTIONS.flatMap((s) => s.entries);
 
-function litEntries(lit: Lit): GuestEntry[] {
+function litEntries(lit: Lit): DatenraumEntry[] {
   if (!lit) return [];
   if (lit.kind === "entry") return [entryById.get(lit.id)!];
   if (lit.kind === "section") return sectionById.get(lit.id)?.entries ?? [];
   return lit.ids.map((id) => entryById.get(id)!);
 }
 
-function litPlaces(lit: Lit): { entry: GuestEntry; place: GuestPlace; index: number }[] {
+function litPlaces(lit: Lit): { entry: DatenraumEntry; place: DatenraumPlace; index: number }[] {
   return litEntries(lit).flatMap((entry) => entry.places.map((place, index) => ({ entry, place, index })));
 }
 
 const keyOf = (lit: Lit) => (!lit ? "" : lit.kind === "entries" ? `entries:${lit.ids.join()}` : `${lit.kind}:${lit.id}`);
 
-const placeArea = (entry: GuestEntry, index: number, place: GuestPlace): MapArea => ({
+const placeArea = (entry: DatenraumEntry, index: number, place: DatenraumPlace): MapArea => ({
   id: `${entry.id}-${index}`,
   points: place.points,
   floor: place.floor,
 });
 
 // The picture collection: each entry's pictures, or placeholders for them.
-type GalleryItem = { key: string; entry: GuestEntry; picture?: { src: string; alt: string } };
-function galleryOf(section: GuestSection): GalleryItem[] {
+type GalleryItem = { key: string; entry: DatenraumEntry; picture?: { src: string; alt: string } };
+function galleryOf(section: DatenraumSection): GalleryItem[] {
   return section.entries.flatMap((entry) =>
     entry.picture
       ? [{ key: entry.id, entry, picture: entry.picture }]
@@ -125,7 +126,7 @@ function galleryOf(section: GuestSection): GalleryItem[] {
   );
 }
 
-export function GuestView() {
+export function DatenraumView() {
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mapBoxRef = useRef<HTMLDivElement>(null);
@@ -182,13 +183,13 @@ export function GuestView() {
 
   // Hovering (or tapping) an entry's title or picture: it lights up, and
   // in the overview its section's carousel turns to its picture.
-  function pick(entry: GuestEntry) {
+  function pick(entry: DatenraumEntry) {
     setHovered(entry.id);
     floorFor({ kind: "entry", id: entry.id });
     if (modeRef.current === "overview") showPicture(entry);
   }
 
-  function showPicture(entry: GuestEntry) {
+  function showPicture(entry: DatenraumEntry) {
     const section = sectionOfEntry.get(entry.id);
     const carousel = section && carouselRefs.current.get(section.id);
     const slide = carousel?.querySelector<HTMLElement>(`[data-entry="${entry.id}"]`);
@@ -212,7 +213,7 @@ export function GuestView() {
 
   // Picked on the map: the page scrolls to the entry (or its pictures), lit
   // already.
-  function seek(entry: GuestEntry) {
+  function seek(entry: DatenraumEntry) {
     const overview = modeRef.current === "overview";
     const scroller = scrollRef.current, l = layoutRef.current;
     const mark = markRefs.current.get(`${overview ? "entry" : "tile"}:${entry.id}`);
@@ -294,7 +295,7 @@ export function GuestView() {
     if (!l || !root || modeRef.current !== "overview") return;
     const line = root.getBoundingClientRect().top + l.readingY;
     let found: Lit = null;
-    for (const section of GUEST_SECTIONS) {
+    for (const section of DATENRAUM_SECTIONS) {
       for (const [key, next] of [
         [`section:${section.id}`, { kind: "section", id: section.id }] as const,
         ...section.entries.map((e) => [`entry:${e.id}`, { kind: "entry", id: e.id }] as const),
@@ -376,7 +377,7 @@ export function GuestView() {
     (a) => docked && a.floor === floor && !litIds.has(a.id),
   );
 
-  const overlaySpots: MapSpot[] = GUEST_SECTIONS.flatMap((s) => s.overlays ?? [])
+  const overlaySpots: MapSpot[] = DATENRAUM_SECTIONS.flatMap((s) => s.overlays ?? [])
     .filter((o) => overlays.has(o.id))
     .flatMap((o) =>
       o.spots
@@ -424,7 +425,7 @@ export function GuestView() {
                     under the title). */}
                 {!layout.wide && <div className="flex justify-center pb-4">{switcher}</div>}
                 {mode === "overview"
-                  ? GUEST_SECTIONS.map((section) => (
+                  ? DATENRAUM_SECTIONS.map((section) => (
                       <Section
                         key={section.id}
                         section={section}
@@ -447,7 +448,7 @@ export function GuestView() {
                         }}
                       />
                     ))
-                  : GUEST_SECTIONS.map((section) => (
+                  : DATENRAUM_SECTIONS.map((section) => (
                       <GallerySection
                         key={section.id}
                         section={section}
@@ -591,6 +592,9 @@ export function GuestView() {
               <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
+
+          {/* Top left, over everything: light or dark. */}
+          <DatenraumThemeToggle className="pointer-events-auto absolute left-4 top-4" />
         </div>
       )}
     </div>
@@ -608,11 +612,11 @@ function Section({
   bleed,
   carouselRef,
 }: {
-  section: GuestSection;
+  section: DatenraumSection;
   lit: Lit;
   overlays: Set<string>;
   onToggleOverlay: (id: string) => void;
-  onPick: (entry: GuestEntry) => void;
+  onPick: (entry: DatenraumEntry) => void;
   onUnpick: () => void;
   mark: (key: string, el: HTMLElement | null) => void;
   // How far past the text column the carousel runs on either side: out to
@@ -621,13 +625,13 @@ function Section({
   carouselRef: (el: HTMLDivElement | null) => void;
 }) {
   const sectionLit = lit?.kind === "section" && lit.id === section.id;
-  const entryLit = (entry: GuestEntry) => sectionLit || (lit?.kind === "entry" && lit.id === entry.id);
+  const entryLit = (entry: DatenraumEntry) => sectionLit || (lit?.kind === "entry" && lit.id === entry.id);
   return (
     <section aria-labelledby={`${section.id}-title`} className="border-t border-border pb-14 pt-10 first:border-t-0 first:pt-4">
       <h2
         id={`${section.id}-title`}
         ref={(el) => mark(`section:${section.id}`, el)}
-        className="text-[34px] font-semibold tracking-tight"
+        className={`${brandFont.className} text-[48px] uppercase leading-[0.95] tracking-tight`}
       >
         {section.title}
       </h2>
@@ -655,7 +659,7 @@ function Section({
                 >
                   <span
                     className={cn(
-                      "text-[21px] font-semibold tracking-tight transition-colors",
+                      `${brandFont.className} text-[28px] uppercase leading-[1.05] tracking-tight transition-colors`,
                       entryLit(entry) ? "text-accent" : "group-hover:text-accent",
                     )}
                   >
@@ -740,17 +744,17 @@ function GallerySection({
   tile,
   untile,
 }: {
-  section: GuestSection;
+  section: DatenraumSection;
   hovered: string | null;
-  onPick: (entry: GuestEntry) => void;
+  onPick: (entry: DatenraumEntry) => void;
   onUnpick: () => void;
-  tile: (el: HTMLElement | null, entry: GuestEntry, first: boolean) => void;
+  tile: (el: HTMLElement | null, entry: DatenraumEntry, first: boolean) => void;
   untile: (el: HTMLElement) => void;
 }) {
   const items = galleryOf(section);
   return (
     <section aria-labelledby={`${section.id}-gallery`} className="pb-10 pt-4">
-      <h2 id={`${section.id}-gallery`} className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-muted">
+      <h2 id={`${section.id}-gallery`} className={`${brandFont.className} mb-3 text-[30px] uppercase leading-none tracking-tight`}>
         {section.title}
       </h2>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -804,7 +808,7 @@ function PicturePlaceholder({ title, small = false }: { title: string; small?: b
   );
 }
 
-function OverlayIcon({ icon, className }: { icon: GuestOverlay["icon"]; className?: string }) {
+function OverlayIcon({ icon, className }: { icon: DatenraumOverlay["icon"]; className?: string }) {
   if (icon === "wheelchair") return <WheelchairIcon className={className} />;
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
@@ -814,7 +818,7 @@ function OverlayIcon({ icon, className }: { icon: GuestOverlay["icon"]; classNam
 }
 
 // An overlay's place on the map: its symbol in a round badge.
-function OverlayMarker({ overlay }: { overlay: GuestOverlay }) {
+function OverlayMarker({ overlay }: { overlay: DatenraumOverlay }) {
   return (
     <span
       role="img"

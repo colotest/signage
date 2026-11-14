@@ -2,7 +2,7 @@ import type { AreaPoint } from "@/lib/eventAreas";
 import { VENUE_AREAS } from "@/lib/venueAreas";
 import type { Floor } from "@/lib/venueFloors";
 
-// What the Guest page (/guest) says, section by section, and where on the
+// What the Datenraum (/datenraum) says, section by section, and where on the
 // venue map each part of it lies. Reading a section lights up all of its
 // places on the map; an entry's title, hovered (or tapped), lights up its
 // own and turns the section's picture carousel to its picture. A tap on a
@@ -10,9 +10,9 @@ import type { Floor } from "@/lib/venueFloors";
 //
 // Places are drawn like an event's areas: corners as a fraction of the
 // plan's width (u) and height (v), on one floor.
-export type GuestPlace = { floor: Floor; points: AreaPoint[] };
+export type DatenraumPlace = { floor: Floor; points: AreaPoint[] };
 
-export type GuestEntry = {
+export type DatenraumEntry = {
   id: string;
   title: string;
   // After the title, quieter: what the place is.
@@ -21,26 +21,26 @@ export type GuestEntry = {
   // A heading the entry falls under, shown above the first entry of each
   // run that shares it (Lage's "Eingänge", "Anlieferung").
   group?: string;
-  places: GuestPlace[];
+  places: DatenraumPlace[];
   // Its picture in the section's carousel. Without one, a placeholder.
   picture?: { src: string; alt: string };
 };
 
 // Markers that buttons below a section switch on, on whichever floor the
 // map shows.
-export type GuestOverlay = {
+export type DatenraumOverlay = {
   id: string;
   label: string;
   icon: "wheelchair" | "power";
   spots: { floor: Floor; u: number; v: number }[];
 };
 
-export type GuestSection = {
+export type DatenraumSection = {
   id: string;
   title: string;
   intro?: string;
-  entries: GuestEntry[];
-  overlays?: GuestOverlay[];
+  entries: DatenraumEntry[];
+  overlays?: DatenraumOverlay[];
 };
 
 const LOREM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
@@ -50,7 +50,7 @@ const LOREM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
 const PLAN_ASPECT = 10100 / 5300;
 
 // A round place about a point, r wide (as a fraction of the plan's width).
-function around(floor: Floor, u: number, v: number, r = 0.03): GuestPlace {
+function around(floor: Floor, u: number, v: number, r = 0.03): DatenraumPlace {
   const points = Array.from({ length: 20 }, (_, i) => {
     const a = (i / 20) * Math.PI * 2;
     return { u: u + Math.cos(a) * r, v: v + Math.sin(a) * r * PLAN_ASPECT };
@@ -58,7 +58,7 @@ function around(floor: Floor, u: number, v: number, r = 0.03): GuestPlace {
   return { floor, points };
 }
 
-const area = (key: keyof typeof VENUE_AREAS): GuestPlace => ({
+const area = (key: keyof typeof VENUE_AREAS): DatenraumPlace => ({
   floor: VENUE_AREAS[key].floor,
   points: VENUE_AREAS[key].points,
 });
@@ -66,7 +66,7 @@ const area = (key: keyof typeof VENUE_AREAS): GuestPlace => ({
 // Where things are, from the Events map's standing pins and the venue's
 // areas. PLACEHOLDER marks a spot guessed rather than taken from either —
 // to be moved to where it really is.
-export const GUEST_SECTIONS: GuestSection[] = [
+export const DATENRAUM_SECTIONS: DatenraumSection[] = [
   {
     id: "lage",
     title: "Lage",
