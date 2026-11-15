@@ -98,6 +98,12 @@ const area = (key: keyof typeof VENUE_AREAS): DatenraumPlace => ({
 
 const KINO_1 = around("eg", 0.7541, 0.7169, 0.05);
 
+// Beside the text the page turns one loaded tour from view to view by the
+// part after the # (see TourLayer), and on the same panorama the tour then
+// reads a yaw, pitch or fov of 0 as not given and keeps the one it's at —
+// so a straight-ahead view is written 0.01, not 0. And a fov past the
+// panorama's widest (Außen_01's is 133) is cut back only after the turn
+// there, with a jump.
 const TOUR_BASE = "https://tours.nexpics.com/berlin-cuisine/colosseum-filmtheater/";
 const TOUR_SCHOENHAUSER = `${TOUR_BASE}#media-name=IMG_5650-C-EG-Außen_01&yaw=-19.76&pitch=0.10&fov=124.00`;
 
@@ -258,7 +264,7 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
       {
         id: "folierung-gleimstrasse",
         title: { de: "Folierung Gleimstr.", en: "Window film, Gleimstraße" },
-        segment: tour(`${TOUR_BASE}#media-name=IMG_5050-A-EG-Außen_01&yaw=0.00&pitch=20.00&fov=190.00`),
+        segment: tour(`${TOUR_BASE}#media-name=IMG_5050-A-EG-Außen_01&yaw=0.01&pitch=20.00&fov=133.00`),
         body: {
           de: [
             p("Eingang Gleimstr. sowohl entlang der Glastüren Pauschal: 1.100 €,"),
@@ -328,7 +334,7 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
       {
         id: "posterkaesten",
         title: { de: "Posterkästen Fassade", en: "Poster cases, façade" },
-        segment: tour(`${TOUR_BASE}#media-name=IMG_5050-A-EG-Außen_01&yaw=300.00&pitch=0.00&fov=84.00`),
+        segment: tour(`${TOUR_BASE}#media-name=IMG_5050-A-EG-Außen_01&yaw=300.00&pitch=0.01&fov=84.00`),
         body: {
           de: [
             h("Eingang Gleimstr."),
