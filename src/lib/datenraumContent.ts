@@ -300,6 +300,25 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
         },
       },
       {
+        id: "posterkaesten",
+        title: { de: "Posterkästen Fassade", en: "Poster cases, façade" },
+        segment: tour(`${TOUR_BASE}#media-name=IMG_5050-A-EG-Außen_01&yaw=300.00&pitch=0.01&fov=84.00`),
+        body: {
+          de: [
+            h("Eingang Gleimstr."),
+            ul("Jedes Poster A1 (12 Stk.)", "Nutzung und Montage aller Poster: 70 €"),
+            h("Ecke Schönhauser/Gleimstr."),
+            ul("Fläche muss gesondert angefragt werden.", "Jedes Poster A1 (12 Stk.)"),
+          ],
+          en: [
+            h("Gleimstraße entrance"),
+            ul("Each poster A1 (12 pcs)", "Use and mounting of all posters: €70"),
+            h("Corner of Schönhauser Allee and Gleimstraße"),
+            ul("Available on separate request.", "Each poster A1 (12 pcs)"),
+          ],
+        },
+      },
+      {
         id: "folierung-schoenhauser",
         title: { de: "Folierung Schönhauser Allee", en: "Window film, Schönhauser Allee" },
         segment: tour(TOUR_SCHOENHAUSER),
@@ -328,25 +347,6 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
               "up to 3 days: flat rate €350",
               "up to 7 days/one week: flat rate €700",
             ),
-          ],
-        },
-      },
-      {
-        id: "posterkaesten",
-        title: { de: "Posterkästen Fassade", en: "Poster cases, façade" },
-        segment: tour(`${TOUR_BASE}#media-name=IMG_5050-A-EG-Außen_01&yaw=300.00&pitch=0.01&fov=84.00`),
-        body: {
-          de: [
-            h("Eingang Gleimstr."),
-            ul("Jedes Poster A1 (12 Stk.)", "Nutzung und Montage aller Poster: 70 €"),
-            h("Ecke Schönhauser/Gleimstr."),
-            ul("Fläche muss gesondert angefragt werden.", "Jedes Poster A1 (12 Stk.)"),
-          ],
-          en: [
-            h("Gleimstraße entrance"),
-            ul("Each poster A1 (12 pcs)", "Use and mounting of all posters: €70"),
-            h("Corner of Schönhauser Allee and Gleimstraße"),
-            ul("Available on separate request.", "Each poster A1 (12 pcs)"),
           ],
         },
       },
