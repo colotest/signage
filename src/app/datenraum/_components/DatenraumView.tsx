@@ -372,6 +372,12 @@ export function DatenraumView({
         if (mark && mark.getBoundingClientRect().top <= line) found = next;
       }
     }
+    // A section's heading stands for its first title, so something's in
+    // focus (and beside the text) from the heading on.
+    if (found?.kind === "section") {
+      const first = sectionById.get(found.id)?.entries[0];
+      if (first) found = { kind: "entry", id: first.id };
+    }
     if (keyOf(found) !== keyOf(readingRef.current)) read(found);
   }
 
