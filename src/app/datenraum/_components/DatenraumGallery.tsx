@@ -14,6 +14,7 @@ import type { Lang } from "@/lib/datenraumContent";
 import { GALLERY_TAG_GROUPS, MAX_GALLERY_EVENT_NAME, type GalleryImage } from "@/lib/datenraumGallery";
 import { brandFont } from "@/lib/fonts";
 import { cn } from "@/lib/utils/cn";
+import { DatenraumPicture } from "./DatenraumPicture";
 import type { DeckWithPages, Folder, MediaItem } from "@/types/domain";
 
 // The library, for picking pictures from (editors only).
@@ -231,8 +232,13 @@ export function DatenraumGallery({
                 aria-label={image.name}
                 className="no-press block h-full w-full cursor-zoom-in"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element -- library photos of any size, cropped to the tile */}
-                <img src={image.url} alt={image.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                <DatenraumPicture
+                  src={image.url}
+                  alt={image.name}
+                  // As wide as a column of the grid (see its classes).
+                  sizes="(min-width: 1280px) 300px, (min-width: 1024px) 33vw, 50vw"
+                  className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                />
               </button>
               {canEdit && (
                 <button
@@ -356,9 +362,8 @@ function Lightbox({
         onClick={(e) => e.stopPropagation()}
         className="pop-in flex h-[75vh] w-[75vw] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-sheet)] md:flex-row"
       >
-        <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-black">
-          {/* eslint-disable-next-line @next/next/no-img-element -- one library photo, shown whole */}
-          <img src={image.url} alt={image.name} className="max-h-full max-w-full object-contain" />
+        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center bg-black">
+          <DatenraumPicture src={image.url} alt={image.name} sizes="75vw" urgent className="object-contain" />
         </div>
         <aside className="flex max-h-[45%] w-full shrink-0 flex-col overflow-y-auto border-t border-border p-5 md:max-h-none md:w-[300px] md:border-l md:border-t-0">
           <div className="flex items-start justify-between gap-3">

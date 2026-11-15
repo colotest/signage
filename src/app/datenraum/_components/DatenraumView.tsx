@@ -27,6 +27,7 @@ import type { Floor } from "@/lib/venueFloors";
 import { cn } from "@/lib/utils/cn";
 import { DatenraumGallery, type GalleryLibrary } from "./DatenraumGallery";
 import { DatenraumPrefsControls, UI, useDatenraumPrefs } from "./DatenraumPrefs";
+import { DatenraumPicture, prefetchPicture, sliderSizes } from "./DatenraumPicture";
 import { MapNotePin } from "./MapNotePin";
 
 // The page opens straight on the content, the title and the switcher
@@ -164,6 +165,21 @@ function segmentByKey(key: string): Segment | undefined {
   return entryById.get(key)?.segment ?? sectionById.get(key)?.segment;
 }
 
+// The segments in the order the page brings them up.
+const SEGMENT_KEYS: string[] = (() => {
+  const keys: string[] = [];
+  const add = (key: string | undefined) => {
+    if (key && keys[keys.length - 1] !== key) keys.push(key);
+  };
+  for (const section of DATENRAUM_SECTIONS) {
+    if (section.entries.length === 0) add(segmentFor({ kind: "section", id: section.id })?.key);
+    for (const entry of section.entries) add(segmentFor({ kind: "entry", id: entry.id })?.key);
+  }
+  return keys;
+})();
+// How many segments ahead of the one up have their first picture fetched.
+const PREFETCH_AHEAD = 2;
+
 // Whether the corner map shows for what's lit: an entry's own say, or its
 // section's.
 function cornerMapFor(lit: Lit): boolean {
@@ -260,12 +276,26 @@ export function DatenraumView({
     setSegments(next);
   }
 
+  // The first pictures of the next segments down the page, fetched quietly
+  // while this one's read, so they're there as they come up.
+  function prefetchAhead(key: string | null) {
+    const at = key ? SEGMENT_KEYS.indexOf(key) : -1;
+    for (const ahead of SEGMENT_KEYS.slice(at + 1, at + 1 + PREFETCH_AHEAD)) {
+      const segment = segmentByKey(ahead);
+      const image = segment?.kind === "images" ? images[segment.images[0]] : undefined;
+      if (!image) continue;
+      const aspect = image.width && image.height ? image.width / image.height : 4 / 3;
+      prefetchPicture(image.url, sliderSizes(aspect, WIDE_PX));
+    }
+  }
+
   function read(next: Lit) {
     const was = readingRef.current;
     readingRef.current = next;
     setReading(next);
     setHovered(null);
     floorFor(next);
+    prefetchAhead(segmentFor(next)?.key ?? null);
     const down = (ORDER.get(keyOf(next)) ?? -1) >= (ORDER.get(keyOf(was)) ?? -1);
     showSegment(segmentFor(next)?.key ?? null, down);
   }
@@ -970,8 +1000,15 @@ function ImageSlider({
             className="relative h-full shrink-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-card)]"
           >
             {image ? (
-              // eslint-disable-next-line @next/next/no-img-element -- photos of any size, shown at the card's
-              <img src={image.url} alt="" draggable={false} className="h-full w-full object-cover" />
+              // The first straight away and ahead of the rest; the others as
+              // they come near.
+              <DatenraumPicture
+                src={image.url}
+                alt=""
+                sizes={sliderSizes(aspect, WIDE_PX)}
+                urgent={i === 0}
+                className="object-cover"
+              />
             ) : (
               <PicturePlaceholder name={name} ui={ui} className="h-full w-full" />
             )}
