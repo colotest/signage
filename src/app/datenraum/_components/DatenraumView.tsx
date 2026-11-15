@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { COLOSSEUM } from "@/app/(dashboard)/events/_components/colosseumFloors";
 import { SegmentedSlider } from "@/app/(dashboard)/events/_components/SegmentedSlider";
 import { VenueMap, type MapSpot } from "@/app/(dashboard)/events/_components/VenueMap";
@@ -68,12 +68,6 @@ const READING_LINE = 0.38;
 // A scroll to something picked on the map is over once the page has been
 // still this long; until then, what it passes doesn't light up.
 const SEEK_SETTLE_MS = 250;
-// Beside the text, the next segment takes over from the one before over
-// this much of the scroll (× the content's part of the window) — or the
-// run before it, if that's shorter — rising into place as its title nears
-// the reading line, there when it reaches it. The segments travel their
-// whole height in that, faster than the page does.
-const SEGMENT_SWITCH = 0.3;
 // The small map in the bottom left, lighting up the spaces being read about
 // — set aside for now; true brings it back.
 const SHOW_CORNER_MAP = false;
@@ -136,24 +130,11 @@ const sectionById = new Map(DATENRAUM_SECTIONS.map((s) => [s.id, s]));
 const entryById = new Map(DATENRAUM_SECTIONS.flatMap((s) => s.entries.map((e) => [e.id, e] as const)));
 const sectionOfEntry = new Map(DATENRAUM_SECTIONS.flatMap((s) => s.entries.map((e) => [e.id, s] as const)));
 const ALL_ENTRIES = DATENRAUM_SECTIONS.flatMap((s) => s.entries);
-// What the page brings up beside the text, down the page: each run of
-// titles that share a segment (or share having none), from where the run
-// starts — a section's heading, for its first title (which it stands for).
-type Run = { key: string | null; mark: string };
-const RUNS: Run[] = (() => {
-  const runs: Run[] = [];
-  const add = (key: string | null, mark: string) => {
-    if (runs.length > 0 && runs[runs.length - 1].key === key) return;
-    runs.push({ key, mark });
-  };
-  for (const section of DATENRAUM_SECTIONS) {
-    if (section.entries.length === 0) add(segmentFor({ kind: "section", id: section.id })?.key ?? null, `section:${section.id}`);
-    section.entries.forEach((entry, i) =>
-      add(segmentFor({ kind: "entry", id: entry.id })?.key ?? null, i === 0 ? `section:${section.id}` : `entry:${entry.id}`),
-    );
-  }
-  return runs;
-})();
+// Every heading and title, in the order they're read: to tell going down
+// from going back up.
+const ORDER = new Map(
+  DATENRAUM_SECTIONS.flatMap((s) => [`section:${s.id}`, ...s.entries.map((e) => `entry:${e.id}`)]).map((k, i) => [k, i]),
+);
 
 function litEntries(lit: Lit): DatenraumEntry[] {
   if (!lit) return [];
@@ -269,13 +250,13 @@ export function DatenraumView({
   // The corner map's pin showing its name.
   const [openPin, setOpenPin] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
-  // Beside the text: the segment for the run being read and the next one's,
-  // which rises in over it with the scroll (how far: switchRef, 0–1).
-  const [pair, setPair] = useState<{ current: string | null; next: string | null }>({ current: null, next: null });
-  const pairRef = useRef(pair);
-  const switchRef = useRef(0);
-  const cardRefs = useRef(new Map<string, HTMLElement>());
-  const segmentVeilRef = useRef<HTMLDivElement>(null);
+  // The segment beside the text, and the one going as it comes in.
+  const [segments, setSegments] = useState<{ current: string | null; leaving: string | null; down: boolean }>({
+    current: null,
+    leaving: null,
+    down: true,
+  });
+  const segmentsRef = useRef(segments);
   const seekRef = useRef<{ timer?: ReturnType<typeof setTimeout> } | null>(null);
 
   const viewed: Lit = mode === "overview" ? reading : null;
@@ -289,58 +270,22 @@ export function DatenraumView({
     setFloor((f) => (places.some(({ place }) => place.floor === f) ? f : places[0].place.floor));
   }
 
+  function showSegment(key: string | null, down: boolean) {
+    const now = segmentsRef.current;
+    if (key === now.current) return;
+    const next = { current: key, leaving: now.current, down };
+    segmentsRef.current = next;
+    setSegments(next);
+  }
+
   function read(next: Lit) {
+    const was = readingRef.current;
     readingRef.current = next;
     setReading(next);
     setHovered(null);
     floorFor(next);
-  }
-
-  // The segments beside the text, from the scroll: the run being read (the
-  // last whose start is above the reading line), the next, and how far the
-  // next has come in — all the way as its start reaches the line.
-  function followSegments() {
-    const l = layoutRef.current, root = rootRef.current;
-    let current: string | null = null, next: string | null = null, q = 0;
-    if (l && root && l.wide && modeRef.current === "overview") {
-      const line = root.getBoundingClientRect().top + l.readingY;
-      const tops = RUNS.map((run) => markRefs.current.get(run.mark)?.getBoundingClientRect().top ?? Infinity);
-      let i = -1;
-      tops.forEach((top, k) => {
-        if (top <= line) i = k;
-      });
-      current = i >= 0 ? RUNS[i].key : null;
-      if (i + 1 < RUNS.length) {
-        next = RUNS[i + 1].key;
-        const span = Math.min(SEGMENT_SWITCH * (l.h - TOP_ZONE), i >= 0 ? tops[i + 1] - tops[i] : Infinity);
-        q = clamp01(1 - (tops[i + 1] - line) / Math.max(span, 1));
-      }
-    }
-    switchRef.current = q;
-    const was = pairRef.current;
-    if (was.current !== current || was.next !== next) {
-      pairRef.current = { current, next };
-      setPair(pairRef.current);
-    }
-    placeSegments();
-  }
-
-  // Each segment where the scroll has it: the current one risen by the
-  // share the next has come in, the next that much up from below the
-  // window; any other out of sight.
-  function placeSegments() {
-    const l = layoutRef.current;
-    if (!l) return;
-    const q = switchRef.current, { current, next } = pairRef.current;
-    const up = l.segment.y + l.segment.h + EDGE;
-    const down = l.h - l.segment.y + EDGE;
-    for (const [key, el] of cardRefs.current) {
-      const y = key === current ? -q * up : key === next ? (1 - q) * down : down;
-      el.style.transform = `translateY(${y}px)`;
-    }
-    if (segmentVeilRef.current) {
-      segmentVeilRef.current.style.opacity = String((current ? 1 - q : 0) + (next ? q : 0));
-    }
+    const down = (ORDER.get(keyOf(next)) ?? -1) >= (ORDER.get(keyOf(was)) ?? -1);
+    showSegment(segmentFor(next)?.key ?? null, down);
   }
 
   // Hovering (or tapping) a title or picture lights its places up.
@@ -377,9 +322,7 @@ export function DatenraumView({
     setHovered(null);
     readingRef.current = null;
     setReading(null);
-    switchRef.current = 0;
-    pairRef.current = { current: null, next: null };
-    setPair(pairRef.current);
+    showSegment(null, true);
     // To the top of the other content, the title staying docked.
     const scroller = scrollRef.current, l = layoutRef.current;
     if (scroller && l && scroller.scrollTop > l.travel) scroller.scrollTo({ top: l.travel });
@@ -453,7 +396,6 @@ export function DatenraumView({
       frame = requestAnimationFrame(() => {
         frame = 0;
         apply();
-        followSegments();
         if (!seekRef.current) measure();
       });
     };
@@ -506,14 +448,7 @@ export function DatenraumView({
   // Laid out again for a new size, once the stage is in the DOM for it.
   useLayoutEffect(() => {
     apply();
-    followSegments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
-
-  // Segments just put in (or swapped round) placed before they're seen.
-  useLayoutEffect(() => {
-    placeSegments();
-  }, [pair]);
 
   // The corner map: shown for what's being read, lighting up what's lit —
   // every other place on this floor faintly, to show it can be tapped —
@@ -581,30 +516,34 @@ export function DatenraumView({
           <Segments
             rect={layout.segment}
             cardLeadIn={layout.cardLeadIn}
-            pair={pair}
-            register={(key, el) => {
-              if (el) cardRefs.current.set(key, el);
-              else cardRefs.current.delete(key);
-            }}
+            viewH={layout.h}
+            state={segments}
             images={images}
             pins={pins}
             lang={lang}
             ui={ui}
             onPassWheel={passWheel}
+            onLeft={(key) =>
+              setSegments((s) => {
+                if (s.leaving !== key) return s;
+                const next = { ...s, leaving: null };
+                segmentsRef.current = next;
+                return next;
+              })
+            }
           />
           <div
-            ref={segmentVeilRef}
             aria-hidden
             style={{
               left: layout.segment.x,
               top: layout.segment.y,
               width: layout.cardLeadIn,
               height: layout.segment.h,
-              opacity: 0,
+              opacity: segments.current ? 1 : 0,
               maskImage: "linear-gradient(to right, #000 25%, transparent)",
               WebkitMaskImage: "linear-gradient(to right, #000 25%, transparent)",
             }}
-            className="absolute bg-[linear-gradient(to_right,color-mix(in_srgb,var(--surface)_80%,transparent),transparent)] backdrop-blur-md"
+            className="absolute bg-[linear-gradient(to_right,color-mix(in_srgb,var(--surface)_80%,transparent),transparent)] backdrop-blur-md transition-opacity duration-500"
           />
         </div>
       )}
@@ -910,46 +849,58 @@ function Blocks({ blocks, ui, className }: { blocks: Block[]; ui: Record<string,
 
 // --- segments ---------------------------------------------------------------------
 
-// Beside the text: the current segment and the next, each placed with the
-// scroll (see placeSegments) — the next one mounted ahead, out of sight
-// below the window, so it's ready as it comes in. Each fades in from its
-// left, deep behind the text.
+// Beside the text: the current segment, and the one leaving as it comes in.
+// Going down the page the new one rises from below the window and the old
+// one up and out of the top; going back up, the other way round.
 function Segments({
   rect,
   cardLeadIn,
-  pair,
-  register,
+  viewH,
+  state,
   images,
   pins,
   lang,
   ui,
   onPassWheel,
+  onLeft,
 }: {
   rect: Rect;
   cardLeadIn: number;
-  pair: { current: string | null; next: string | null };
-  register: (key: string, el: HTMLElement | null) => void;
+  viewH: number;
+  state: { current: string | null; leaving: string | null; down: boolean };
   images: Record<string, DatenraumImage>;
   pins: Pins;
   lang: Lang;
   ui: Record<string, string>;
   onPassWheel: (deltaY: number) => void;
+  onLeft: (key: string) => void;
 }) {
+  const below = viewH - rect.y + EDGE;
+  const above = -(rect.y + rect.h + EDGE);
+  const motion = {
+    "--from": `${state.down ? below : above}px`,
+    "--to": `${state.down ? above : below}px`,
+  } as CSSProperties;
+  const keys = [state.leaving, state.current].filter((k, i, all): k is string => !!k && all.indexOf(k) === i);
   const fade = "linear-gradient(to right, transparent, #000 " + cardLeadIn + "px)";
-  const keys = [pair.current, pair.next].filter((k): k is string => !!k);
   return (
-    <div className="absolute" style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
+    <div
+      className="absolute"
+      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, maskImage: fade, WebkitMaskImage: fade }}
+    >
       {keys.map((key) => {
         const segment = segmentByKey(key);
         if (!segment) return null;
+        const leaving = key !== state.current;
         return (
           <div
             key={key}
-            ref={(el) => {
-              register(key, el);
-            }}
-            style={{ maskImage: fade, WebkitMaskImage: fade, willChange: "transform" }}
-            className="pointer-events-auto absolute inset-0"
+            style={motion}
+            onAnimationEnd={leaving ? () => onLeft(key) : undefined}
+            className={cn(
+              "absolute inset-0",
+              leaving ? "datenraum-segment-out pointer-events-none" : "datenraum-segment-in pointer-events-auto",
+            )}
           >
             <SegmentView
               segment={segment}
