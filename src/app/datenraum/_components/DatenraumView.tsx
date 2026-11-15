@@ -458,9 +458,45 @@ export function DatenraumView({
       });
     };
     scroller.addEventListener("scroll", onScroll, { passive: true });
+
+    // Where nothing takes it — beside the text with no segment there, or
+    // under the hero once it's begun to scroll away — a scroll or a drag
+    // lands on the page itself, beneath the scrolling content (which only
+    // takes input where there's something of it: see the content's box).
+    // It's handed on to the content, as if it had landed there.
+    const onRootWheel = (e: WheelEvent) => {
+      if (e.target !== root || e.ctrlKey) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? scroller.clientHeight : 1;
+      scroller.scrollBy({ top: e.deltaY * unit });
+    };
+    let drag: { id: number; y: number } | null = null;
+    const onRootDown = (e: PointerEvent) => {
+      if (e.target !== root || e.pointerType === "mouse") return;
+      root.setPointerCapture(e.pointerId);
+      drag = { id: e.pointerId, y: e.clientY };
+    };
+    const onRootMove = (e: PointerEvent) => {
+      if (drag?.id !== e.pointerId) return;
+      scroller.scrollBy({ top: drag.y - e.clientY });
+      drag.y = e.clientY;
+    };
+    const onRootUp = (e: PointerEvent) => {
+      if (drag?.id === e.pointerId) drag = null;
+    };
+    root.addEventListener("wheel", onRootWheel, { passive: false });
+    root.addEventListener("pointerdown", onRootDown);
+    root.addEventListener("pointermove", onRootMove);
+    root.addEventListener("pointerup", onRootUp);
+    root.addEventListener("pointercancel", onRootUp);
     return () => {
       ro.disconnect();
       scroller.removeEventListener("scroll", onScroll);
+      root.removeEventListener("wheel", onRootWheel);
+      root.removeEventListener("pointerdown", onRootDown);
+      root.removeEventListener("pointermove", onRootMove);
+      root.removeEventListener("pointerup", onRootUp);
+      root.removeEventListener("pointercancel", onRootUp);
       if (frame) cancelAnimationFrame(frame);
       clearTimeout(seekRef.current?.timer);
     };
@@ -533,7 +569,10 @@ export function DatenraumView({
   return (
     // Fills the page's scroll area edge to edge (undoing its padding): the
     // content scrolls in its own box, under the stage.
-    <div ref={rootRef} className="relative -mx-5 -my-6 h-[calc(100%+3rem)] overflow-hidden bg-surface">
+    // touch-none: a drag starting on the page itself (see onRootDown) is
+    // handed on by hand, not panned by the browser; drags in the content
+    // and the segments, which scroll by themselves, aren't affected.
+    <div ref={rootRef} className="relative -mx-5 -my-6 h-[calc(100%+3rem)] touch-none overflow-hidden bg-surface">
       {layout && sideSegments && (
         // Beneath the content: the segments, their pictures reaching back
         // behind the text, which floats over them — fading in, blurred and
