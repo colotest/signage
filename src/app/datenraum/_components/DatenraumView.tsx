@@ -1,86 +1,89 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { COLOSSEUM } from "@/app/(dashboard)/events/_components/colosseumFloors";
 import { SegmentedSlider } from "@/app/(dashboard)/events/_components/SegmentedSlider";
-import { VenueMap, type MapSpot } from "@/app/(dashboard)/events/_components/VenueMap";
-import { WheelchairIcon } from "@/components/icons/WheelchairIcon";
+import { VenueMap } from "@/app/(dashboard)/events/_components/VenueMap";
 import { areaContains, type MapArea } from "@/lib/eventAreas";
+import {
+  DATENRAUM_SECTIONS,
+  HERO_IMAGE,
+  type Block,
+  type DatenraumEntry,
+  type DatenraumPlace,
+  type DatenraumSection,
+  type Lang,
+  type Segment,
+} from "@/lib/datenraumContent";
+import type { DatenraumImage } from "@/lib/datenraumMedia";
 import { brandFont } from "@/lib/fonts";
-import { DATENRAUM_SECTIONS, type DatenraumEntry, type DatenraumOverlay, type DatenraumPlace, type DatenraumSection } from "@/lib/datenraumContent";
 import type { Floor } from "@/lib/venueFloors";
 import { cn } from "@/lib/utils/cn";
-import { DatenraumThemeToggle } from "./DatenraumTheme";
+import { DatenraumPrefsControls, UI, useDatenraumPrefs } from "./DatenraumPrefs";
 
-// The page opens on the ground floor's plan filling the screen, the title
-// over it. The first TRAVEL of the scroll (× the screen's height) turns
-// that into the page: the title shrinks to float along the top, and the
-// map into the right MAP_SHARE of it, top to bottom, its left edge fading
-// over the content — or, on a narrow screen, a card in a band under the title —
-// where it stays while the content scrolls by.
-const TRAVEL = 0.7;
+// The page opens on the hero picture, the title over it. Scrolling, the
+// picture goes up and away with the page while the title shrinks to float
+// along the top (by the time the content reaches it). Then, on a wide
+// screen, the content takes the left SEGMENT_SPLIT of it, and beside it
+// whatever the title being read brings up — pictures, the floor plans or
+// a 360° tour — rises into view as the one before rises away (sinks, going
+// back up). In the bottom left, a small map lights up the spaces being read
+// about. On a narrow screen each title's segment sits under its text.
 const SMALL_TITLE_PX = 26;
-// Narrower than this, the map docks above the content rather than beside it.
+// Narrower than this, segments sit in the text rather than beside it, and
+// there's no corner map.
 const WIDE_PX = 768;
-// Wide: the title's middle and the switcher's, from the top, and how far
-// down the content starts beneath them.
+// The title's middle and the switcher's, from the top, and how far down the
+// content starts beneath them.
 const TITLE_Y = 38;
 const SWITCHER_Y = 94;
 const TOP_ZONE = 128;
-// Wide: how much of the width the map takes, and how far beyond that it
-// reaches left over the content, fading in across it.
-const MAP_SHARE = 0.4;
-const FADE = 96;
-// The text column's widest, and its side padding (md:px-10), wide.
-const COLUMN_MAX = 680;
-const COLUMN_PAD = 40;
-// Narrow: the band the title docks in, and the map card under it.
-const BAR_H = 76;
-const DOCK_MIN_H = 380;
+// Wide: how much of the width the content takes; segments have the rest.
+const SEGMENT_SPLIT = 0.6;
+const EDGE = 20;
+// A segment's smallest height (the map's buttons need about this much).
+const SEGMENT_MIN_H = 400;
 // Where in the content's part of the screen something counts as being read:
-// the last heading or entry whose top has passed this far down it.
+// the last heading or title whose top has passed this far down it.
 const READING_LINE = 0.38;
 // A scroll to something picked on the map is over once the page has been
 // still this long; until then, what it passes doesn't light up.
 const SEEK_SETTLE_MS = 250;
-// Pictures in the collection for an entry that has none of its own yet.
-const GALLERY_PLACEHOLDERS = 2;
 
 type Mode = "overview" | "gallery";
-const MODES: { value: Mode; label: string }[] = [
-  { value: "overview", label: "Übersicht" },
-  { value: "gallery", label: "Bildersammlung" },
-];
-
 type Rect = { x: number; y: number; w: number; h: number };
 type Layout = {
   w: number;
   h: number;
   wide: boolean;
+  // The scroll over which the title docks: the hero's height, less the
+  // strip it docks in.
   travel: number;
-  dock: Rect;
-  // Where the content's part of the screen starts, below the title (and on
-  // a narrow screen, the map).
-  contentTop: number;
+  columnW: number;
   readingY: number;
   bigTitlePx: number;
+  segment: Rect;
+  corner: Rect;
 };
 
 function layoutFor(w: number, h: number): Layout {
   const wide = w >= WIDE_PX;
-  const dock: Rect = wide
-    ? { x: w * (1 - MAP_SHARE) - FADE, y: 0, w: w * MAP_SHARE + FADE, h }
-    : { x: 12, y: BAR_H, w: w - 24, h: Math.round(Math.max(DOCK_MIN_H, h * 0.4)) };
-  const contentTop = wide ? TOP_ZONE : dock.y + dock.h + 8;
+  const columnW = wide ? Math.round(w * SEGMENT_SPLIT) : w;
+  const areaX = columnW + 4, areaW = w - EDGE - areaX;
+  const areaY = TOP_ZONE, areaH = h - EDGE - areaY;
+  const segH = Math.min(areaH, Math.max(areaW * 0.85, SEGMENT_MIN_H));
+  const cornerW = Math.min(380, columnW * 0.42);
+  const cornerH = Math.round(cornerW * 0.66);
   return {
     w,
     h,
     wide,
-    travel: Math.round(h * TRAVEL),
-    dock,
-    contentTop,
-    readingY: contentTop + (h - contentTop) * READING_LINE,
+    travel: Math.max(1, h - TOP_ZONE),
+    columnW,
+    readingY: TOP_ZONE + (h - TOP_ZONE) * READING_LINE,
     bigTitlePx: Math.max(48, Math.min(w * 0.14, h * 0.2, 200)),
+    segment: { x: areaX, y: areaY + (areaH - segH) / 2, w: areaW, h: segH },
+    corner: { x: EDGE, y: h - EDGE - cornerH, w: cornerW, h: cornerH },
   };
 }
 
@@ -88,14 +91,19 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 const clamp01 = (t: number) => Math.min(Math.max(t, 0), 1);
 
-// What's lit up on the map: a whole section (while its heading's being
-// read), one entry, or those whose pictures are in view.
+// What's being read (or hovered, or in view in the collection).
 type Lit = { kind: "section"; id: string } | { kind: "entry"; id: string } | { kind: "entries"; ids: string[] } | null;
+const keyOf = (lit: Lit) => (!lit ? "" : lit.kind === "entries" ? `entries:${lit.ids.join()}` : `${lit.kind}:${lit.id}`);
 
 const sectionById = new Map(DATENRAUM_SECTIONS.map((s) => [s.id, s]));
 const entryById = new Map(DATENRAUM_SECTIONS.flatMap((s) => s.entries.map((e) => [e.id, e] as const)));
 const sectionOfEntry = new Map(DATENRAUM_SECTIONS.flatMap((s) => s.entries.map((e) => [e.id, s] as const)));
 const ALL_ENTRIES = DATENRAUM_SECTIONS.flatMap((s) => s.entries);
+// Every heading and title, in the order they're read: to tell going down
+// from going back up.
+const ORDER = new Map(
+  DATENRAUM_SECTIONS.flatMap((s) => [`section:${s.id}`, ...s.entries.map((e) => `entry:${e.id}`)]).map((k, i) => [k, i]),
+);
 
 function litEntries(lit: Lit): DatenraumEntry[] {
   if (!lit) return [];
@@ -105,10 +113,8 @@ function litEntries(lit: Lit): DatenraumEntry[] {
 }
 
 function litPlaces(lit: Lit): { entry: DatenraumEntry; place: DatenraumPlace; index: number }[] {
-  return litEntries(lit).flatMap((entry) => entry.places.map((place, index) => ({ entry, place, index })));
+  return litEntries(lit).flatMap((entry) => (entry.places ?? []).map((place, index) => ({ entry, place, index })));
 }
-
-const keyOf = (lit: Lit) => (!lit ? "" : lit.kind === "entries" ? `entries:${lit.ids.join()}` : `${lit.kind}:${lit.id}`);
 
 const placeArea = (entry: DatenraumEntry, index: number, place: DatenraumPlace): MapArea => ({
   id: `${entry.id}-${index}`,
@@ -116,32 +122,59 @@ const placeArea = (entry: DatenraumEntry, index: number, place: DatenraumPlace):
   floor: place.floor,
 });
 
-// The picture collection: each entry's pictures, or placeholders for them.
-type GalleryItem = { key: string; entry: DatenraumEntry; picture?: { src: string; alt: string } };
-function galleryOf(section: DatenraumSection): GalleryItem[] {
-  return section.entries.flatMap((entry) =>
-    entry.picture
-      ? [{ key: entry.id, entry, picture: entry.picture }]
-      : Array.from({ length: GALLERY_PLACEHOLDERS }, (_, i) => ({ key: `${entry.id}-${i}`, entry })),
-  );
+// What a title being read brings up beside the text: its own segment, or
+// its section's — keyed by whose it is.
+function segmentFor(lit: Lit): { key: string; segment: Segment } | null {
+  if (lit?.kind === "entry") {
+    const entry = entryById.get(lit.id)!;
+    if (entry.segment) return { key: entry.id, segment: entry.segment };
+    const section = sectionOfEntry.get(lit.id)!;
+    return section.segment ? { key: section.id, segment: section.segment } : null;
+  }
+  if (lit?.kind === "section") {
+    const section = sectionById.get(lit.id)!;
+    return section.segment ? { key: section.id, segment: section.segment } : null;
+  }
+  return null;
 }
 
-export function DatenraumView() {
+function segmentByKey(key: string): Segment | undefined {
+  return entryById.get(key)?.segment ?? sectionById.get(key)?.segment;
+}
+
+// Whether the corner map shows for what's lit: an entry's own say, or its
+// section's.
+function cornerMapFor(lit: Lit): boolean {
+  if (lit?.kind === "section") return !!sectionById.get(lit.id)?.bottomMap;
+  return litEntries(lit).some((entry) => entry.bottomMap ?? sectionOfEntry.get(entry.id)?.bottomMap ?? false);
+}
+
+// The picture collection: every picture of every segment, by section, each
+// lighting up its entry's places while it's in view.
+type GalleryItem = { key: string; name: string; entry: DatenraumEntry | null };
+function galleryOf(section: DatenraumSection): GalleryItem[] {
+  const items: GalleryItem[] = [];
+  const add = (segment: Segment | undefined, entry: DatenraumEntry | null) => {
+    if (segment?.kind !== "images") return;
+    for (const name of segment.images) items.push({ key: `${entry?.id ?? section.id}:${name}`, name, entry });
+  };
+  add(section.segment, null);
+  for (const entry of section.entries) add(entry.segment, entry);
+  return items;
+}
+
+export function DatenraumView({ images }: { images: Record<string, DatenraumImage> }) {
+  const { lang } = useDatenraumPrefs();
+  const ui = UI[lang];
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const mapBoxRef = useRef<HTMLDivElement>(null);
-  const edgeBlurRef = useRef<HTMLDivElement>(null);
-  const veilRef = useRef<HTMLDivElement>(null);
-  // The blur under the title (wide) or the band it docks in (narrow).
-  const topFadeRef = useRef<HTMLElement | null>(null);
+  const topFadeRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const switcherRef = useRef<HTMLDivElement>(null);
-  const hintRef = useRef<HTMLDivElement>(null);
   // "section:id" / "entry:id" in the overview, "tile:id" (an entry's first
   // picture) in the collection.
   const markRefs = useRef(new Map<string, HTMLElement>());
-  const carouselRefs = useRef(new Map<string, HTMLDivElement>());
-  const tileRefs = useRef(new Map<HTMLElement, string>());
+  const tileRefs = useRef(new Map<HTMLElement, string | null>());
 
   const [layout, setLayout] = useState<Layout | null>(null);
   const layoutRef = useRef<Layout | null>(null);
@@ -155,16 +188,17 @@ export function DatenraumView() {
   // Entries with a picture in view, in the collection.
   const [inFrame, setInFrame] = useState<string[]>([]);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [overlays, setOverlays] = useState<Set<string>>(new Set());
+  // The segment beside the text, and the one going as it comes in.
+  const [segments, setSegments] = useState<{ current: string | null; leaving: string | null; down: boolean }>({
+    current: null,
+    leaving: null,
+    down: true,
+  });
+  const segmentsRef = useRef(segments);
   const seekRef = useRef<{ timer?: ReturnType<typeof setTimeout> } | null>(null);
 
-  const lit: Lit = hovered
-    ? { kind: "entry", id: hovered }
-    : mode === "gallery"
-      ? inFrame.length > 0
-        ? { kind: "entries", ids: inFrame }
-        : null
-      : reading;
+  const viewed: Lit = mode === "gallery" ? (inFrame.length > 0 ? { kind: "entries", ids: inFrame } : null) : reading;
+  const lit: Lit = hovered ? { kind: "entry", id: hovered } : viewed;
 
   // Brings what's lit onto the map's floor, unless some of it's on the
   // floor shown already.
@@ -174,32 +208,28 @@ export function DatenraumView() {
     setFloor((f) => (places.some(({ place }) => place.floor === f) ? f : places[0].place.floor));
   }
 
+  function showSegment(key: string | null, down: boolean) {
+    const now = segmentsRef.current;
+    if (key === now.current) return;
+    const next = { current: key, leaving: now.current, down };
+    segmentsRef.current = next;
+    setSegments(next);
+  }
+
   function read(next: Lit) {
+    const was = readingRef.current;
     readingRef.current = next;
     setReading(next);
     setHovered(null);
     floorFor(next);
+    const down = (ORDER.get(keyOf(next)) ?? -1) >= (ORDER.get(keyOf(was)) ?? -1);
+    showSegment(segmentFor(next)?.key ?? null, down);
   }
 
-  // Hovering (or tapping) an entry's title or picture: it lights up, and
-  // in the overview its section's carousel turns to its picture.
+  // Hovering (or tapping) a title or picture lights its places up.
   function pick(entry: DatenraumEntry) {
     setHovered(entry.id);
     floorFor({ kind: "entry", id: entry.id });
-    if (modeRef.current === "overview") showPicture(entry);
-  }
-
-  function showPicture(entry: DatenraumEntry) {
-    const section = sectionOfEntry.get(entry.id);
-    const carousel = section && carouselRefs.current.get(section.id);
-    const slide = carousel?.querySelector<HTMLElement>(`[data-entry="${entry.id}"]`);
-    // The carousel is the slides' offset parent (it's positioned); the slide
-    // comes to rest in line with the text, the run before it (scroll-padding)
-    // to its left.
-    if (carousel && slide) {
-      const before = parseFloat(getComputedStyle(carousel).scrollPaddingLeft) || 0;
-      carousel.scrollTo({ left: slide.offsetLeft - before, behavior: "smooth" });
-    }
   }
 
   function endSeekLater() {
@@ -211,23 +241,18 @@ export function DatenraumView() {
     }, SEEK_SETTLE_MS);
   }
 
-  // Picked on the map: the page scrolls to the entry (or its pictures), lit
-  // already.
+  // Picked on the map: the page scrolls to the entry (or its pictures).
   function seek(entry: DatenraumEntry) {
     const overview = modeRef.current === "overview";
-    const scroller = scrollRef.current, l = layoutRef.current;
+    const scroller = scrollRef.current;
     const mark = markRefs.current.get(`${overview ? "entry" : "tile"}:${entry.id}`);
-    if (!scroller || !mark || !l) return;
+    if (!scroller || !mark) return;
     seekRef.current = seekRef.current ?? {};
     endSeekLater();
-    if (overview) {
-      read({ kind: "entry", id: entry.id });
-      showPicture(entry);
-    } else {
-      pick(entry);
-    }
+    if (overview) read({ kind: "entry", id: entry.id });
+    else pick(entry);
     const top = mark.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
-    scroller.scrollTo({ top: top - l.contentTop - 24, behavior: "smooth" });
+    scroller.scrollTo({ top: top - TOP_ZONE - 24, behavior: "smooth" });
   }
 
   function switchMode(next: Mode) {
@@ -238,49 +263,27 @@ export function DatenraumView() {
     readingRef.current = null;
     setReading(null);
     setInFrame([]);
-    // To the top of the other content, the map staying docked.
+    showSegment(null, true);
+    // To the top of the other content, the title staying docked.
     const scroller = scrollRef.current, l = layoutRef.current;
     if (scroller && l && scroller.scrollTop > l.travel) scroller.scrollTo({ top: l.travel });
   }
 
-  // Lays the stage out for the scroll: the map and title from full screen
-  // (p = 0) to docked (p = 1).
+  // The title from over the hero (p = 0) to docked along the top (p = 1).
   function apply() {
     const l = layoutRef.current, scroller = scrollRef.current;
     if (!l || !scroller) return;
     const p = clamp01(scroller.scrollTop / l.travel);
     const t = easeInOut(p);
-    const box = mapBoxRef.current;
-    if (box) {
-      box.style.left = `${lerp(0, l.dock.x, t)}px`;
-      box.style.top = `${lerp(0, l.dock.y, t)}px`;
-      box.style.width = `${lerp(l.w, l.dock.w, t)}px`;
-      box.style.height = `${lerp(l.h, l.dock.h, t)}px`;
-      if (l.wide) {
-        // No edge of its own: its left side fades into the content.
-        const mask = `linear-gradient(to right, rgba(0,0,0,${1 - t}) 0px, #000 ${FADE}px)`;
-        box.style.maskImage = mask;
-        box.style.webkitMaskImage = mask;
-      } else {
-        box.style.borderRadius = `${lerp(0, 16, t)}px`;
-        box.style.borderColor = `color-mix(in srgb, var(--border) ${Math.round(t * 100)}%, transparent)`;
-      }
-    }
-    if (edgeBlurRef.current) {
-      edgeBlurRef.current.style.left = `${lerp(0, l.dock.x, t)}px`;
-      edgeBlurRef.current.style.opacity = String(t);
-    }
-    if (veilRef.current) veilRef.current.style.opacity = String((1 - t) * 0.45);
     const title = titleRef.current;
     if (title) {
-      const cy = lerp(l.h / 2, l.wide ? TITLE_Y : BAR_H / 2, t);
+      const cy = lerp(l.h / 2, TITLE_Y, t);
       const s = lerp(1, SMALL_TITLE_PX / l.bigTitlePx, t);
       title.style.transform = `translate(${l.w / 2}px, ${cy}px) translate(-50%, -50%) scale(${s})`;
     }
     const late = clamp01((t - 0.6) / 0.4);
     if (topFadeRef.current) topFadeRef.current.style.opacity = String(late);
     if (switcherRef.current) switcherRef.current.style.opacity = String(late);
-    if (hintRef.current) hintRef.current.style.opacity = String(Math.max(0, 1 - p * 4));
     const nowDocked = p >= 0.999;
     if (nowDocked !== dockedRef.current) {
       dockedRef.current = nowDocked;
@@ -288,7 +291,7 @@ export function DatenraumView() {
     }
   }
 
-  // Following the reader through the overview: the last heading or entry
+  // Following the reader through the overview: the last heading or title
   // above the reading line.
   function measure() {
     const l = layoutRef.current, root = rootRef.current;
@@ -342,7 +345,7 @@ export function DatenraumView() {
   }, [layout]);
 
   // The collection: which entries have a picture at least half in view,
-  // below the title (and on a narrow screen, the map).
+  // below the title.
   useEffect(() => {
     const scroller = scrollRef.current;
     if (mode !== "gallery" || !layout || !scroller) return;
@@ -361,53 +364,57 @@ export function DatenraumView() {
         if (!seekRef.current) setHovered(null);
         floorFor(ids.length > 0 ? { kind: "entries", ids } : null);
       },
-      { root: scroller, rootMargin: `-${layout.contentTop}px 0px 0px 0px`, threshold: 0.5 },
+      { root: scroller, rootMargin: `-${TOP_ZONE}px 0px 0px 0px`, threshold: 0.5 },
     );
     for (const el of tileRefs.current.keys()) observer.observe(el);
     return () => observer.disconnect();
      
   }, [mode, layout]);
 
-  // On the map: what's lit, glowing; every other place on this floor,
-  // faintly, to show it can be tapped — once it can be, docked.
+  // The corner map: shown for what's being read (or in view), lighting up
+  // what's lit — every other place on this floor faintly, to show it can be
+  // tapped.
+  const cornerShown = !!layout?.wide && cornerMapFor(viewed);
   const litOnFloor = litPlaces(lit).filter(({ place }) => place.floor === floor);
   const areas = litOnFloor.map(({ entry, index, place }) => placeArea(entry, index, place));
   const litIds = new Set(areas.map((a) => a.id));
-  const faintAreas = ALL_ENTRIES.flatMap((entry) => entry.places.map((place, index) => placeArea(entry, index, place))).filter(
-    (a) => docked && a.floor === floor && !litIds.has(a.id),
-  );
-
-  const overlaySpots: MapSpot[] = DATENRAUM_SECTIONS.flatMap((s) => s.overlays ?? [])
-    .filter((o) => overlays.has(o.id))
-    .flatMap((o) =>
-      o.spots
-        .filter((spot) => spot.floor === floor)
-        .map((spot, i) => ({ id: `${o.id}:${i}`, u: spot.u, v: spot.v, node: <OverlayMarker overlay={o} /> })),
-    );
+  const faintAreas = ALL_ENTRIES.flatMap((entry) =>
+    (entry.places ?? []).map((place, index) => placeArea(entry, index, place)),
+  ).filter((a) => a.floor === floor && !litIds.has(a.id));
 
   function onMapTap(at: { u: number; v: number } | null) {
     if (!at) return;
     const hits = ALL_ENTRIES.flatMap((entry) =>
-      entry.places
+      (entry.places ?? [])
         .filter((place) => place.floor === floor && areaContains({ id: entry.id, points: place.points }, at))
         .map((place) => ({ entry, size: polygonSize(place.points) })),
     ).sort((a, b) => a.size - b.size);
     if (hits[0]) seek(hits[0].entry);
   }
 
+  // A sideways slider that's run out: the rest of the wheel scrolls the page.
+  const passWheel = (deltaY: number) => scrollRef.current?.scrollBy({ top: deltaY });
+
   const mark = (key: string, el: HTMLElement | null) => {
     if (el) markRefs.current.set(key, el);
     else markRefs.current.delete(key);
   };
 
-  // Wide: the content's window, out to where the map is drawn in full, and
-  // how far past the text column's right edge that is.
-  const contentWidth = layout?.wide ? layout.dock.x + FADE : 0;
-  const bleed = layout?.wide ? (contentWidth - Math.min(COLUMN_MAX, contentWidth)) / 2 + COLUMN_PAD : 0;
-
   const switcher = (
-    <SegmentedSlider label="Ansicht" options={MODES} value={mode} onChange={switchMode} className="w-[300px] max-w-full" />
+    <SegmentedSlider
+      label={ui.view}
+      options={[
+        { value: "overview" as Mode, label: ui.overview },
+        { value: "gallery" as Mode, label: ui.gallery },
+      ]}
+      value={mode}
+      onChange={switchMode}
+      className="w-[300px] max-w-full"
+    />
   );
+
+  const hero = images[HERO_IMAGE];
+  const sideSegments = !!layout?.wide && mode === "overview";
 
   return (
     // Fills the page's scroll area edge to edge (undoing its padding): the
@@ -416,48 +423,65 @@ export function DatenraumView() {
       <div ref={scrollRef} className="absolute inset-0 overflow-y-auto overscroll-contain">
         {layout && (
           <>
-            <div aria-hidden style={{ height: layout.travel + layout.contentTop }} />
-            {/* Wide: as far as the map's faded edge reaches, so what runs
-                past the text column (the carousels) goes on beneath it. */}
-            <div style={{ width: layout.wide ? contentWidth : "100%" }}>
-              <div className="mx-auto max-w-[680px] px-6 md:px-10" style={{ paddingBottom: layout.h - layout.readingY }}>
+            {/* The hero: the picture behind the title, scrolling away. */}
+            <div className="relative overflow-hidden" style={{ height: layout.h }}>
+              {hero ? (
+                // eslint-disable-next-line @next/next/no-img-element -- one large photo, cropped to the window
+                <img src={hero.url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              ) : (
+                <PicturePlaceholder name={HERO_IMAGE} ui={ui} className="absolute inset-0" />
+              )}
+              <div
+                aria-hidden
+                className="absolute inset-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--surface)_55%,transparent),color-mix(in_srgb,var(--surface)_30%,transparent)_45%,var(--surface))]"
+              />
+              <div
+                aria-hidden
+                className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-[13px] font-medium text-foreground/70"
+              >
+                {ui.scroll}
+                <svg viewBox="0 0 24 24" className="h-5 w-5 animate-bounce" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </div>
+
+            <div style={{ width: mode === "overview" ? layout.columnW : "100%" }}>
+              <div
+                className={cn("mx-auto px-6 pt-6 md:px-10", mode === "overview" ? "max-w-[680px]" : "max-w-[1200px]")}
+                style={{ paddingBottom: layout.h - layout.readingY }}
+              >
                 {/* Narrow: the switcher heads the content (wide, it floats
                     under the title). */}
                 {!layout.wide && <div className="flex justify-center pb-4">{switcher}</div>}
                 {mode === "overview"
                   ? DATENRAUM_SECTIONS.map((section) => (
-                      <Section
+                      <SectionView
                         key={section.id}
                         section={section}
+                        lang={lang}
                         lit={lit}
-                        overlays={overlays}
-                        onToggleOverlay={(id) =>
-                          setOverlays((current) => {
-                            const next = new Set(current);
-                            if (!next.delete(id)) next.add(id);
-                            return next;
-                          })
-                        }
+                        // Narrow: segments in the text.
+                        inline={!layout.wide}
+                        images={images}
                         onPick={pick}
                         onUnpick={() => setHovered(null)}
+                        onPassWheel={passWheel}
                         mark={mark}
-                        bleed={bleed}
-                        carouselRef={(el) => {
-                          if (el) carouselRefs.current.set(section.id, el);
-                          else carouselRefs.current.delete(section.id);
-                        }}
                       />
                     ))
                   : DATENRAUM_SECTIONS.map((section) => (
                       <GallerySection
                         key={section.id}
                         section={section}
+                        lang={lang}
+                        images={images}
                         hovered={hovered}
                         onPick={pick}
                         onUnpick={() => setHovered(null)}
                         tile={(el, entry, first) => {
-                          if (el) tileRefs.current.set(el, entry.id);
-                          if (first) mark(`tile:${entry.id}`, el);
+                          if (el) tileRefs.current.set(el, entry?.id ?? null);
+                          if (first && entry) mark(`tile:${entry.id}`, el);
                         }}
                         untile={(el) => tileRefs.current.delete(el)}
                       />
@@ -470,85 +494,74 @@ export function DatenraumView() {
 
       {layout && (
         <div className="pointer-events-none absolute inset-0">
-          {layout.wide ? (
-            // Wide: a soft blur behind the title and switcher, fading out
-            // downwards, over the content only.
-            <div
-              ref={(el) => {
-                topFadeRef.current = el;
-              }}
-              aria-hidden
-              style={{
-                width: layout.dock.x + FADE,
-                height: TOP_ZONE + 36,
-                opacity: 0,
-                maskImage: "linear-gradient(to bottom, #000 45%, transparent)",
-                WebkitMaskImage: "linear-gradient(to bottom, #000 45%, transparent)",
-              }}
-              className="absolute left-0 top-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--surface)_85%,transparent),transparent)] backdrop-blur-md"
-            />
-          ) : (
-            // Narrow: the band the title docks in, solid behind it and the
-            // map below it. Tapped, back to the top.
-            <button
-              type="button"
-              tabIndex={docked ? 0 : -1}
-              aria-label="Nach oben"
-              onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
-              ref={(el) => {
-                topFadeRef.current = el;
-              }}
-              style={{ height: layout.contentTop, opacity: 0, pointerEvents: docked ? "auto" : "none" }}
-              className="no-press absolute inset-x-0 top-0 block border-b border-border header-surface"
+          {sideSegments && (
+            <Segments
+              rect={layout.segment}
+              viewH={layout.h}
+              state={segments}
+              images={images}
+              ui={ui}
+              onPassWheel={passWheel}
+              onLeft={(key) =>
+                setSegments((s) => {
+                  if (s.leaving !== key) return s;
+                  const next = { ...s, leaving: null };
+                  segmentsRef.current = next;
+                  return next;
+                })
+              }
             />
           )}
 
           {layout.wide && (
-            // What scrolls beneath the map's faded edge, blurred.
+            // The corner map: rises into view for the spaces, sinks away
+            // after.
             <div
-              ref={edgeBlurRef}
-              aria-hidden
+              inert={!cornerShown}
               style={{
-                width: FADE,
-                opacity: 0,
-                maskImage: "linear-gradient(to right, transparent, #000)",
-                WebkitMaskImage: "linear-gradient(to right, transparent, #000)",
+                left: layout.corner.x,
+                top: layout.corner.y,
+                width: layout.corner.w,
+                height: layout.corner.h,
+                transform: cornerShown ? "none" : `translateY(${layout.corner.h + EDGE * 2}px)`,
               }}
-              className="absolute inset-y-0 backdrop-blur-sm"
-            />
+              className={cn(
+                "absolute overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-float)] transition-transform duration-500 ease-[var(--ease-spring)]",
+                cornerShown && "pointer-events-auto",
+              )}
+            >
+              <VenueMap
+                className="h-full w-full"
+                floors={COLOSSEUM}
+                floor={floor}
+                onFloorChange={(id) => setFloor(id as Floor)}
+                focus={null}
+                onBackgroundTap={onMapTap}
+                spots={[]}
+                areas={areas}
+                faintAreas={faintAreas}
+                controls={false}
+              />
+              <FloorChips floor={floor} onFloor={setFloor} label={ui.floor} />
+            </div>
           )}
 
+          {/* A soft blur behind the title and switcher, fading out
+              downwards, over the content. */}
           <div
-            ref={mapBoxRef}
-            style={{ pointerEvents: docked ? "auto" : "none" }}
-            className={cn(
-              "absolute overflow-hidden bg-surface",
-              !layout.wide && "border",
-              !layout.wide && docked && "shadow-[var(--shadow-float)]",
-            )}
-          >
-            <VenueMap
-              className="h-full w-full"
-              floors={COLOSSEUM}
-              floor={floor}
-              onFloorChange={(id) => setFloor(id as Floor)}
-              focus={null}
-              onBackgroundTap={onMapTap}
-              spots={overlaySpots}
-              areas={areas}
-              faintAreas={faintAreas}
-              controls={docked}
-              // Clear of the faded edge, once there is one.
-              fitInsetLeft={
-                layout.wide
-                  ? (width) => FADE * clamp01((layout.w - width) / (layout.w - layout.dock.w))
-                  : undefined
-              }
-            />
-            <div ref={veilRef} aria-hidden className="pointer-events-none absolute inset-0 bg-surface" />
-          </div>
+            ref={topFadeRef}
+            aria-hidden
+            style={{
+              width: layout.wide && mode === "overview" ? layout.columnW : layout.w,
+              height: TOP_ZONE + 36,
+              opacity: 0,
+              maskImage: "linear-gradient(to bottom, #000 45%, transparent)",
+              WebkitMaskImage: "linear-gradient(to bottom, #000 45%, transparent)",
+            }}
+            className="absolute left-0 top-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--surface)_85%,transparent),transparent)] backdrop-blur-md"
+          />
 
-          {/* The title: over the map to begin with, then floating at the
+          {/* The title: over the hero to begin with, then floating at the
               top, over the whole page. */}
           <h1
             ref={titleRef}
@@ -559,17 +572,14 @@ export function DatenraumView() {
             <br />
             Event
           </h1>
-          {layout.wide && (
-            // Over the docked title: back to the top.
-            <button
-              type="button"
-              tabIndex={docked ? 0 : -1}
-              aria-label="Nach oben"
-              onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
-              style={{ left: layout.w / 2 - 70, top: TITLE_Y - 26, pointerEvents: docked ? "auto" : "none" }}
-              className="no-press absolute h-[52px] w-[140px]"
-            />
-          )}
+          <button
+            type="button"
+            tabIndex={docked ? 0 : -1}
+            aria-label="↑"
+            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+            style={{ left: layout.w / 2 - 70, top: TITLE_Y - 26, pointerEvents: docked ? "auto" : "none" }}
+            className="no-press absolute h-[52px] w-[140px]"
+          />
 
           {layout.wide && (
             <div
@@ -582,48 +592,38 @@ export function DatenraumView() {
             </div>
           )}
 
-          <div
-            ref={hintRef}
-            aria-hidden
-            className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-[13px] font-medium text-muted"
-          >
-            Scrollen
-            <svg viewBox="0 0 24 24" className="h-5 w-5 animate-bounce" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-
-          {/* Top left, over everything: light or dark. */}
-          <DatenraumThemeToggle className="pointer-events-auto absolute left-4 top-4" />
+          {/* Top left, over everything: light or dark, German or English. */}
+          <DatenraumPrefsControls className="pointer-events-auto absolute left-3 top-3" />
         </div>
       )}
     </div>
   );
 }
 
-function Section({
+// --- the content ----------------------------------------------------------------
+
+function SectionView({
   section,
+  lang,
   lit,
-  overlays,
-  onToggleOverlay,
+  inline,
+  images,
   onPick,
   onUnpick,
+  onPassWheel,
   mark,
-  bleed,
-  carouselRef,
 }: {
   section: DatenraumSection;
+  lang: Lang;
   lit: Lit;
-  overlays: Set<string>;
-  onToggleOverlay: (id: string) => void;
+  inline: boolean;
+  images: Record<string, DatenraumImage>;
   onPick: (entry: DatenraumEntry) => void;
   onUnpick: () => void;
+  onPassWheel: (deltaY: number) => void;
   mark: (key: string, el: HTMLElement | null) => void;
-  // How far past the text column the carousel runs on either side: out to
-  // the page's left edge, and on beneath the map's faded edge.
-  bleed: number;
-  carouselRef: (el: HTMLDivElement | null) => void;
 }) {
+  const ui = UI[lang];
   const sectionLit = lit?.kind === "section" && lit.id === section.id;
   const entryLit = (entry: DatenraumEntry) => sectionLit || (lit?.kind === "entry" && lit.id === entry.id);
   return (
@@ -633,111 +633,352 @@ function Section({
         ref={(el) => mark(`section:${section.id}`, el)}
         className={`${brandFont.className} text-[48px] uppercase leading-[0.95] tracking-tight`}
       >
-        {section.title}
+        {section.title[lang]}
       </h2>
-      {section.intro && <p className="mt-3 text-[17px] leading-relaxed text-foreground/85">{section.intro}</p>}
+      {section.intro && <Blocks blocks={section.intro[lang]} ui={ui} className="mt-3" />}
+      {inline && section.segment && (
+        <InlineSegment segment={section.segment} images={images} ui={ui} onPassWheel={onPassWheel} />
+      )}
 
-      <div className="mt-6 flex flex-col">
-        {section.entries.map((entry, i) => {
-          const newGroup = entry.group && entry.group !== section.entries[i - 1]?.group;
-          return (
-            <Fragment key={entry.id}>
-              {newGroup && (
-                <h3 className="mb-1 mt-6 text-[13px] font-semibold uppercase tracking-wider text-muted first:mt-0">
-                  {entry.group}
-                </h3>
-              )}
-              <div ref={(el) => mark(`entry:${entry.id}`, el)} className="py-3">
-                <button
-                  type="button"
-                  onMouseEnter={() => onPick(entry)}
-                  onMouseLeave={onUnpick}
-                  onFocus={() => onPick(entry)}
-                  onBlur={onUnpick}
-                  onClick={() => onPick(entry)}
-                  className="no-press group block text-left"
-                >
-                  <span
-                    className={cn(
-                      `${brandFont.className} text-[28px] uppercase leading-[1.05] tracking-tight transition-colors`,
-                      entryLit(entry) ? "text-accent" : "group-hover:text-accent",
-                    )}
-                  >
-                    {entry.title}
-                  </span>
-                  {entry.subtitle && <span className="block text-[15px] text-muted">{entry.subtitle}</span>}
-                </button>
-                {entry.body && <p className="mt-1.5 text-[16px] leading-relaxed text-foreground/85">{entry.body}</p>}
-              </div>
-            </Fragment>
-          );
-        })}
-      </div>
-
-      {/* One picture per entry, turned to by hovering its title. */}
-      <div
-        ref={carouselRef}
-        style={{ marginLeft: -bleed, marginRight: -bleed, scrollPaddingLeft: bleed }}
-        className="relative mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {bleed > 0 && <span aria-hidden className="shrink-0" style={{ width: bleed - 12 }} />}
+      <div className="mt-4 flex flex-col">
         {section.entries.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            data-entry={entry.id}
-            onClick={() => onPick(entry)}
-            // Sized to the text column, not the runs past it.
-            style={{ width: `calc((100% - ${bleed * 2}px) * 0.78)` }}
-            className={cn(
-              "no-press relative aspect-[4/3] shrink-0 snap-start overflow-hidden rounded-[var(--radius-lg)] border transition-[border-color,box-shadow] duration-300",
-              entryLit(entry) && !sectionLit ? "border-accent shadow-[0_0_0_2px_var(--accent)]" : "border-border",
-            )}
-          >
-            {entry.picture ? (
-              // eslint-disable-next-line @next/next/no-img-element -- photos of any size, shown at the slide's
-              <img src={entry.picture.src} alt={entry.picture.alt} className="h-full w-full object-cover" />
-            ) : (
-              <PicturePlaceholder title={entry.title} />
-            )}
-          </button>
-        ))}
-        {/* Room for the last picture to come out from under the map. */}
-        {bleed > 0 && <span aria-hidden className="shrink-0" style={{ width: bleed - 12 }} />}
-      </div>
-
-      {section.overlays && section.overlays.length > 0 && (
-        <div className="mt-6 flex flex-wrap gap-2">
-          {section.overlays.map((overlay) => {
-            const on = overlays.has(overlay.id);
-            return (
-              <button
-                key={overlay.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() => onToggleOverlay(overlay.id)}
+          <div key={entry.id} ref={(el) => mark(`entry:${entry.id}`, el)} className="py-4">
+            <button
+              type="button"
+              onMouseEnter={() => onPick(entry)}
+              onMouseLeave={onUnpick}
+              onFocus={() => onPick(entry)}
+              onBlur={onUnpick}
+              onClick={() => onPick(entry)}
+              className="no-press group block text-left"
+            >
+              <span
                 className={cn(
-                  "flex items-center gap-2 rounded-full border px-4 py-2 text-[14px] font-semibold transition-colors",
-                  on
-                    ? "border-accent bg-accent text-accent-contrast"
-                    : "border-border hover:bg-black/[.04] dark:hover:bg-white/[.06]",
+                  `${brandFont.className} text-[28px] uppercase leading-[1.05] tracking-tight transition-colors`,
+                  entryLit(entry) ? "text-accent" : "group-hover:text-accent",
                 )}
               >
-                <OverlayIcon icon={overlay.icon} className="h-[18px] w-[18px]" />
-                {overlay.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+                {entry.title[lang]}
+              </span>
+            </button>
+            <Blocks blocks={entry.body[lang]} ui={ui} className="mt-2" />
+            {inline && entry.segment && (
+              <InlineSegment segment={entry.segment} images={images} ui={ui} onPassWheel={onPassWheel} />
+            )}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
 
-// A section of the picture collection: its pictures in a grid, each one's
-// place lit on the map while it's in view (or hovered).
+function Blocks({ blocks, ui, className }: { blocks: Block[]; ui: Record<string, string>; className?: string }) {
+  return (
+    <div className={cn("flex flex-col gap-2 text-[16px] leading-relaxed text-foreground/85", className)}>
+      {blocks.map((block, i) => {
+        switch (block.kind) {
+          case "p":
+            return <p key={i}>{block.text}</p>;
+          case "heading":
+            return (
+              <h4 key={i} className="mt-2 text-[13px] font-semibold uppercase tracking-wider text-muted">
+                {block.text}
+              </h4>
+            );
+          case "bullets":
+            return (
+              <ul key={i} className="flex list-disc flex-col gap-0.5 pl-5 marker:text-muted">
+                {block.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            );
+          case "ideal":
+            return (
+              <div key={i} className="mt-2">
+                <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">{ui.idealFor}</p>
+                <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                  {block.items.map((item) => (
+                    <li
+                      key={item}
+                      className="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium leading-none tracking-wide text-foreground/80"
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          case "links":
+            return (
+              <div key={i} className="mt-2 flex flex-wrap gap-2">
+                {block.links.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-full border border-border px-4 py-2 text-[14px] font-semibold text-foreground transition-colors hover:bg-black/[.04] dark:hover:bg-white/[.08]"
+                  >
+                    {link.label}
+                    <ExternalIcon className="h-3.5 w-3.5 text-muted" />
+                  </a>
+                ))}
+              </div>
+            );
+        }
+      })}
+    </div>
+  );
+}
+
+// --- segments ---------------------------------------------------------------------
+
+// Beside the text: the current segment, and the one leaving as it comes in.
+// Going down the page the new one rises from below the window and the old
+// one up and out of the top; going back up, the other way round.
+function Segments({
+  rect,
+  viewH,
+  state,
+  images,
+  ui,
+  onPassWheel,
+  onLeft,
+}: {
+  rect: Rect;
+  viewH: number;
+  state: { current: string | null; leaving: string | null; down: boolean };
+  images: Record<string, DatenraumImage>;
+  ui: Record<string, string>;
+  onPassWheel: (deltaY: number) => void;
+  onLeft: (key: string) => void;
+}) {
+  const below = viewH - rect.y + EDGE;
+  const above = -(rect.y + rect.h + EDGE);
+  const motion = {
+    "--from": `${state.down ? below : above}px`,
+    "--to": `${state.down ? above : below}px`,
+  } as CSSProperties;
+  const keys = [state.leaving, state.current].filter((k, i, all): k is string => !!k && all.indexOf(k) === i);
+  return (
+    <div className="absolute" style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
+      {keys.map((key) => {
+        const segment = segmentByKey(key);
+        if (!segment) return null;
+        const leaving = key !== state.current;
+        return (
+          <div
+            key={key}
+            style={motion}
+            onAnimationEnd={leaving ? () => onLeft(key) : undefined}
+            className={cn(
+              "absolute inset-0",
+              leaving ? "datenraum-segment-out pointer-events-none" : "datenraum-segment-in pointer-events-auto",
+            )}
+          >
+            <SegmentView segment={segment} images={images} ui={ui} onPassWheel={onPassWheel} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SegmentView({
+  segment,
+  images,
+  ui,
+  onPassWheel,
+}: {
+  segment: Segment;
+  images: Record<string, DatenraumImage>;
+  ui: Record<string, string>;
+  onPassWheel: (deltaY: number) => void;
+}) {
+  if (segment.kind === "images") return <ImageSlider names={segment.images} images={images} ui={ui} onPassWheel={onPassWheel} />;
+  if (segment.kind === "tour") return <TourCard url={segment.url} ui={ui} />;
+  return <PlanCard />;
+}
+
+// Narrow: a title's segment under its text.
+function InlineSegment(props: {
+  segment: Segment;
+  images: Record<string, DatenraumImage>;
+  ui: Record<string, string>;
+  onPassWheel: (deltaY: number) => void;
+}) {
+  return (
+    <div className="-mx-6 mt-4 aspect-[4/3] md:-mx-10">
+      <SegmentView {...props} />
+    </div>
+  );
+}
+
+// Picture cards in a row, at the segment's height, scrolled sideways: by a
+// swipe or a trackpad's sideways scroll as usual, by dragging with the
+// mouse, and by an ordinary scroll wheel — which, once the row has run out
+// that way, goes on to scroll the page.
+function ImageSlider({
+  names,
+  images,
+  ui,
+  onPassWheel,
+}: {
+  names: string[];
+  images: Record<string, DatenraumImage>;
+  ui: Record<string, string>;
+  onPassWheel: (deltaY: number) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ x: number; left: number; id: number } | null>(null);
+  const passRef = useRef(onPassWheel);
+  useEffect(() => {
+    passRef.current = onPassWheel;
+  });
+
+  useEffect(() => {
+    const row = rowRef.current!;
+    const onWheel = (e: WheelEvent) => {
+      // Sideways already (a trackpad), or a pinch: as the browser does it.
+      if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? row.clientWidth : 1;
+      const dy = e.deltaY * unit;
+      const max = row.scrollWidth - row.clientWidth;
+      const next = Math.min(Math.max(row.scrollLeft + dy, 0), max);
+      if (Math.abs(next - row.scrollLeft) >= 1) row.scrollLeft = next;
+      else passRef.current(dy);
+    };
+    row.addEventListener("wheel", onWheel, { passive: false });
+    return () => row.removeEventListener("wheel", onWheel);
+  }, []);
+
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { x: e.clientX, left: e.currentTarget.scrollLeft, id: e.pointerId };
+  }
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.id !== e.pointerId) return;
+    e.currentTarget.scrollLeft = drag.left - (e.clientX - drag.x);
+  }
+  function onPointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    if (dragRef.current?.id === e.pointerId) dragRef.current = null;
+  }
+
+  return (
+    <div
+      ref={rowRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      className="flex h-full cursor-grab touch-pan-x select-none gap-3 overflow-x-auto overscroll-x-contain px-1 py-1 [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+    >
+      {names.map((name, i) => {
+        const image = images[name];
+        const aspect = image?.width && image?.height ? image.width / image.height : 4 / 3;
+        return (
+          <div
+            key={`${name}-${i}`}
+            style={{ aspectRatio: aspect }}
+            className="relative h-full shrink-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-card)]"
+          >
+            {image ? (
+              // eslint-disable-next-line @next/next/no-img-element -- photos of any size, shown at the card's
+              <img src={image.url} alt="" draggable={false} className="h-full w-full object-cover" />
+            ) : (
+              <PicturePlaceholder name={name} ui={ui} className="h-full w-full" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// A 360° tour, hosted elsewhere, loaded whole into the card — with a way to
+// open it on its own.
+function TourCard({ url, ui }: { url: string; ui: Record<string, string> }) {
+  return (
+    <div className="relative h-full w-full overflow-hidden rounded-[var(--radius-lg)] border border-border bg-black shadow-[var(--shadow-float)]">
+      <iframe
+        src={url}
+        title={ui.tour}
+        loading="lazy"
+        allow="fullscreen; accelerometer; gyroscope; magnetometer; xr-spatial-tracking"
+        allowFullScreen
+        className="h-full w-full border-0"
+      />
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={ui.openTour}
+        title={ui.openTour}
+        className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-border glass-material text-foreground shadow-[var(--shadow-float)]"
+      >
+        <ExternalIcon className="h-4 w-4" />
+      </a>
+    </div>
+  );
+}
+
+// The floor plans as on the Events page: three floors, dragged and zoomed.
+function PlanCard() {
+  const [floor, setFloor] = useState<Floor>("eg");
+  return (
+    <div className="h-full w-full overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-float)]">
+      <VenueMap
+        className="h-full w-full"
+        floors={COLOSSEUM}
+        floor={floor}
+        onFloorChange={(id) => setFloor(id as Floor)}
+        focus={null}
+        spots={[]}
+      />
+    </div>
+  );
+}
+
+// The corner map's floors, small (its own buttons are hidden, too big for
+// the card).
+function FloorChips({ floor, onFloor, label }: { floor: Floor; onFloor: (floor: Floor) => void; label: string }) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="absolute bottom-2 right-2 z-20 flex overflow-hidden rounded-full border border-border glass-material text-[12px] font-semibold shadow-[var(--shadow-float)]"
+    >
+      {[...COLOSSEUM].reverse().map((f) => (
+        <button
+          key={f.id}
+          type="button"
+          aria-pressed={f.id === floor}
+          aria-label={f.name}
+          title={f.name}
+          onClick={() => onFloor(f.id as Floor)}
+          className={cn(
+            "no-press px-2.5 py-1 transition-colors",
+            f.id === floor ? "bg-accent text-accent-contrast" : "text-foreground hover:bg-black/[.04] dark:hover:bg-white/[.08]",
+          )}
+        >
+          {f.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// --- the collection -------------------------------------------------------------
+
 function GallerySection({
   section,
+  lang,
+  images,
   hovered,
   onPick,
   onUnpick,
@@ -745,48 +986,54 @@ function GallerySection({
   untile,
 }: {
   section: DatenraumSection;
+  lang: Lang;
+  images: Record<string, DatenraumImage>;
   hovered: string | null;
   onPick: (entry: DatenraumEntry) => void;
   onUnpick: () => void;
-  tile: (el: HTMLElement | null, entry: DatenraumEntry, first: boolean) => void;
+  tile: (el: HTMLElement | null, entry: DatenraumEntry | null, first: boolean) => void;
   untile: (el: HTMLElement) => void;
 }) {
+  const ui = UI[lang];
   const items = galleryOf(section);
+  if (items.length === 0) return null;
   return (
     <section aria-labelledby={`${section.id}-gallery`} className="pb-10 pt-4">
       <h2 id={`${section.id}-gallery`} className={`${brandFont.className} mb-3 text-[30px] uppercase leading-none tracking-tight`}>
-        {section.title}
+        {section.title[lang]}
       </h2>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
         {items.map((item, i) => {
-          const first = items.findIndex((other) => other.entry.id === item.entry.id) === i;
+          const first = items.findIndex((other) => other.entry === item.entry) === i;
+          const image = images[item.name];
           return (
-            <button
-              key={item.key}
-              type="button"
-              ref={(el) => {
-                if (el) tile(el, item.entry, first);
-                return () => {
-                  untile(el!);
-                  if (first) tile(null, item.entry, true);
-                };
-              }}
-              onMouseEnter={() => onPick(item.entry)}
-              onMouseLeave={onUnpick}
-              onFocus={() => onPick(item.entry)}
-              onBlur={onUnpick}
-              className={cn(
-                "no-press relative aspect-[4/3] overflow-hidden rounded-[var(--radius-md)] border text-left transition-[border-color,box-shadow] duration-300",
-                hovered === item.entry.id ? "border-accent shadow-[0_0_0_2px_var(--accent)]" : "border-border",
+            <figure key={item.key} className="min-w-0">
+              <div
+                ref={(el) => {
+                  if (el) tile(el, item.entry, first);
+                  return () => {
+                    if (el) untile(el);
+                    if (first) tile(null, item.entry, true);
+                  };
+                }}
+                onMouseEnter={item.entry ? () => onPick(item.entry!) : undefined}
+                onMouseLeave={onUnpick}
+                className={cn(
+                  "relative aspect-[4/3] overflow-hidden rounded-[var(--radius-md)] border transition-[border-color,box-shadow] duration-300",
+                  item.entry && hovered === item.entry.id ? "border-accent shadow-[0_0_0_2px_var(--accent)]" : "border-border",
+                )}
+              >
+                {image ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- photos of any size, cropped to the tile
+                  <img src={image.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+                ) : (
+                  <PicturePlaceholder name={item.name} ui={ui} className="h-full w-full" small />
+                )}
+              </div>
+              {item.entry && (
+                <figcaption className="mt-1 truncate text-[12px] text-muted">{item.entry.title[lang]}</figcaption>
               )}
-            >
-              {item.picture ? (
-                // eslint-disable-next-line @next/next/no-img-element -- photos of any size, cropped to the tile
-                <img src={item.picture.src} alt={item.picture.alt} loading="lazy" className="h-full w-full object-cover" />
-              ) : (
-                <PicturePlaceholder title={item.entry.title} small />
-              )}
-            </button>
+            </figure>
           );
         })}
       </div>
@@ -794,40 +1041,42 @@ function GallerySection({
   );
 }
 
-// Until there's a photo: a soft tile with the entry's name.
-function PicturePlaceholder({ title, small = false }: { title: string; small?: boolean }) {
+// Until its photo's uploaded: a soft tile saying which picture goes here.
+function PicturePlaceholder({
+  name,
+  ui,
+  className,
+  small = false,
+}: {
+  name: string;
+  ui: Record<string, string>;
+  className?: string;
+  small?: boolean;
+}) {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--accent)_14%,var(--surface)),color-mix(in_srgb,var(--accent)_4%,var(--surface)))] px-2 text-center text-muted">
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--accent)_16%,var(--surface)),color-mix(in_srgb,var(--accent)_4%,var(--surface)))] text-muted",
+        className,
+      )}
+    >
       <svg viewBox="0 0 24 24" className={small ? "h-6 w-6" : "h-8 w-8"} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
         <rect x="3" y="5" width="18" height="14" rx="2" />
         <circle cx="9" cy="10" r="1.6" />
         <path d="m21 16-5-5-8 8" strokeLinejoin="round" />
       </svg>
-      <span className={cn("font-medium", small ? "text-[12px]" : "text-[14px]")}>{title}</span>
+      <span className={cn("font-medium tabular-nums", small ? "text-[12px]" : "text-[14px]")}>
+        {ui.picture} {name}
+      </span>
     </div>
   );
 }
 
-function OverlayIcon({ icon, className }: { icon: DatenraumOverlay["icon"]; className?: string }) {
-  if (icon === "wheelchair") return <WheelchairIcon className={className} />;
+function ExternalIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
-      <path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" />
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
     </svg>
-  );
-}
-
-// An overlay's place on the map: its symbol in a round badge.
-function OverlayMarker({ overlay }: { overlay: DatenraumOverlay }) {
-  return (
-    <span
-      role="img"
-      aria-label={overlay.label}
-      title={overlay.label}
-      className="pop-in absolute left-0 top-0 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-[0_0_0_3px_var(--surface),0_2px_6px_var(--shadow-ambient-strong)]"
-    >
-      <OverlayIcon icon={overlay.icon} className="h-[18px] w-[18px]" />
-    </span>
   );
 }
 
