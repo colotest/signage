@@ -50,9 +50,11 @@ const TOP_ZONE = 128;
 // Wide: how much of the width the content takes; segments have the rest.
 const SEGMENT_SPLIT = 0.6;
 const EDGE = 20;
-// Wide: how far the segments reach back over the content, fading in (and
-// blurring what's beneath) across it — the pictures run on under it.
-const FADE = 96;
+// Wide: where the segments' pictures start, as a share of the content's
+// width — deep behind the text, which floats over them as they fade in,
+// blurred and dimmed as under the title, towards the column's edge (where
+// the map and tour cards start).
+const SEGMENT_DEEP = 0.4;
 // The text column's widest, and its side padding (md:px-10), wide.
 const COLUMN_MAX = 680;
 const COLUMN_PAD = 40;
@@ -80,6 +82,9 @@ type Layout = {
   readingY: number;
   bigTitlePx: number;
   segment: Rect;
+  // How far in from the segments' left edge the map and tour cards start:
+  // the column's edge.
+  cardLeadIn: number;
   corner: Rect;
 };
 
@@ -87,8 +92,8 @@ function layoutFor(w: number, h: number): Layout {
   const wide = w >= WIDE_PX;
   const columnW = wide ? Math.round(w * SEGMENT_SPLIT) : w;
   // The segments: from below the strip the title floats in down to the
-  // bottom, and from where they fade in over the content to the right edge.
-  const segX = columnW - FADE;
+  // bottom, and from deep behind the text to the right edge.
+  const segX = Math.round(columnW * SEGMENT_DEEP);
   // The corner map: as wide as the text, in line with it.
   const textX = (columnW - Math.min(COLUMN_MAX, columnW)) / 2 + COLUMN_PAD;
   const cornerW = Math.min(COLUMN_MAX, columnW) - COLUMN_PAD * 2;
@@ -102,6 +107,7 @@ function layoutFor(w: number, h: number): Layout {
     readingY: TOP_ZONE + (h - TOP_ZONE) * READING_LINE,
     bigTitlePx: Math.max(48, Math.min(w * 0.14, h * 0.2, 200)),
     segment: { x: segX, y: TOP_ZONE, w: w - EDGE - segX, h: h - EDGE - TOP_ZONE },
+    cardLeadIn: columnW - segX,
     corner: { x: textX, y: h - EDGE - cornerH, w: cornerW, h: cornerH },
   };
 }
@@ -443,11 +449,53 @@ export function DatenraumView({
     // Fills the page's scroll area edge to edge (undoing its padding): the
     // content scrolls in its own box, under the stage.
     <div ref={rootRef} className="relative -mx-5 -my-6 h-[calc(100%+3rem)] overflow-hidden bg-surface">
-      <div ref={scrollRef} className="absolute inset-0 overflow-y-auto overscroll-contain">
+      {layout && sideSegments && (
+        // Beneath the content: the segments, their pictures reaching back
+        // behind the text, which floats over them — fading in, blurred and
+        // dimmed towards the column's edge, as content does under the title.
+        <div className="pointer-events-none absolute inset-0">
+          <Segments
+            rect={layout.segment}
+            cardLeadIn={layout.cardLeadIn}
+            viewH={layout.h}
+            state={segments}
+            images={images}
+            pins={pins}
+            lang={lang}
+            ui={ui}
+            onPassWheel={passWheel}
+            onLeft={(key) =>
+              setSegments((s) => {
+                if (s.leaving !== key) return s;
+                const next = { ...s, leaving: null };
+                segmentsRef.current = next;
+                return next;
+              })
+            }
+          />
+          <div
+            aria-hidden
+            style={{
+              left: layout.segment.x,
+              top: layout.segment.y,
+              width: layout.cardLeadIn,
+              height: layout.segment.h,
+              opacity: segments.current ? 1 : 0,
+              maskImage: "linear-gradient(to right, #000 25%, transparent)",
+              WebkitMaskImage: "linear-gradient(to right, #000 25%, transparent)",
+            }}
+            className="absolute bg-[linear-gradient(to_right,color-mix(in_srgb,var(--surface)_80%,transparent),transparent)] backdrop-blur-md transition-opacity duration-500"
+          />
+        </div>
+      )}
+
+      {/* Only what's in it takes clicks, so the segments beneath stay in
+          reach wherever the text doesn't cover them. */}
+      <div ref={scrollRef} className="pointer-events-none absolute inset-0 overflow-y-auto overscroll-contain">
         {layout && (
           <>
             {/* The hero: the picture behind the title, scrolling away. */}
-            <div className="relative overflow-hidden" style={{ height: layout.h }}>
+            <div className="pointer-events-auto relative overflow-hidden" style={{ height: layout.h }}>
               {hero ? (
                 // eslint-disable-next-line @next/next/no-img-element -- one large photo, cropped to the window
                 <img src={hero.url} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -470,7 +518,7 @@ export function DatenraumView({
               </div>
             </div>
 
-            <div style={{ width: mode === "overview" ? layout.columnW : "100%" }}>
+            <div className="pointer-events-auto" style={{ width: mode === "overview" ? layout.columnW : "100%" }}>
               <div
                 className={cn("mx-auto px-6 pt-6 md:px-10", mode === "overview" ? "max-w-[680px]" : "max-w-[1200px]")}
                 // At least a window's worth, so the title can always dock
@@ -508,43 +556,6 @@ export function DatenraumView({
 
       {layout && (
         <div className="pointer-events-none absolute inset-0">
-          {sideSegments && (
-            // What scrolls beneath the segments' faded edge, blurred.
-            <div
-              aria-hidden
-              style={{
-                left: layout.segment.x,
-                top: layout.segment.y,
-                height: layout.segment.h,
-                width: FADE,
-                opacity: segments.current ? 1 : 0,
-                maskImage: "linear-gradient(to right, transparent, #000)",
-                WebkitMaskImage: "linear-gradient(to right, transparent, #000)",
-              }}
-              className="absolute backdrop-blur-sm transition-opacity duration-500"
-            />
-          )}
-          {sideSegments && (
-            <Segments
-              rect={layout.segment}
-              viewH={layout.h}
-              state={segments}
-              images={images}
-              pins={pins}
-              lang={lang}
-              ui={ui}
-              onPassWheel={passWheel}
-              onLeft={(key) =>
-                setSegments((s) => {
-                  if (s.leaving !== key) return s;
-                  const next = { ...s, leaving: null };
-                  segmentsRef.current = next;
-                  return next;
-                })
-              }
-            />
-          )}
-
           {layout.wide && (
             // The corner map: rises into view for the spaces, sinks away
             // after.
@@ -587,7 +598,7 @@ export function DatenraumView({
             ref={topFadeRef}
             aria-hidden
             style={{
-              width: layout.wide && mode === "overview" ? layout.columnW : layout.w,
+              width: layout.w,
               height: TOP_ZONE + 36,
               opacity: 0,
               maskImage: "linear-gradient(to bottom, #000 45%, transparent)",
@@ -784,6 +795,7 @@ function Blocks({ blocks, ui, className }: { blocks: Block[]; ui: Record<string,
 // one up and out of the top; going back up, the other way round.
 function Segments({
   rect,
+  cardLeadIn,
   viewH,
   state,
   images,
@@ -794,6 +806,7 @@ function Segments({
   onLeft,
 }: {
   rect: Rect;
+  cardLeadIn: number;
   viewH: number;
   state: { current: string | null; leaving: string | null; down: boolean };
   images: Record<string, DatenraumImage>;
@@ -810,7 +823,7 @@ function Segments({
     "--to": `${state.down ? above : below}px`,
   } as CSSProperties;
   const keys = [state.leaving, state.current].filter((k, i, all): k is string => !!k && all.indexOf(k) === i);
-  const fade = "linear-gradient(to right, transparent, #000 " + FADE + "px)";
+  const fade = "linear-gradient(to right, transparent, #000 " + cardLeadIn + "px)";
   return (
     <div
       className="absolute"
@@ -837,7 +850,8 @@ function Segments({
               lang={lang}
               ui={ui}
               onPassWheel={onPassWheel}
-              leadIn={FADE}
+              // Pictures from the far edge, the cards from the column's.
+              leadIn={segment.kind === "images" ? 0 : cardLeadIn}
             />
           </div>
         );

@@ -205,7 +205,7 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
       {
         id: "foyer-saal-1",
         title: { de: "Foyer + Saal 1", en: "Foyer + Screen 1" },
-        segment: images(...range(17, 28)),
+        segment: images(...range(24, 28)),
         // PLACEHOLDER: the way in from the Schönhauser Allee, and Kino 1.
         places: [area("S"), KINO_1],
         body: {
@@ -253,30 +253,6 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
     id: "werbeflaechen",
     title: { de: "Werbeflächen", en: "Advertising" },
     entries: [
-      {
-        id: "feste-anzeigemonitore",
-        title: { de: "Feste Anzeigemonitore", en: "Fixed display screens" },
-        segment: tour(`${TOUR_BASE}#media-name=IMG_5146-A-EG-Wagenhalle_005&yaw=61.79&pitch=-2.04&fov=124.00`),
-        body: {
-          de: [p("Screens vor jedem Saal,"), p("42 Zoll (106 cm) · hochkant · 9:16 — ideal 1080 × 1920 px")],
-          en: [p("Screens in front of every cinema,"), p("42 inch (106 cm) · portrait · 9:16 — ideally 1080 × 1920 px")],
-        },
-      },
-      {
-        id: "mobile-monitore",
-        title: { de: "Mobile 4K Monitore", en: "Mobile 4K screens" },
-        segment: images(30),
-        body: {
-          de: [
-            p("Screens auf beweglichen Ständern, flexibel platzierbar & ausrichtbar."),
-            p("60 Zoll (152 cm) · quer/hochkant · 16:9/9:16 — ideal 3840 × 2160 px (4K)"),
-          ],
-          en: [
-            p("Screens on movable stands, flexible to place and to turn."),
-            p("60 inch (152 cm) · landscape/portrait · 16:9/9:16 — ideally 3840 × 2160 px (4K)"),
-          ],
-        },
-      },
       {
         id: "folierung-gleimstrasse",
         title: { de: "Folierung Gleimstr.", en: "Window film, Gleimstraße" },
@@ -348,6 +324,25 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
         },
       },
       {
+        id: "posterkaesten",
+        title: { de: "Posterkästen Fassade", en: "Poster cases, façade" },
+        segment: tour(`${TOUR_BASE}#media-name=IMG_5050-A-EG-Außen_01&yaw=300.00&pitch=0.00&fov=84.00`),
+        body: {
+          de: [
+            h("Eingang Gleimstr."),
+            ul("Jedes Poster A1 (12 Stk.)", "Nutzung und Montage aller Poster: 70 €"),
+            h("Ecke Schönhauser/Gleimstr."),
+            ul("Fläche muss gesondert angefragt werden.", "Jedes Poster A1 (12 Stk.)"),
+          ],
+          en: [
+            h("Gleimstraße entrance"),
+            ul("Each poster A1 (12 pcs)", "Use and mounting of all posters: €70"),
+            h("Corner of Schönhauser Allee and Gleimstraße"),
+            ul("Available on separate request.", "Each poster A1 (12 pcs)"),
+          ],
+        },
+      },
+      {
         id: "banner-wagenhalle",
         title: { de: "Banner Wagenhalle/Bar", en: "Banner, Wagenhalle/bar" },
         segment: images(32),
@@ -366,21 +361,26 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
         },
       },
       {
-        id: "posterkaesten",
-        title: { de: "Posterkästen Fassade", en: "Poster cases, façade" },
-        segment: tour(`${TOUR_BASE}#media-name=IMG_5050-A-EG-Außen_01&yaw=300.00&pitch=0.00&fov=84.00`),
+        id: "feste-anzeigemonitore",
+        title: { de: "Feste Anzeigemonitore", en: "Fixed display screens" },
+        segment: tour(`${TOUR_BASE}#media-name=IMG_5146-A-EG-Wagenhalle_005&yaw=61.79&pitch=-2.04&fov=124.00`),
+        body: {
+          de: [p("Screens vor jedem Saal,"), p("42 Zoll (106 cm) · hochkant · 9:16 — ideal 1080 × 1920 px")],
+          en: [p("Screens in front of every cinema,"), p("42 inch (106 cm) · portrait · 9:16 — ideally 1080 × 1920 px")],
+        },
+      },
+      {
+        id: "mobile-monitore",
+        title: { de: "Mobile 4K Monitore", en: "Mobile 4K screens" },
+        segment: images(30),
         body: {
           de: [
-            h("Eingang Gleimstr."),
-            ul("Jedes Poster A1 (12 Stk.)", "Nutzung und Montage aller Poster: 70 €"),
-            h("Ecke Schönhauser/Gleimstr."),
-            ul("Fläche muss gesondert angefragt werden.", "Jedes Poster A1 (12 Stk.)"),
+            p("Screens auf beweglichen Ständern, flexibel platzierbar & ausrichtbar."),
+            p("60 Zoll (152 cm) · quer/hochkant · 16:9/9:16 — ideal 3840 × 2160 px (4K)"),
           ],
           en: [
-            h("Gleimstraße entrance"),
-            ul("Each poster A1 (12 pcs)", "Use and mounting of all posters: €70"),
-            h("Corner of Schönhauser Allee and Gleimstraße"),
-            ul("Available on separate request.", "Each poster A1 (12 pcs)"),
+            p("Screens on movable stands, flexible to place and to turn."),
+            p("60 inch (152 cm) · landscape/portrait · 16:9/9:16 — ideally 3840 × 2160 px (4K)"),
           ],
         },
       },
