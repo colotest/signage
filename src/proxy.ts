@@ -12,9 +12,10 @@ import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth/session";
 // folder's upload link, whose token is checked by the page and its actions.
 // /forgot, /reset/* and /confirm-email/* too: forgetting a password, or
 // opening an emailed link on a device that isn't signed in.
-// /datenraum is the venue for guests, open to anyone (said any which way:
-// /Datenraum and the old /guest lead there too), with /venues/*, the floor
-// plans its map draws.
+// /datenraum is not: it's for signed-in people only (said any which way:
+// /Datenraum and the old /guest lead there too, then through the same gate).
+// /venues/*, the floor plans, stay open: they're static files, also drawn
+// by the Events page's maps.
 // And /tv.apk, the Fire TV app, fetched by a stick's Downloader with no
 // session (see android/), and /email/*, what emails load from the site
 // (the brand font) — a mail app has no session either.
@@ -22,13 +23,10 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const lower = pathname.toLowerCase();
-  if (lower === "/datenraum" || lower === "/guest") {
-    if (pathname !== "/datenraum") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/datenraum";
-      return NextResponse.redirect(url);
-    }
-    return NextResponse.next();
+  if ((lower === "/datenraum" || lower === "/guest") && pathname !== "/datenraum") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/datenraum";
+    return NextResponse.redirect(url);
   }
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;

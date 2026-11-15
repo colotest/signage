@@ -7,7 +7,6 @@ import {
   DATENRAUM_THEME_COOKIE,
   type DatenraumThemeName,
 } from "@/lib/datenraumPrefs";
-import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 
 type Prefs = {
@@ -28,7 +27,6 @@ export const UI: Record<Lang, Record<string, string>> = {
     gallery: "Bildersammlung",
     view: "Ansicht",
     scroll: "Scrollen",
-    signIn: "Anmelden",
     idealFor: "Ideal für",
     toLight: "Helle Darstellung",
     toDark: "Dunkle Darstellung",
@@ -43,7 +41,6 @@ export const UI: Record<Lang, Record<string, string>> = {
     gallery: "Gallery",
     view: "View",
     scroll: "Scroll",
-    signIn: "Sign in",
     idealFor: "Ideal for",
     toLight: "Light appearance",
     toDark: "Dark appearance",
@@ -192,15 +189,5 @@ export function DatenraumPrefsControls({
       </div>
       )}
     </div>
-  );
-}
-
-// The header for whoever isn't signed in: the brand, and a way to sign in.
-export function DatenraumSignIn({ className }: { className?: string }) {
-  const { lang } = useDatenraumPrefs();
-  return (
-    <Link href="/login" className={className}>
-      {UI[lang].signIn}
-    </Link>
   );
 }

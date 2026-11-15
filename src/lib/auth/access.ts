@@ -122,7 +122,7 @@ export function canSeeGroup(access: Access, groupId: string) {
 }
 
 // Where someone lands after logging in: the first page they can reach, or
-// the Datenraum (open to everyone) when they can't reach any.
+// the Datenraum (every signed-in user may see it) when they can't reach any.
 export function landingPath(access: Access) {
   return PAGES.find((page) => access.pages[page.key])?.href ?? "/datenraum";
 }
