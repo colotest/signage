@@ -41,6 +41,10 @@ import { MapNotePin } from "./MapNotePin";
 // (Compacta, uppercase, tracking-tight).
 const TITLE_PX = 52;
 const TITLE_WIDTH_PER_PX = 4.8;
+// Narrow: on two lines again ("COLOSSEUM" / "EVENT"), the longer this wide
+// per pixel; and the line height (leading-[0.86]).
+const TITLE_LINE_WIDTH_PER_PX = 3.13;
+const TITLE_LEADING = 0.86;
 // The light/dark and language buttons in the top left corner, as far as
 // they reach in: on a narrow screen the title fits beside them.
 const CONTROLS_W = 140;
@@ -52,9 +56,6 @@ const WIDE_PX = 768;
 const TITLE_Y = 38;
 const SWITCHER_Y = 94;
 const TOP_ZONE = 128;
-// Narrow: the strip the title alone floats in (the switcher heads the
-// content instead).
-const NARROW_TOP_ZONE = 96;
 // Wide: how much of the width the content takes; segments have the rest.
 const SEGMENT_SPLIT = 0.6;
 const EDGE = 20;
@@ -490,15 +491,22 @@ export function DatenraumView({
   );
 
   const sideSegments = !!layout?.wide && mode === "overview";
+  // The title: one line over the middle of the page — or, on a narrow
+  // screen, two beside the corner's buttons, level with their top (smaller
+  // only if it has to be to fit there).
   const title = (() => {
     if (!layout || layout.wide) {
       const w = layout?.w ?? 0;
-      return { px: TITLE_PX, x: w / 2, w: TITLE_PX * TITLE_WIDTH_PER_PX };
+      return { px: TITLE_PX, lines: 1, x: w / 2, y: TITLE_Y, w: TITLE_PX * TITLE_WIDTH_PER_PX, h: TITLE_PX * TITLE_LEADING };
     }
     const room = layout.w - CONTROLS_W - 24;
-    const px = Math.min(TITLE_PX, room / TITLE_WIDTH_PER_PX);
-    return { px, x: CONTROLS_W + 12 + room / 2, w: px * TITLE_WIDTH_PER_PX };
+    const px = Math.min(TITLE_PX, room / TITLE_LINE_WIDTH_PER_PX);
+    const h = 2 * px * TITLE_LEADING;
+    return { px, lines: 2, x: CONTROLS_W + 12 + room / 2, y: 12 + h / 2, w: px * TITLE_LINE_WIDTH_PER_PX, h };
   })();
+  // Narrow: the strip the title floats in (the switcher heads the content
+  // instead), down to a little below it.
+  const narrowTop = Math.round(title.y + title.h / 2 + 16);
 
   return (
     // Fills the page's scroll area edge to edge (undoing its padding): the
@@ -557,7 +565,7 @@ export function DatenraumView({
                 className={cn("mx-auto px-6 pt-6 md:px-10", mode === "overview" ? "max-w-[680px]" : "max-w-[1200px]")}
                 // Below the strip the title floats in; to the end, far enough
                 // for the last title to reach the reading line.
-                style={{ paddingTop: layout.wide ? TOP_ZONE : NARROW_TOP_ZONE, paddingBottom: layout.h - layout.readingY }}
+                style={{ paddingTop: layout.wide ? TOP_ZONE : narrowTop, paddingBottom: layout.h - layout.readingY }}
               >
                 {/* Narrow: the switcher heads the content (wide, it floats
                     under the title). */}
@@ -632,7 +640,7 @@ export function DatenraumView({
             aria-hidden
             style={{
               width: layout.w,
-              height: layout.wide ? TOP_ZONE + 36 : NARROW_TOP_ZONE,
+              height: layout.wide ? TOP_ZONE + 36 : narrowTop,
               maskImage: "linear-gradient(to bottom, #000 45%, transparent)",
               WebkitMaskImage: "linear-gradient(to bottom, #000 45%, transparent)",
             }}
@@ -643,16 +651,24 @@ export function DatenraumView({
               the page, or on a narrow screen beside the corner's buttons,
               smaller if it has to be to fit there. */}
           <h1
-            style={{ fontSize: title.px, left: title.x, top: TITLE_Y }}
+            style={{ fontSize: title.px, left: title.x, top: title.y }}
             className={`${brandFont.className} absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center uppercase leading-[0.86] tracking-tight text-foreground`}
           >
-            Colosseum Event
+            {title.lines === 2 ? (
+              <>
+                Colosseum
+                <br />
+                Event
+              </>
+            ) : (
+              "Colosseum Event"
+            )}
           </h1>
           <button
             type="button"
             aria-label="↑"
             onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
-            style={{ left: title.x - title.w / 2, top: TITLE_Y - title.px / 2, width: title.w, height: title.px }}
+            style={{ left: title.x - title.w / 2, top: title.y - title.h / 2, width: title.w, height: title.h }}
             className="no-press pointer-events-auto absolute"
           />
 
