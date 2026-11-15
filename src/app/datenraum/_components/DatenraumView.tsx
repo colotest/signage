@@ -918,7 +918,11 @@ function InlineSegment(props: SegmentProps) {
 // Picture cards in a row, at the segment's height, scrolled sideways: by a
 // swipe or a trackpad's sideways scroll as usual, by dragging with the
 // mouse, and by an ordinary scroll wheel — which, once the row has run out
-// that way, goes on to scroll the page.
+// that way, goes on to scroll the page. The first picture starts out with
+// its right edge on the row's: one narrower than the row would otherwise
+// sit back in the fade behind the text, so the row leads in with the
+// difference.
+const ROW_PAD = 4; // px-1
 function ImageSlider({
   names,
   images,
@@ -933,7 +937,23 @@ function ImageSlider({
   leadIn?: number;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
+  const firstRef = useRef<HTMLDivElement>(null);
+  const [lead, setLead] = useState(leadIn);
   const dragRef = useRef<{ x: number; left: number; id: number } | null>(null);
+
+  // The lead-in: the row's width less the first picture's, so its right
+  // edge meets the row's (EDGE in from the window's), measured whenever
+  // either changes size.
+  useLayoutEffect(() => {
+    const row = rowRef.current, first = firstRef.current;
+    if (!row || !first) return;
+    const measure = () => setLead(Math.max(leadIn, ROW_PAD, row.clientWidth - first.offsetWidth));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(row);
+    ro.observe(first);
+    return () => ro.disconnect();
+  }, [leadIn]);
   const passRef = useRef(onPassWheel);
   useEffect(() => {
     passRef.current = onPassWheel;
@@ -977,7 +997,7 @@ function ImageSlider({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      style={leadIn ? { paddingLeft: leadIn } : undefined}
+      style={{ paddingLeft: lead }}
       className="flex h-full cursor-grab touch-pan-x select-none gap-3 overflow-x-auto overscroll-x-contain px-1 py-1 [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
       {names.map((name, i) => {
@@ -986,6 +1006,7 @@ function ImageSlider({
         return (
           <div
             key={`${name}-${i}`}
+            ref={i === 0 ? firstRef : undefined}
             style={{ aspectRatio: aspect }}
             className="relative h-full shrink-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-card)]"
           >
