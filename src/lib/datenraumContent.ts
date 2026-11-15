@@ -25,10 +25,10 @@ export type Block =
 // Location folder (see datenraumMedia) — shown as they arrive, a
 // placeholder until then.
 // A map's pins, from the Events page's maps (see datenraumGallery): the
-// power connections.
+// power connections, or the step-free ways in.
 export type Segment =
   | { kind: "images"; images: string[] }
-  | { kind: "map"; pins?: "power" }
+  | { kind: "map"; pins?: "power" | "access" }
   | { kind: "tour"; url: string };
 
 export type DatenraumPlace = { floor: Floor; points: AreaPoint[] };
@@ -405,6 +405,8 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
     id: "lage",
     title: { de: "Lage", en: "Location" },
     bottomMap: true,
+    // Beside the whole section: the map, with the step-free ways in.
+    segment: { kind: "map", pins: "access" },
     intro: {
       de: [p(`Perfekt angebunden an den kulturreichen Kiez im Herzen von Berlin. ${LOREM}`)],
       en: [p(`Perfectly connected to the culturally rich neighbourhood in the heart of Berlin. ${LOREM}`)],

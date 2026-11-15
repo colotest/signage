@@ -68,6 +68,12 @@ const READING_LINE = 0.38;
 // A scroll to something picked on the map is over once the page has been
 // still this long; until then, what it passes doesn't light up.
 const SEEK_SETTLE_MS = 250;
+// The small map in the bottom left, lighting up the spaces being read about
+// — set aside for now; true brings it back.
+const SHOW_CORNER_MAP = false;
+// How far the switcher has faded in under the docking title before it
+// takes clicks: as soon as it can be seen to be there.
+const SWITCHER_LIVE = 0.15;
 
 type Mode = "overview" | "gallery";
 type Rect = { x: number; y: number; w: number; h: number };
@@ -232,6 +238,9 @@ export function DatenraumView({
   const [layout, setLayout] = useState<Layout | null>(null);
   const layoutRef = useRef<Layout | null>(null);
   const [docked, setDocked] = useState(false);
+  // Whether the switcher's shown enough to take clicks.
+  const [switcherLive, setSwitcherLive] = useState(false);
+  const switcherLiveRef = useRef(false);
   const dockedRef = useRef(false);
   const [mode, setMode] = useState<Mode>("overview");
   const modeRef = useRef<Mode>("overview");
@@ -334,6 +343,11 @@ export function DatenraumView({
     const late = clamp01((t - 0.6) / 0.4);
     if (topFadeRef.current) topFadeRef.current.style.opacity = String(late);
     if (switcherRef.current) switcherRef.current.style.opacity = String(late);
+    const live = late >= SWITCHER_LIVE;
+    if (live !== switcherLiveRef.current) {
+      switcherLiveRef.current = live;
+      setSwitcherLive(live);
+    }
     if (hintRef.current) hintRef.current.style.opacity = String(Math.max(0, 1 - p * 4));
     const nowDocked = p >= 0.999;
     if (nowDocked !== dockedRef.current) {
@@ -397,7 +411,7 @@ export function DatenraumView({
   // The corner map: shown for what's being read, lighting up what's lit —
   // every other place on this floor faintly, to show it can be tapped —
   // with the section's pins, if it has any.
-  const cornerShown = !!layout?.wide && cornerMapFor(viewed);
+  const cornerShown = SHOW_CORNER_MAP && !!layout?.wide && cornerMapFor(viewed);
   const viewedSection =
     viewed?.kind === "section" ? sectionById.get(viewed.id) : viewed?.kind === "entry" ? sectionOfEntry.get(viewed.id) : undefined;
   const cornerSpots =
@@ -556,7 +570,7 @@ export function DatenraumView({
 
       {layout && (
         <div className="pointer-events-none absolute inset-0">
-          {layout.wide && (
+          {SHOW_CORNER_MAP && layout.wide && (
             // The corner map: rises into view for the spaces, sinks away
             // after.
             <div
@@ -630,8 +644,8 @@ export function DatenraumView({
           {layout.wide && (
             <div
               ref={switcherRef}
-              inert={!docked}
-              style={{ top: SWITCHER_Y, opacity: 0, pointerEvents: docked ? "auto" : "none" }}
+              inert={!switcherLive}
+              style={{ top: SWITCHER_Y, opacity: 0, pointerEvents: switcherLive ? "auto" : "none" }}
               className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2"
             >
               {switcher}
@@ -880,7 +894,7 @@ function SegmentView({ segment, images, pins, lang, ui, onPassWheel, leadIn = 0 
       {segment.kind === "tour" ? (
         <TourCard url={segment.url} ui={ui} />
       ) : (
-        <PlanCard pins={segment.pins === "power" ? pins.power : []} lang={lang} />
+        <PlanCard pins={segment.pins ? pins[segment.pins] : []} lang={lang} />
       )}
     </div>
   );
