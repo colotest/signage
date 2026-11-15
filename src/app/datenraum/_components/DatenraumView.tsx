@@ -86,8 +86,8 @@ type Layout = {
 function layoutFor(w: number, h: number): Layout {
   const wide = w >= WIDE_PX;
   const columnW = wide ? Math.round(w * SEGMENT_SPLIT) : w;
-  // The segments: the full height, from where they fade in over the
-  // content to the right edge.
+  // The segments: from below the strip the title floats in down to the
+  // bottom, and from where they fade in over the content to the right edge.
   const segX = columnW - FADE;
   // The corner map: as wide as the text, in line with it.
   const textX = (columnW - Math.min(COLUMN_MAX, columnW)) / 2 + COLUMN_PAD;
@@ -101,7 +101,7 @@ function layoutFor(w: number, h: number): Layout {
     columnW,
     readingY: TOP_ZONE + (h - TOP_ZONE) * READING_LINE,
     bigTitlePx: Math.max(48, Math.min(w * 0.14, h * 0.2, 200)),
-    segment: { x: segX, y: EDGE, w: w - EDGE - segX, h: h - EDGE * 2 },
+    segment: { x: segX, y: TOP_ZONE, w: w - EDGE - segX, h: h - EDGE - TOP_ZONE },
     corner: { x: textX, y: h - EDGE - cornerH, w: cornerW, h: cornerH },
   };
 }
@@ -514,12 +514,14 @@ export function DatenraumView({
               aria-hidden
               style={{
                 left: layout.segment.x,
+                top: layout.segment.y,
+                height: layout.segment.h,
                 width: FADE,
                 opacity: segments.current ? 1 : 0,
                 maskImage: "linear-gradient(to right, transparent, #000)",
                 WebkitMaskImage: "linear-gradient(to right, transparent, #000)",
               }}
-              className="absolute inset-y-0 backdrop-blur-sm transition-opacity duration-500"
+              className="absolute backdrop-blur-sm transition-opacity duration-500"
             />
           )}
           {sideSegments && (
