@@ -7,7 +7,6 @@ import { VenueMap, type MapSpot } from "@/app/(dashboard)/events/_components/Ven
 import { areaContains, type MapArea } from "@/lib/eventAreas";
 import {
   DATENRAUM_SECTIONS,
-  HERO_IMAGE,
   type Block,
   type DatenraumEntry,
   type DatenraumPlace,
@@ -30,15 +29,14 @@ import { DatenraumGallery, type GalleryLibrary } from "./DatenraumGallery";
 import { DatenraumPrefsControls, UI, useDatenraumPrefs } from "./DatenraumPrefs";
 import { MapNotePin } from "./MapNotePin";
 
-// The page opens on the hero picture, the title over it. Scrolling, the
-// picture goes up and away with the page while the title shrinks to float
-// along the top (by the time the content reaches it). Then, on a wide
-// screen, the content takes the left SEGMENT_SPLIT of it, and beside it
+// The page opens straight on the content, the title and the switcher
+// floating along the top. On a wide screen the content takes the left
+// SEGMENT_SPLIT of it, and beside it
 // whatever the title being read brings up — pictures, the floor plans or
 // a 360° tour — rises into view as the one before rises away (sinks, going
 // back up). In the bottom left, a small map lights up the spaces being read
 // about. On a narrow screen each title's segment sits under its text.
-const SMALL_TITLE_PX = 26;
+const TITLE_PX = 26;
 // Narrower than this, segments sit in the text rather than beside it, and
 // there's no corner map.
 const WIDE_PX = 768;
@@ -47,6 +45,9 @@ const WIDE_PX = 768;
 const TITLE_Y = 38;
 const SWITCHER_Y = 94;
 const TOP_ZONE = 128;
+// Narrow: the strip the title alone floats in (the switcher heads the
+// content instead).
+const NARROW_TOP_ZONE = 96;
 // Wide: how much of the width the content takes; segments have the rest.
 const SEGMENT_SPLIT = 0.6;
 const EDGE = 20;
@@ -71,9 +72,6 @@ const SEEK_SETTLE_MS = 250;
 // The small map in the bottom left, lighting up the spaces being read about
 // — set aside for now; true brings it back.
 const SHOW_CORNER_MAP = false;
-// How far the switcher has faded in under the docking title before it
-// takes clicks: as soon as it can be seen to be there.
-const SWITCHER_LIVE = 0.15;
 
 type Mode = "overview" | "gallery";
 type Rect = { x: number; y: number; w: number; h: number };
@@ -83,10 +81,8 @@ type Layout = {
   wide: boolean;
   // The scroll over which the title docks: the hero's height, less the
   // strip it docks in.
-  travel: number;
   columnW: number;
   readingY: number;
-  bigTitlePx: number;
   segment: Rect;
   // How far in from the segments' left edge the map and tour cards start:
   // the column's edge.
@@ -108,19 +104,14 @@ function layoutFor(w: number, h: number): Layout {
     w,
     h,
     wide,
-    travel: Math.max(1, h - TOP_ZONE),
     columnW,
     readingY: TOP_ZONE + (h - TOP_ZONE) * READING_LINE,
-    bigTitlePx: Math.max(48, Math.min(w * 0.14, h * 0.2, 200)),
     segment: { x: segX, y: TOP_ZONE, w: w - EDGE - segX, h: h - EDGE - TOP_ZONE },
     cardLeadIn: columnW - segX,
     corner: { x: textX, y: h - EDGE - cornerH, w: cornerW, h: cornerH },
   };
 }
 
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-const clamp01 = (t: number) => Math.min(Math.max(t, 0), 1);
 
 // What's being read (or hovered, or in view in the collection).
 type Lit = { kind: "section"; id: string } | { kind: "entry"; id: string } | { kind: "entries"; ids: string[] } | null;
@@ -228,20 +219,11 @@ export function DatenraumView({
   const ui = UI[lang];
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const topFadeRef = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  const switcherRef = useRef<HTMLDivElement>(null);
-  const hintRef = useRef<HTMLDivElement>(null);
   // "section:id" / "entry:id": the headings and titles.
   const markRefs = useRef(new Map<string, HTMLElement>());
 
   const [layout, setLayout] = useState<Layout | null>(null);
   const layoutRef = useRef<Layout | null>(null);
-  const [docked, setDocked] = useState(false);
-  // Whether the switcher's shown enough to take clicks.
-  const [switcherLive, setSwitcherLive] = useState(false);
-  const switcherLiveRef = useRef(false);
-  const dockedRef = useRef(false);
   const [mode, setMode] = useState<Mode>("overview");
   const modeRef = useRef<Mode>("overview");
   const [floor, setFloor] = useState<Floor>("eg");
@@ -323,37 +305,8 @@ export function DatenraumView({
     readingRef.current = null;
     setReading(null);
     showSegment(null, true);
-    // To the top of the other content, the title staying docked.
-    const scroller = scrollRef.current, l = layoutRef.current;
-    if (scroller && l && scroller.scrollTop > l.travel) scroller.scrollTo({ top: l.travel });
-  }
-
-  // The title from over the hero (p = 0) to docked along the top (p = 1).
-  function apply() {
-    const l = layoutRef.current, scroller = scrollRef.current;
-    if (!l || !scroller) return;
-    const p = clamp01(scroller.scrollTop / l.travel);
-    const t = easeInOut(p);
-    const title = titleRef.current;
-    if (title) {
-      const cy = lerp(l.h / 2, TITLE_Y, t);
-      const s = lerp(1, SMALL_TITLE_PX / l.bigTitlePx, t);
-      title.style.transform = `translate(${l.w / 2}px, ${cy}px) translate(-50%, -50%) scale(${s})`;
-    }
-    const late = clamp01((t - 0.6) / 0.4);
-    if (topFadeRef.current) topFadeRef.current.style.opacity = String(late);
-    if (switcherRef.current) switcherRef.current.style.opacity = String(late);
-    const live = late >= SWITCHER_LIVE;
-    if (live !== switcherLiveRef.current) {
-      switcherLiveRef.current = live;
-      setSwitcherLive(live);
-    }
-    if (hintRef.current) hintRef.current.style.opacity = String(Math.max(0, 1 - p * 4));
-    const nowDocked = p >= 0.999;
-    if (nowDocked !== dockedRef.current) {
-      dockedRef.current = nowDocked;
-      setDocked(nowDocked);
-    }
+    // To the top of the other content.
+    scrollRef.current?.scrollTo({ top: 0 });
   }
 
   // Following the reader through the overview: the last heading or title
@@ -395,7 +348,6 @@ export function DatenraumView({
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        apply();
         if (!seekRef.current) measure();
       });
     };
@@ -445,10 +397,13 @@ export function DatenraumView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Laid out again for a new size, once the stage is in the DOM for it.
+  // What's being read from the start, before any scroll: the page opens on
+  // the content, its first title on the reading line already — and again
+  // on coming back to the overview.
   useLayoutEffect(() => {
-    apply();
-  }, [layout]);
+    measure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, mode]);
 
   // The corner map: shown for what's being read, lighting up what's lit —
   // every other place on this floor faintly, to show it can be tapped —
@@ -498,7 +453,6 @@ export function DatenraumView({
     />
   );
 
-  const hero = images[HERO_IMAGE];
   const sideSegments = !!layout?.wide && mode === "overview";
 
   return (
@@ -553,36 +507,12 @@ export function DatenraumView({
       <div ref={scrollRef} className="pointer-events-none absolute inset-0 overflow-y-auto overscroll-contain">
         {layout && (
           <>
-            {/* The hero: the picture behind the title, scrolling away. */}
-            <div className="pointer-events-auto relative overflow-hidden" style={{ height: layout.h }}>
-              {hero ? (
-                // eslint-disable-next-line @next/next/no-img-element -- one large photo, cropped to the window
-                <img src={hero.url} alt="" className="absolute inset-0 h-full w-full object-cover" />
-              ) : (
-                <PicturePlaceholder name={HERO_IMAGE} ui={ui} className="absolute inset-0" />
-              )}
-              <div
-                aria-hidden
-                className="absolute inset-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--surface)_55%,transparent),color-mix(in_srgb,var(--surface)_30%,transparent)_45%,var(--surface))]"
-              />
-              <div
-                ref={hintRef}
-                aria-hidden
-                className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-[13px] font-medium text-foreground/70"
-              >
-                {ui.scroll}
-                <svg viewBox="0 0 24 24" className="h-5 w-5 animate-bounce" fill="none" stroke="currentColor" strokeWidth="2.2">
-                  <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-            </div>
-
             <div className="pointer-events-auto" style={{ width: mode === "overview" ? layout.columnW : "100%" }}>
               <div
                 className={cn("mx-auto px-6 pt-6 md:px-10", mode === "overview" ? "max-w-[680px]" : "max-w-[1200px]")}
-                // At least a window's worth, so the title can always dock
-                // (the collection can be short).
-                style={{ paddingBottom: layout.h - layout.readingY, minHeight: layout.h }}
+                // Below the strip the title floats in; to the end, far enough
+                // for the last title to reach the reading line.
+                style={{ paddingTop: layout.wide ? TOP_ZONE : NARROW_TOP_ZONE, paddingBottom: layout.h - layout.readingY }}
               >
                 {/* Narrow: the switcher heads the content (wide, it floats
                     under the title). */}
@@ -654,24 +584,20 @@ export function DatenraumView({
           {/* A soft blur behind the title and switcher, fading out
               downwards, over the content. */}
           <div
-            ref={topFadeRef}
             aria-hidden
             style={{
               width: layout.w,
-              height: TOP_ZONE + 36,
-              opacity: 0,
+              height: layout.wide ? TOP_ZONE + 36 : NARROW_TOP_ZONE,
               maskImage: "linear-gradient(to bottom, #000 45%, transparent)",
               WebkitMaskImage: "linear-gradient(to bottom, #000 45%, transparent)",
             }}
             className="absolute left-0 top-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--surface)_85%,transparent),transparent)] backdrop-blur-md"
           />
 
-          {/* The title: over the hero to begin with, then floating at the
-              top, over the whole page. */}
+          {/* The title, floating at the top over the whole page. */}
           <h1
-            ref={titleRef}
-            style={{ fontSize: layout.bigTitlePx }}
-            className={`${brandFont.className} absolute left-0 top-0 origin-center whitespace-nowrap text-center uppercase leading-[0.86] tracking-tight text-foreground`}
+            style={{ fontSize: TITLE_PX, left: layout.w / 2, top: TITLE_Y }}
+            className={`${brandFont.className} absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center uppercase leading-[0.86] tracking-tight text-foreground`}
           >
             Colosseum
             <br />
@@ -679,20 +605,14 @@ export function DatenraumView({
           </h1>
           <button
             type="button"
-            tabIndex={docked ? 0 : -1}
             aria-label="↑"
             onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
-            style={{ left: layout.w / 2 - 70, top: TITLE_Y - 26, pointerEvents: docked ? "auto" : "none" }}
-            className="no-press absolute h-[52px] w-[140px]"
+            style={{ left: layout.w / 2 - 70, top: TITLE_Y - 26 }}
+            className="no-press pointer-events-auto absolute h-[52px] w-[140px]"
           />
 
           {layout.wide && (
-            <div
-              ref={switcherRef}
-              inert={!switcherLive}
-              style={{ top: SWITCHER_Y, opacity: 0, pointerEvents: switcherLive ? "auto" : "none" }}
-              className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2"
-            >
+            <div style={{ top: SWITCHER_Y }} className="pointer-events-auto absolute left-1/2 -translate-x-1/2 -translate-y-1/2">
               {switcher}
             </div>
           )}

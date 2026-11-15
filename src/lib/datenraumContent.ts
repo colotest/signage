@@ -62,7 +62,8 @@ export type DatenraumSection = {
   cornerPins?: "access";
 };
 
-// The hero picture, behind the title.
+// The hero picture, behind the title — not shown for now (the page opens
+// straight on the content).
 export const HERO_IMAGE = "1";
 
 // --- building blocks ---------------------------------------------------------
