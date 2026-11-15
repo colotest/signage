@@ -451,7 +451,7 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
   },
   {
     id: "tech",
-    title: { de: "Tech", en: "Tech" },
+    title: { de: "Technische Grundausstattung", en: "Basic technical equipment" },
     entries: [
       {
         id: "stromversorgung",
