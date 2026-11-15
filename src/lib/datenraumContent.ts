@@ -231,7 +231,8 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
       {
         id: "grundrisse",
         title: { de: "Grundrisse", en: "Floor plans" },
-        segment: { kind: "map" },
+        // The floor plans, with the step-free ways in.
+        segment: { kind: "map", pins: "access" },
         bottomMap: false,
         body: {
           de: [
@@ -406,8 +407,8 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
     id: "lage",
     title: { de: "Lage", en: "Location" },
     bottomMap: true,
-    // Beside the whole section: the map, with the step-free ways in.
-    segment: { kind: "map", pins: "access" },
+    // Beside the whole section: the map.
+    segment: { kind: "map" },
     intro: {
       de: [p(`Perfekt angebunden an den kulturreichen Kiez im Herzen von Berlin. ${LOREM}`)],
       en: [p(`Perfectly connected to the culturally rich neighbourhood in the heart of Berlin. ${LOREM}`)],
