@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { COLOSSEUM } from "@/app/(dashboard)/events/_components/colosseumFloors";
 import { SegmentedSlider } from "@/app/(dashboard)/events/_components/SegmentedSlider";
-import { VenueMap } from "@/app/(dashboard)/events/_components/VenueMap";
+import { VenueMap, type MapSpot } from "@/app/(dashboard)/events/_components/VenueMap";
 import { areaContains, type MapArea } from "@/lib/eventAreas";
 import {
   DATENRAUM_SECTIONS,
@@ -12,14 +12,23 @@ import {
   type DatenraumEntry,
   type DatenraumPlace,
   type DatenraumSection,
+  type L,
   type Lang,
   type Segment,
 } from "@/lib/datenraumContent";
+import {
+  ACCESS_STYLE,
+  POWER_STYLE,
+  type DatenraumPin,
+  type GalleryImage,
+} from "@/lib/datenraumGallery";
 import type { DatenraumImage } from "@/lib/datenraumMedia";
 import { brandFont } from "@/lib/fonts";
 import type { Floor } from "@/lib/venueFloors";
 import { cn } from "@/lib/utils/cn";
+import { DatenraumGallery, type GalleryLibrary } from "./DatenraumGallery";
 import { DatenraumPrefsControls, UI, useDatenraumPrefs } from "./DatenraumPrefs";
+import { MapNotePin } from "./MapNotePin";
 
 // The page opens on the hero picture, the title over it. Scrolling, the
 // picture goes up and away with the page while the title shrinks to float
@@ -149,21 +158,50 @@ function cornerMapFor(lit: Lit): boolean {
   return litEntries(lit).some((entry) => entry.bottomMap ?? sectionOfEntry.get(entry.id)?.bottomMap ?? false);
 }
 
-// The picture collection: every picture of every segment, by section, each
-// lighting up its entry's places while it's in view.
-type GalleryItem = { key: string; name: string; entry: DatenraumEntry | null };
-function galleryOf(section: DatenraumSection): GalleryItem[] {
-  const items: GalleryItem[] = [];
-  const add = (segment: Segment | undefined, entry: DatenraumEntry | null) => {
-    if (segment?.kind !== "images") return;
-    for (const name of segment.images) items.push({ key: `${entry?.id ?? section.id}:${name}`, name, entry });
-  };
-  add(section.segment, null);
-  for (const entry of section.entries) add(entry.segment, entry);
-  return items;
+// Pins from the Events page's maps (see datenraumGallery).
+type Pins = { power: DatenraumPin[]; access: DatenraumPin[] };
+
+// Pins on one floor, each showing its name once tapped (one at a time).
+function pinSpots(pins: DatenraumPin[], floor: Floor, lang: Lang, open: string | null, onToggle: (id: string) => void): MapSpot[] {
+  return pins
+    .filter((pin) => pin.floor === floor)
+    .map((pin) => {
+      const style: { title: L<string>; subtitle?: L<string>; color: string } =
+        pin.kind === "access" ? ACCESS_STYLE : POWER_STYLE[pin.kind];
+      const subtitle = style.subtitle?.[lang];
+      return {
+        id: `pin:${pin.id}`,
+        u: pin.u,
+        v: pin.v,
+        front: open === pin.id,
+        node: (
+          <MapNotePin
+            color={style.color}
+            title={style.title[lang] || pin.note || ""}
+            subtitle={subtitle}
+            wheelchair={pin.kind === "access"}
+            open={open === pin.id}
+            onToggle={() => onToggle(pin.id)}
+          />
+        ),
+      };
+    });
 }
 
-export function DatenraumView({ images }: { images: Record<string, DatenraumImage> }) {
+export function DatenraumView({
+  images,
+  gallery,
+  pins,
+  canEdit,
+  library,
+}: {
+  images: Record<string, DatenraumImage>;
+  gallery: GalleryImage[];
+  pins: Pins;
+  // Whoever's roles reach the Media page: they can edit the collection.
+  canEdit: boolean;
+  library: GalleryLibrary | null;
+}) {
   const { lang } = useDatenraumPrefs();
   const ui = UI[lang];
   const rootRef = useRef<HTMLDivElement>(null);
@@ -171,10 +209,9 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
   const topFadeRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const switcherRef = useRef<HTMLDivElement>(null);
-  // "section:id" / "entry:id" in the overview, "tile:id" (an entry's first
-  // picture) in the collection.
+  const hintRef = useRef<HTMLDivElement>(null);
+  // "section:id" / "entry:id": the headings and titles.
   const markRefs = useRef(new Map<string, HTMLElement>());
-  const tileRefs = useRef(new Map<HTMLElement, string | null>());
 
   const [layout, setLayout] = useState<Layout | null>(null);
   const layoutRef = useRef<Layout | null>(null);
@@ -185,8 +222,8 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
   const [floor, setFloor] = useState<Floor>("eg");
   const [reading, setReading] = useState<Lit>(null);
   const readingRef = useRef<Lit>(null);
-  // Entries with a picture in view, in the collection.
-  const [inFrame, setInFrame] = useState<string[]>([]);
+  // The corner map's pin showing its name.
+  const [openPin, setOpenPin] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   // The segment beside the text, and the one going as it comes in.
   const [segments, setSegments] = useState<{ current: string | null; leaving: string | null; down: boolean }>({
@@ -197,7 +234,7 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
   const segmentsRef = useRef(segments);
   const seekRef = useRef<{ timer?: ReturnType<typeof setTimeout> } | null>(null);
 
-  const viewed: Lit = mode === "gallery" ? (inFrame.length > 0 ? { kind: "entries", ids: inFrame } : null) : reading;
+  const viewed: Lit = mode === "overview" ? reading : null;
   const lit: Lit = hovered ? { kind: "entry", id: hovered } : viewed;
 
   // Brings what's lit onto the map's floor, unless some of it's on the
@@ -241,16 +278,14 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
     }, SEEK_SETTLE_MS);
   }
 
-  // Picked on the map: the page scrolls to the entry (or its pictures).
+  // Picked on the map: the page scrolls to the entry.
   function seek(entry: DatenraumEntry) {
-    const overview = modeRef.current === "overview";
     const scroller = scrollRef.current;
-    const mark = markRefs.current.get(`${overview ? "entry" : "tile"}:${entry.id}`);
+    const mark = markRefs.current.get(`entry:${entry.id}`);
     if (!scroller || !mark) return;
     seekRef.current = seekRef.current ?? {};
     endSeekLater();
-    if (overview) read({ kind: "entry", id: entry.id });
-    else pick(entry);
+    read({ kind: "entry", id: entry.id });
     const top = mark.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
     scroller.scrollTo({ top: top - TOP_ZONE - 24, behavior: "smooth" });
   }
@@ -262,7 +297,6 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
     setHovered(null);
     readingRef.current = null;
     setReading(null);
-    setInFrame([]);
     showSegment(null, true);
     // To the top of the other content, the title staying docked.
     const scroller = scrollRef.current, l = layoutRef.current;
@@ -284,6 +318,7 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
     const late = clamp01((t - 0.6) / 0.4);
     if (topFadeRef.current) topFadeRef.current.style.opacity = String(late);
     if (switcherRef.current) switcherRef.current.style.opacity = String(late);
+    if (hintRef.current) hintRef.current.style.opacity = String(Math.max(0, 1 - p * 4));
     const nowDocked = p >= 0.999;
     if (nowDocked !== dockedRef.current) {
       dockedRef.current = nowDocked;
@@ -341,40 +376,18 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
   // Laid out again for a new size, once the stage is in the DOM for it.
   useLayoutEffect(() => {
     apply();
-     
   }, [layout]);
 
-  // The collection: which entries have a picture at least half in view,
-  // below the title.
-  useEffect(() => {
-    const scroller = scrollRef.current;
-    if (mode !== "gallery" || !layout || !scroller) return;
-    const visible = new Set<HTMLElement>();
-    const observer = new IntersectionObserver(
-      (records) => {
-        for (const record of records) {
-          const el = record.target as HTMLElement;
-          if (record.isIntersecting) visible.add(el);
-          else visible.delete(el);
-        }
-        const ids = ALL_ENTRIES.map((e) => e.id).filter((id) =>
-          [...visible].some((el) => tileRefs.current.get(el) === id),
-        );
-        setInFrame((current) => (current.join() === ids.join() ? current : ids));
-        if (!seekRef.current) setHovered(null);
-        floorFor(ids.length > 0 ? { kind: "entries", ids } : null);
-      },
-      { root: scroller, rootMargin: `-${TOP_ZONE}px 0px 0px 0px`, threshold: 0.5 },
-    );
-    for (const el of tileRefs.current.keys()) observer.observe(el);
-    return () => observer.disconnect();
-     
-  }, [mode, layout]);
-
-  // The corner map: shown for what's being read (or in view), lighting up
-  // what's lit — every other place on this floor faintly, to show it can be
-  // tapped.
+  // The corner map: shown for what's being read, lighting up what's lit —
+  // every other place on this floor faintly, to show it can be tapped —
+  // with the section's pins, if it has any.
   const cornerShown = !!layout?.wide && cornerMapFor(viewed);
+  const viewedSection =
+    viewed?.kind === "section" ? sectionById.get(viewed.id) : viewed?.kind === "entry" ? sectionOfEntry.get(viewed.id) : undefined;
+  const cornerSpots =
+    viewedSection?.cornerPins === "access"
+      ? pinSpots(pins.access, floor, lang, openPin, (id) => setOpenPin((o) => (o === id ? null : id)))
+      : [];
   const litOnFloor = litPlaces(lit).filter(({ place }) => place.floor === floor);
   const areas = litOnFloor.map(({ entry, index, place }) => placeArea(entry, index, place));
   const litIds = new Set(areas.map((a) => a.id));
@@ -436,6 +449,7 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
                 className="absolute inset-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--surface)_55%,transparent),color-mix(in_srgb,var(--surface)_30%,transparent)_45%,var(--surface))]"
               />
               <div
+                ref={hintRef}
                 aria-hidden
                 className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-[13px] font-medium text-foreground/70"
               >
@@ -449,7 +463,9 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
             <div style={{ width: mode === "overview" ? layout.columnW : "100%" }}>
               <div
                 className={cn("mx-auto px-6 pt-6 md:px-10", mode === "overview" ? "max-w-[680px]" : "max-w-[1200px]")}
-                style={{ paddingBottom: layout.h - layout.readingY }}
+                // At least a window's worth, so the title can always dock
+                // (the collection can be short).
+                style={{ paddingBottom: layout.h - layout.readingY, minHeight: layout.h }}
               >
                 {/* Narrow: the switcher heads the content (wide, it floats
                     under the title). */}
@@ -464,28 +480,16 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
                         // Narrow: segments in the text.
                         inline={!layout.wide}
                         images={images}
+                        pins={pins}
                         onPick={pick}
                         onUnpick={() => setHovered(null)}
                         onPassWheel={passWheel}
                         mark={mark}
                       />
                     ))
-                  : DATENRAUM_SECTIONS.map((section) => (
-                      <GallerySection
-                        key={section.id}
-                        section={section}
-                        lang={lang}
-                        images={images}
-                        hovered={hovered}
-                        onPick={pick}
-                        onUnpick={() => setHovered(null)}
-                        tile={(el, entry, first) => {
-                          if (el) tileRefs.current.set(el, entry?.id ?? null);
-                          if (first && entry) mark(`tile:${entry.id}`, el);
-                        }}
-                        untile={(el) => tileRefs.current.delete(el)}
-                      />
-                    ))}
+                  : (
+                      <DatenraumGallery images={gallery} lang={lang} canEdit={canEdit} library={library} />
+                    )}
               </div>
             </div>
           </>
@@ -500,6 +504,8 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
               viewH={layout.h}
               state={segments}
               images={images}
+              pins={pins}
+              lang={lang}
               ui={ui}
               onPassWheel={passWheel}
               onLeft={(key) =>
@@ -536,8 +542,11 @@ export function DatenraumView({ images }: { images: Record<string, DatenraumImag
                 floor={floor}
                 onFloorChange={(id) => setFloor(id as Floor)}
                 focus={null}
-                onBackgroundTap={onMapTap}
-                spots={[]}
+                onBackgroundTap={(at) => {
+                  setOpenPin(null);
+                  onMapTap(at);
+                }}
+                spots={cornerSpots}
                 areas={areas}
                 faintAreas={faintAreas}
                 controls={false}
@@ -608,6 +617,7 @@ function SectionView({
   lit,
   inline,
   images,
+  pins,
   onPick,
   onUnpick,
   onPassWheel,
@@ -618,6 +628,7 @@ function SectionView({
   lit: Lit;
   inline: boolean;
   images: Record<string, DatenraumImage>;
+  pins: Pins;
   onPick: (entry: DatenraumEntry) => void;
   onUnpick: () => void;
   onPassWheel: (deltaY: number) => void;
@@ -637,12 +648,18 @@ function SectionView({
       </h2>
       {section.intro && <Blocks blocks={section.intro[lang]} ui={ui} className="mt-3" />}
       {inline && section.segment && (
-        <InlineSegment segment={section.segment} images={images} ui={ui} onPassWheel={onPassWheel} />
+        <InlineSegment segment={section.segment} images={images} pins={pins} lang={lang} ui={ui} onPassWheel={onPassWheel} />
       )}
 
       <div className="mt-4 flex flex-col">
-        {section.entries.map((entry) => (
-          <div key={entry.id} ref={(el) => mark(`entry:${entry.id}`, el)} className="py-4">
+        {section.entries.map((entry, i) => (
+          <Fragment key={entry.id}>
+          {entry.group && entry.group[lang] !== section.entries[i - 1]?.group?.[lang] && (
+            <h3 className="mt-4 text-[13px] font-semibold uppercase tracking-wider text-muted first:mt-0">
+              {entry.group[lang]}
+            </h3>
+          )}
+          <div ref={(el) => mark(`entry:${entry.id}`, el)} className="py-4">
             <button
               type="button"
               onMouseEnter={() => onPick(entry)}
@@ -660,12 +677,14 @@ function SectionView({
               >
                 {entry.title[lang]}
               </span>
+              {entry.subtitle && <span className="mt-0.5 block text-[15px] text-muted">{entry.subtitle[lang]}</span>}
             </button>
             <Blocks blocks={entry.body[lang]} ui={ui} className="mt-2" />
             {inline && entry.segment && (
-              <InlineSegment segment={entry.segment} images={images} ui={ui} onPassWheel={onPassWheel} />
+              <InlineSegment segment={entry.segment} images={images} pins={pins} lang={lang} ui={ui} onPassWheel={onPassWheel} />
             )}
           </div>
+          </Fragment>
         ))}
       </div>
     </section>
@@ -742,6 +761,8 @@ function Segments({
   viewH,
   state,
   images,
+  pins,
+  lang,
   ui,
   onPassWheel,
   onLeft,
@@ -750,6 +771,8 @@ function Segments({
   viewH: number;
   state: { current: string | null; leaving: string | null; down: boolean };
   images: Record<string, DatenraumImage>;
+  pins: Pins;
+  lang: Lang;
   ui: Record<string, string>;
   onPassWheel: (deltaY: number) => void;
   onLeft: (key: string) => void;
@@ -777,7 +800,7 @@ function Segments({
               leaving ? "datenraum-segment-out pointer-events-none" : "datenraum-segment-in pointer-events-auto",
             )}
           >
-            <SegmentView segment={segment} images={images} ui={ui} onPassWheel={onPassWheel} />
+            <SegmentView segment={segment} images={images} pins={pins} lang={lang} ui={ui} onPassWheel={onPassWheel} />
           </div>
         );
       })}
@@ -785,29 +808,23 @@ function Segments({
   );
 }
 
-function SegmentView({
-  segment,
-  images,
-  ui,
-  onPassWheel,
-}: {
+type SegmentProps = {
   segment: Segment;
   images: Record<string, DatenraumImage>;
+  pins: Pins;
+  lang: Lang;
   ui: Record<string, string>;
   onPassWheel: (deltaY: number) => void;
-}) {
+};
+
+function SegmentView({ segment, images, pins, lang, ui, onPassWheel }: SegmentProps) {
   if (segment.kind === "images") return <ImageSlider names={segment.images} images={images} ui={ui} onPassWheel={onPassWheel} />;
   if (segment.kind === "tour") return <TourCard url={segment.url} ui={ui} />;
-  return <PlanCard />;
+  return <PlanCard pins={segment.pins === "power" ? pins.power : []} lang={lang} />;
 }
 
 // Narrow: a title's segment under its text.
-function InlineSegment(props: {
-  segment: Segment;
-  images: Record<string, DatenraumImage>;
-  ui: Record<string, string>;
-  onPassWheel: (deltaY: number) => void;
-}) {
+function InlineSegment(props: SegmentProps) {
   return (
     <div className="-mx-6 mt-4 aspect-[4/3] md:-mx-10">
       <SegmentView {...props} />
@@ -926,9 +943,12 @@ function TourCard({ url, ui }: { url: string; ui: Record<string, string> }) {
   );
 }
 
-// The floor plans as on the Events page: three floors, dragged and zoomed.
-function PlanCard() {
+// The floor plans as on the Events page: three floors, dragged and zoomed —
+// with pins, if it has any (the power connections), each showing its name
+// once tapped.
+function PlanCard({ pins, lang }: { pins: DatenraumPin[]; lang: Lang }) {
   const [floor, setFloor] = useState<Floor>("eg");
+  const [open, setOpen] = useState<string | null>(null);
   return (
     <div className="h-full w-full overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-float)]">
       <VenueMap
@@ -937,7 +957,8 @@ function PlanCard() {
         floor={floor}
         onFloorChange={(id) => setFloor(id as Floor)}
         focus={null}
-        spots={[]}
+        onBackgroundTap={() => setOpen(null)}
+        spots={pinSpots(pins, floor, lang, open, (id) => setOpen((o) => (o === id ? null : id)))}
       />
     </div>
   );
@@ -970,74 +991,6 @@ function FloorChips({ floor, onFloor, label }: { floor: Floor; onFloor: (floor: 
         </button>
       ))}
     </div>
-  );
-}
-
-// --- the collection -------------------------------------------------------------
-
-function GallerySection({
-  section,
-  lang,
-  images,
-  hovered,
-  onPick,
-  onUnpick,
-  tile,
-  untile,
-}: {
-  section: DatenraumSection;
-  lang: Lang;
-  images: Record<string, DatenraumImage>;
-  hovered: string | null;
-  onPick: (entry: DatenraumEntry) => void;
-  onUnpick: () => void;
-  tile: (el: HTMLElement | null, entry: DatenraumEntry | null, first: boolean) => void;
-  untile: (el: HTMLElement) => void;
-}) {
-  const ui = UI[lang];
-  const items = galleryOf(section);
-  if (items.length === 0) return null;
-  return (
-    <section aria-labelledby={`${section.id}-gallery`} className="pb-10 pt-4">
-      <h2 id={`${section.id}-gallery`} className={`${brandFont.className} mb-3 text-[30px] uppercase leading-none tracking-tight`}>
-        {section.title[lang]}
-      </h2>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
-        {items.map((item, i) => {
-          const first = items.findIndex((other) => other.entry === item.entry) === i;
-          const image = images[item.name];
-          return (
-            <figure key={item.key} className="min-w-0">
-              <div
-                ref={(el) => {
-                  if (el) tile(el, item.entry, first);
-                  return () => {
-                    if (el) untile(el);
-                    if (first) tile(null, item.entry, true);
-                  };
-                }}
-                onMouseEnter={item.entry ? () => onPick(item.entry!) : undefined}
-                onMouseLeave={onUnpick}
-                className={cn(
-                  "relative aspect-[4/3] overflow-hidden rounded-[var(--radius-md)] border transition-[border-color,box-shadow] duration-300",
-                  item.entry && hovered === item.entry.id ? "border-accent shadow-[0_0_0_2px_var(--accent)]" : "border-border",
-                )}
-              >
-                {image ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- photos of any size, cropped to the tile
-                  <img src={image.url} alt="" loading="lazy" className="h-full w-full object-cover" />
-                ) : (
-                  <PicturePlaceholder name={item.name} ui={ui} className="h-full w-full" small />
-                )}
-              </div>
-              {item.entry && (
-                <figcaption className="mt-1 truncate text-[12px] text-muted">{item.entry.title[lang]}</figcaption>
-              )}
-            </figure>
-          );
-        })}
-      </div>
-    </section>
   );
 }
 

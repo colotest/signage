@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { Header } from "@/app/(dashboard)/_components/Header";
 import { ViewerProvider } from "@/lib/auth/ViewerContext";
 import { getCurrentUser } from "@/lib/auth/session";
-import { fetchDatenraumImages } from "@/lib/datenraumMedia";
+import { fetchDatenraumGallery, fetchDatenraumImages, fetchDatenraumPins } from "@/lib/datenraumMedia";
 import {
   DATENRAUM_LANG_COOKIE,
   DATENRAUM_THEME_COOKIE,
@@ -11,6 +11,10 @@ import {
   parseDatenraumTheme,
 } from "@/lib/datenraumPrefs";
 import { brandFont } from "@/lib/fonts";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchUploaderNames } from "@/lib/uploads/uploaders";
+import { decksWithPages } from "@/app/(dashboard)/library/page";
+import type { GalleryLibrary } from "./_components/DatenraumGallery";
 import { DatenraumPrefs, DatenraumSignIn } from "./_components/DatenraumPrefs";
 import { DatenraumView } from "./_components/DatenraumView";
 
@@ -26,7 +30,18 @@ export const dynamic = "force-dynamic";
 // and a way to sign in. Dark and German unless switched (see
 // DatenraumPrefs).
 export default async function DatenraumPage() {
-  const [user, cookieStore, images] = await Promise.all([getCurrentUser(), cookies(), fetchDatenraumImages()]);
+  const [user, cookieStore, images, gallery, pins] = await Promise.all([
+    getCurrentUser(),
+    cookies(),
+    fetchDatenraumImages(),
+    fetchDatenraumGallery(),
+    fetchDatenraumPins(),
+  ]);
+  // Whoever's roles reach the Media page edits the picture collection, and
+  // gets the library to pick from.
+  const canEdit = !!user?.access.pages.media;
+  const library = canEdit ? await fetchLibrary() : null;
+  const view = <DatenraumView images={images} gallery={gallery} pins={pins} canEdit={canEdit} library={library} />;
   return (
     // As the dashboard's layout (see there), on the page's own surface.
     <DatenraumPrefs
@@ -45,8 +60,28 @@ export default async function DatenraumPage() {
         </header>
       )}
       <main className="app-main min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-6 pb-6">
-        <DatenraumView images={images} />
+        {/* Signed in, the library's file browser (for adding pictures)
+            wants to know who's looking. */}
+        {user ? <ViewerProvider viewer={user}>{view}</ViewerProvider> : view}
       </main>
     </DatenraumPrefs>
   );
+}
+
+// The library, as the dashboard's Playback Menu gets it, for picking
+// pictures from.
+async function fetchLibrary(): Promise<GalleryLibrary> {
+  const admin = createAdminClient();
+  const [{ data: folders }, { data: media }, { data: decks }, uploaders] = await Promise.all([
+    admin.from("folders").select("*").order("name", { ascending: true }),
+    admin.from("media_items").select("*").order("created_at", { ascending: false }),
+    admin.from("decks").select("*").order("created_at", { ascending: false }),
+    fetchUploaderNames(admin).catch(() => ({})),
+  ]);
+  return {
+    folders: folders ?? [],
+    media: media ?? [],
+    decks: decksWithPages(decks ?? [], media ?? []),
+    uploaders,
+  };
 }

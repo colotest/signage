@@ -24,9 +24,11 @@ export type Block =
 // 2.png), as uploaded to the media library's Dokumentation/Aufnahmen/
 // Location folder (see datenraumMedia) — shown as they arrive, a
 // placeholder until then.
+// A map's pins, from the Events page's maps (see datenraumGallery): the
+// power connections.
 export type Segment =
   | { kind: "images"; images: string[] }
-  | { kind: "map" }
+  | { kind: "map"; pins?: "power" }
   | { kind: "tour"; url: string };
 
 export type DatenraumPlace = { floor: Floor; points: AreaPoint[] };
@@ -34,6 +36,11 @@ export type DatenraumPlace = { floor: Floor; points: AreaPoint[] };
 export type DatenraumEntry = {
   id: string;
   title: L<string>;
+  // After the title, quieter: what the place is.
+  subtitle?: L<string>;
+  // A heading the entry falls under, shown above the first of each run of
+  // entries that share it (Lage's "Eingänge", "Anlieferung").
+  group?: L<string>;
   body: L<Block[]>;
   segment?: Segment;
   // Lit on the bottom-left map while the entry's read.
@@ -51,6 +58,8 @@ export type DatenraumSection = {
   // For the whole section, where its entries have none of their own.
   segment?: Segment;
   bottomMap?: boolean;
+  // Pins on the corner map while the section's read: the step-free ways in.
+  cornerPins?: "access";
 };
 
 // The hero picture, behind the title.
@@ -105,9 +114,46 @@ const FLAT_100_200 = {
 
 export const DATENRAUM_SECTIONS: DatenraumSection[] = [
   {
+    id: "lage",
+    title: { de: "Lage", en: "Location" },
+    bottomMap: true,
+    intro: {
+      de: [p(`Perfekt angebunden an den kulturreichen Kiez im Herzen von Berlin. ${LOREM}`)],
+      en: [p(`Perfectly connected to the culturally rich neighbourhood in the heart of Berlin. ${LOREM}`)],
+    },
+    entries: [
+      {
+        id: "eingang-schoenhauser",
+        group: { de: "Eingänge", en: "Entrances" },
+        title: { de: "Schönhauser Allee 123", en: "Schönhauser Allee 123" },
+        subtitle: { de: "Historischer Kinoeingang", en: "Historic cinema entrance" },
+        places: [around("eg", 0.9006, 0.7699, 0.035)],
+        body: { de: [p(LOREM)], en: [p(LOREM)] },
+      },
+      {
+        id: "eingang-gleimstrasse",
+        group: { de: "Eingänge", en: "Entrances" },
+        title: { de: "Gleimstraße 31", en: "Gleimstraße 31" },
+        subtitle: { de: "Modernisierter Atriumseingang", en: "Modernised atrium entrance" },
+        places: [around("eg", 0.5293, 0.9119, 0.035)],
+        body: { de: [p(LOREM)], en: [p(LOREM)] },
+      },
+      {
+        id: "anlieferung",
+        group: { de: "Anlieferung", en: "Deliveries" },
+        title: { de: "Gleimstraße 35", en: "Gleimstraße 35" },
+        subtitle: { de: "Umfassender Warenwirtschafts-/Zulieferungshof", en: "Extensive goods and delivery yard" },
+        // PLACEHOLDER
+        places: [around("eg", 0.2, 0.86, 0.06)],
+        body: { de: [p(LOREM)], en: [p(LOREM)] },
+      },
+    ],
+  },
+  {
     id: "areale",
     title: { de: "Areale", en: "Spaces" },
     bottomMap: true,
+    cornerPins: "access",
     entries: [
       {
         id: "wagenhalle",
@@ -404,6 +450,23 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
     id: "tech",
     title: { de: "Tech", en: "Tech" },
     entries: [
+      {
+        id: "stromversorgung",
+        title: { de: "Stromversorgung", en: "Power supply" },
+        segment: { kind: "map", pins: "power" },
+        body: {
+          de: [
+            p(
+              "Das Haus verfügt über diverse (Stark-)Stromanschlüsse, einsehbar auf der interaktiven Karte rechts: 32A CEE, 16A CEE, 63A CEE (Alternativ nutzbar), 32A CEE 1phasig",
+            ),
+          ],
+          en: [
+            p(
+              "The building has a range of (high-voltage) power connections, shown on the interactive map on the right: 32A CEE, 16A CEE, 63A CEE (alternative use), 32A CEE single-phase",
+            ),
+          ],
+        },
+      },
       {
         id: "tech-kino-1",
         title: { de: "Kino 1", en: "Screen 1" },
