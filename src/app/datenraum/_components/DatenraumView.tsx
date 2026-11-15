@@ -495,6 +495,8 @@ export function DatenraumView({
   );
 
   const sideSegments = !!layout?.wide && mode === "overview";
+  const currentSegment = segments.current ? segmentByKey(segments.current) : undefined;
+  const currentTourUrl = currentSegment?.kind === "tour" ? currentSegment.url : null;
   // The title: one line over the middle of the page — or, on a narrow
   // screen, two, still centred, between the corners' buttons and level with
   // their top (smaller only if it has to be to fit there).
@@ -542,6 +544,14 @@ export function DatenraumView({
                 return next;
               })
             }
+          />
+          <TourLayer
+            rect={layout.segment}
+            cardLeadIn={layout.cardLeadIn}
+            viewH={layout.h}
+            url={currentTourUrl}
+            down={segments.down}
+            ui={ui}
           />
           <div
             aria-hidden
@@ -910,6 +920,7 @@ function Segments({
               // Pictures from the far edge, the cards from the column's.
               leadIn={segment.kind === "images" ? 0 : cardLeadIn}
               frame={frame}
+              sharedTour
             />
           </div>
         );
@@ -930,11 +941,24 @@ type SegmentProps = {
   leadIn?: number;
   // How far in from the top and bottom of its frame it sits.
   frame?: { top: number; bottom: number };
+  // Beside the text, a tour is drawn by the page's one TourLayer, not here.
+  sharedTour?: boolean;
 };
 
 const NO_FRAME = { top: ROW_PAD, bottom: ROW_PAD };
 
-function SegmentView({ segment, images, pins, lang, ui, onPassWheel, leadIn = 0, frame = NO_FRAME }: SegmentProps) {
+function SegmentView({
+  segment,
+  images,
+  pins,
+  lang,
+  ui,
+  onPassWheel,
+  leadIn = 0,
+  frame = NO_FRAME,
+  sharedTour = false,
+}: SegmentProps) {
+  if (segment.kind === "tour" && sharedTour) return null;
   if (segment.kind === "images")
     return (
       <ImageSlider names={segment.images} images={images} ui={ui} onPassWheel={onPassWheel} leadIn={leadIn} frame={frame} />
@@ -1083,15 +1107,104 @@ function ImageSlider({
   );
 }
 
+// The first tour down the page: what TourLayer loads ahead.
+const FIRST_TOUR_URL = SEGMENT_KEYS.map(segmentByKey).find((segment) => segment?.kind === "tour") as
+  | Extract<Segment, { kind: "tour" }>
+  | undefined;
+const SEGMENT_MOTION = { duration: 700, easing: "cubic-bezier(0.32, 0.72, 0, 1)" };
+
+// Beside the text, every 360° tour is the same one, at a different view:
+// so the page keeps one, loaded ahead in the background once it's settled,
+// and brings it up wherever a tour is — sliding in and out as the other
+// segments do, and from one tour's view to the next by changing only the
+// part of its address after the # (the place and the direction looked in),
+// which the tour follows without loading again. Kept, hidden, while other
+// segments are up.
+function TourLayer({
+  rect,
+  cardLeadIn,
+  viewH,
+  url,
+  down,
+  ui,
+}: {
+  rect: Rect;
+  cardLeadIn: number;
+  viewH: number;
+  // The tour up now, or none.
+  url: string | null;
+  down: boolean;
+  ui: Record<string, string>;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const shownRef = useRef(false);
+  // The view last brought up (it stays on it while hidden), or before any,
+  // the first one, once it's time to load ahead.
+  const [lastUrl, setLastUrl] = useState<string | null>(null);
+  if (url && url !== lastUrl) setLastUrl(url);
+  const [ahead, setAhead] = useState(false);
+  useEffect(() => {
+    const start = () => setAhead(true);
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(start, { timeout: 4000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = setTimeout(start, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+  const src = lastUrl ?? (ahead ? (FIRST_TOUR_URL?.url ?? null) : null);
+
+  // In and out as the other segments slide: from below the window going
+  // down the page, and out of its top (the other way round going back up).
+  // From one tour to the next it stays where it is.
+  useEffect(() => {
+    const el = boxRef.current;
+    const shown = !!url;
+    if (!el || shown === shownRef.current) return;
+    shownRef.current = shown;
+    const below = viewH - rect.y + EDGE;
+    const above = -(rect.y + rect.h + EDGE);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const options = { ...SEGMENT_MOTION, duration: reduced ? 1 : SEGMENT_MOTION.duration, fill: "forwards" as const };
+    for (const animation of el.getAnimations()) animation.cancel();
+    if (shown) {
+      el.style.visibility = "visible";
+      el.animate([{ transform: `translateY(${down ? below : above}px)` }, { transform: "none" }], options);
+    } else {
+      const out = el.animate([{ transform: "none" }, { transform: `translateY(${down ? above : below}px)` }], options);
+      out.onfinish = () => {
+        if (!shownRef.current) el.style.visibility = "hidden";
+      };
+    }
+  }, [url, down, rect.y, rect.h, viewH]);
+
+  return (
+    <div
+      ref={boxRef}
+      style={{
+        left: rect.x + cardLeadIn,
+        top: rect.y,
+        width: rect.w - cardLeadIn,
+        height: rect.h,
+        visibility: "hidden",
+        pointerEvents: url ? "auto" : "none",
+      }}
+      className="absolute"
+    >
+      {src && <TourCard url={src} ui={ui} eager />}
+    </div>
+  );
+}
+
 // A 360° tour, hosted elsewhere, loaded whole into the card — with a way to
 // open it on its own.
-function TourCard({ url, ui }: { url: string; ui: Record<string, string> }) {
+function TourCard({ url, ui, eager = false }: { url: string; ui: Record<string, string>; eager?: boolean }) {
   return (
     <div className="pointer-events-auto relative h-full w-full overflow-hidden rounded-[var(--radius-lg)] border border-border bg-black shadow-[var(--shadow-float)]">
       <iframe
         src={url}
         title={ui.tour}
-        loading="lazy"
+        loading={eager ? "eager" : "lazy"}
         allow="fullscreen; accelerometer; gyroscope; magnetometer; xr-spatial-tracking"
         allowFullScreen
         style={{ left: -TOUR_CROP, width: `calc(100% + ${TOUR_CROP * 2}px)` }}
