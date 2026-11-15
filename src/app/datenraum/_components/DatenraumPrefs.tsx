@@ -132,12 +132,21 @@ export function DatenraumPrefs({
 }
 
 // Top left on the page: light or dark, and German or English.
-export function DatenraumPrefsControls({ className }: { className?: string }) {
+// Top left on a wide screen; on a narrow one, light/dark in the left
+// corner and the language in the right (parts), the title between them.
+export function DatenraumPrefsControls({
+  className,
+  parts = "both",
+}: {
+  className?: string;
+  parts?: "both" | "theme" | "language";
+}) {
   const { theme, lang, toggleTheme, setLang } = useDatenraumPrefs();
   const ui = UI[lang];
   const dark = theme === "dark";
   return (
     <div className={cn("flex items-center gap-2", className)}>
+      {parts !== "language" && (
       <button
         type="button"
         onClick={toggleTheme}
@@ -158,6 +167,8 @@ export function DatenraumPrefsControls({ className }: { className?: string }) {
           </svg>
         )}
       </button>
+      )}
+      {parts !== "theme" && (
       <div
         role="radiogroup"
         aria-label={ui.language}
@@ -179,6 +190,7 @@ export function DatenraumPrefsControls({ className }: { className?: string }) {
           </button>
         ))}
       </div>
+      )}
     </div>
   );
 }

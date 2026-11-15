@@ -45,9 +45,10 @@ const TITLE_WIDTH_PER_PX = 4.8;
 // per pixel; and the line height (leading-[0.86]).
 const TITLE_LINE_WIDTH_PER_PX = 3.13;
 const TITLE_LEADING = 0.86;
-// The light/dark and language buttons in the top left corner, as far as
-// they reach in: on a narrow screen the title fits beside them.
-const CONTROLS_W = 140;
+// Narrow: how far in from either side the corner's buttons reach (light/
+// dark on the left, the language on the right): the title, centred, fits
+// between them.
+const NARROW_SIDE = 104;
 // Narrower than this, segments sit in the text rather than beside it, and
 // there's no corner map.
 const WIDE_PX = 768;
@@ -71,6 +72,9 @@ const COLUMN_PAD = 40;
 // the tour's own navigation panel, in its top right corner, falls outside
 // it (the tour has no way to leave it closed), and the view stays centred.
 const TOUR_CROP = 300;
+// A picture slider's own padding at its ends, and above and below its
+// pictures where it has no frame of its own (in the text, on a phone).
+const ROW_PAD = 4;
 // Where in the content's part of the screen something counts as being read:
 // the last heading or title whose top has passed this far down it.
 const READING_LINE = 0.38;
@@ -492,17 +496,17 @@ export function DatenraumView({
 
   const sideSegments = !!layout?.wide && mode === "overview";
   // The title: one line over the middle of the page — or, on a narrow
-  // screen, two beside the corner's buttons, level with their top (smaller
-  // only if it has to be to fit there).
+  // screen, two, still centred, between the corners' buttons and level with
+  // their top (smaller only if it has to be to fit there).
   const title = (() => {
     if (!layout || layout.wide) {
       const w = layout?.w ?? 0;
       return { px: TITLE_PX, lines: 1, x: w / 2, y: TITLE_Y, w: TITLE_PX * TITLE_WIDTH_PER_PX, h: TITLE_PX * TITLE_LEADING };
     }
-    const room = layout.w - CONTROLS_W - 24;
+    const room = layout.w - NARROW_SIDE * 2;
     const px = Math.min(TITLE_PX, room / TITLE_LINE_WIDTH_PER_PX);
     const h = 2 * px * TITLE_LEADING;
-    return { px, lines: 2, x: CONTROLS_W + 12 + room / 2, y: 12 + h / 2, w: px * TITLE_LINE_WIDTH_PER_PX, h };
+    return { px, lines: 2, x: layout.w / 2, y: 12 + h / 2, w: px * TITLE_LINE_WIDTH_PER_PX, h };
   })();
   // Narrow: the strip the title floats in (the switcher heads the content
   // instead), down to a little below it.
@@ -543,9 +547,9 @@ export function DatenraumView({
             aria-hidden
             style={{
               left: layout.segment.x,
-              top: layout.segment.y,
+              top: 0,
               width: layout.cardLeadIn,
-              height: layout.segment.h,
+              height: layout.h,
               opacity: segments.current ? 1 : 0,
               maskImage: "linear-gradient(to right, #000 25%, transparent)",
               WebkitMaskImage: "linear-gradient(to right, #000 25%, transparent)",
@@ -647,9 +651,8 @@ export function DatenraumView({
             className="absolute left-0 top-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--surface)_85%,transparent),transparent)] backdrop-blur-md"
           />
 
-          {/* The title, on one line floating at the top: over the middle of
-              the page, or on a narrow screen beside the corner's buttons,
-              smaller if it has to be to fit there. */}
+          {/* The title, floating at the top over the middle of the page (see
+              title above). */}
           <h1
             style={{ fontSize: title.px, left: title.x, top: title.y }}
             className={`${brandFont.className} absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center uppercase leading-[0.86] tracking-tight text-foreground`}
@@ -679,7 +682,14 @@ export function DatenraumView({
           )}
 
           {/* Top left, over everything: light or dark, German or English. */}
-          <DatenraumPrefsControls className="pointer-events-auto absolute left-3 top-3" />
+          {layout.wide ? (
+            <DatenraumPrefsControls className="pointer-events-auto absolute left-3 top-3" />
+          ) : (
+            <>
+              <DatenraumPrefsControls parts="theme" className="pointer-events-auto absolute left-3 top-3" />
+              <DatenraumPrefsControls parts="language" className="pointer-events-auto absolute right-3 top-3" />
+            </>
+          )}
         </div>
       )}
     </div>
@@ -864,23 +874,30 @@ function Segments({
   } as CSSProperties;
   const keys = [state.leaving, state.current].filter((k, i, all): k is string => !!k && all.indexOf(k) === i);
   const fade = "linear-gradient(to right, transparent, #000 " + cardLeadIn + "px)";
+  // The frame runs the window's full height, as the text does — the cards
+  // sit where they belong in it, their shadows whole, and going they pass
+  // on up under the title's blur rather than ending at an edge of their own.
+  const frame = { top: rect.y, bottom: viewH - rect.y - rect.h };
   return (
     <div
       className="absolute"
-      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, maskImage: fade, WebkitMaskImage: fade }}
+      style={{ left: rect.x, top: 0, width: rect.w, height: viewH, maskImage: fade, WebkitMaskImage: fade }}
     >
       {keys.map((key) => {
         const segment = segmentByKey(key);
         if (!segment) return null;
         const leaving = key !== state.current;
         return (
+          // Only the cards themselves take input: around them, it lands on
+          // the page (and scrolls it, see onRootWheel).
           <div
             key={key}
             style={motion}
+            inert={leaving}
             onAnimationEnd={leaving ? () => onLeft(key) : undefined}
             className={cn(
-              "absolute inset-0",
-              leaving ? "datenraum-segment-out pointer-events-none" : "datenraum-segment-in pointer-events-auto",
+              "pointer-events-none absolute inset-0",
+              leaving ? "datenraum-segment-out" : "datenraum-segment-in",
             )}
           >
             <SegmentView
@@ -892,6 +909,7 @@ function Segments({
               onPassWheel={onPassWheel}
               // Pictures from the far edge, the cards from the column's.
               leadIn={segment.kind === "images" ? 0 : cardLeadIn}
+              frame={frame}
             />
           </div>
         );
@@ -910,13 +928,22 @@ type SegmentProps = {
   // Beside the text: how far in from the segment's (faded) left edge it
   // starts — pictures scrolled back run on into that.
   leadIn?: number;
+  // How far in from the top and bottom of its frame it sits.
+  frame?: { top: number; bottom: number };
 };
 
-function SegmentView({ segment, images, pins, lang, ui, onPassWheel, leadIn = 0 }: SegmentProps) {
+const NO_FRAME = { top: ROW_PAD, bottom: ROW_PAD };
+
+function SegmentView({ segment, images, pins, lang, ui, onPassWheel, leadIn = 0, frame = NO_FRAME }: SegmentProps) {
   if (segment.kind === "images")
-    return <ImageSlider names={segment.images} images={images} ui={ui} onPassWheel={onPassWheel} leadIn={leadIn} />;
+    return (
+      <ImageSlider names={segment.images} images={images} ui={ui} onPassWheel={onPassWheel} leadIn={leadIn} frame={frame} />
+    );
   return (
-    <div className="h-full" style={{ paddingLeft: leadIn }}>
+    <div
+      className="pointer-events-none h-full"
+      style={{ paddingLeft: leadIn, paddingTop: frame.top, paddingBottom: frame.bottom }}
+    >
       {segment.kind === "tour" ? (
         <TourCard url={segment.url} ui={ui} />
       ) : (
@@ -942,11 +969,12 @@ function InlineSegment(props: SegmentProps) {
 // its right edge on the row's: one narrower than the row would otherwise
 // sit back in the fade behind the text, so the row leads in with the
 // difference.
-const ROW_PAD = 4; // px-1
+
 function ImageSlider({
   names,
   images,
   leadIn = 0,
+  frame = NO_FRAME,
   ui,
   onPassWheel,
 }: {
@@ -955,6 +983,7 @@ function ImageSlider({
   ui: Record<string, string>;
   onPassWheel: (deltaY: number) => void;
   leadIn?: number;
+  frame?: { top: number; bottom: number };
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const firstRef = useRef<HTMLDivElement>(null);
@@ -996,9 +1025,11 @@ function ImageSlider({
     return () => row.removeEventListener("wheel", onWheel);
   }, []);
 
+  // On a picture (the row itself lets input through, see below), held
+  // there while it's dragged.
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (e.pointerType !== "mouse" || e.button !== 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    (e.target as Element).setPointerCapture(e.pointerId);
     dragRef.current = { x: e.clientX, left: e.currentTarget.scrollLeft, id: e.pointerId };
   }
   function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
@@ -1017,8 +1048,10 @@ function ImageSlider({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      style={{ paddingLeft: lead }}
-      className="flex h-full cursor-grab touch-pan-x select-none gap-3 overflow-x-auto overscroll-x-contain px-1 py-1 [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+      // The row reaches its frame's top and bottom (so it doesn't cut the
+      // pictures' shadows off), and only the pictures in it take input.
+      style={{ paddingLeft: lead, paddingRight: ROW_PAD, paddingTop: frame.top, paddingBottom: frame.bottom }}
+      className="pointer-events-none flex h-full cursor-grab touch-pan-x select-none gap-3 overflow-x-auto overscroll-x-contain [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
       {names.map((name, i) => {
         const image = images[name];
@@ -1028,7 +1061,7 @@ function ImageSlider({
             key={`${name}-${i}`}
             ref={i === 0 ? firstRef : undefined}
             style={{ aspectRatio: aspect }}
-            className="relative h-full shrink-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-card)]"
+            className="pointer-events-auto relative h-full shrink-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-card)]"
           >
             {image ? (
               // The first straight away and ahead of the rest; the others as
@@ -1054,7 +1087,7 @@ function ImageSlider({
 // open it on its own.
 function TourCard({ url, ui }: { url: string; ui: Record<string, string> }) {
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-[var(--radius-lg)] border border-border bg-black shadow-[var(--shadow-float)]">
+    <div className="pointer-events-auto relative h-full w-full overflow-hidden rounded-[var(--radius-lg)] border border-border bg-black shadow-[var(--shadow-float)]">
       <iframe
         src={url}
         title={ui.tour}
@@ -1099,7 +1132,7 @@ function PlanCard({ pins, lang }: { pins: DatenraumPin[]; lang: Lang }) {
   const [floor, setFloor] = useState<Floor>("eg");
   const [open, setOpen] = useState<string | null>(null);
   return (
-    <div className="h-full w-full overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-float)]">
+    <div className="pointer-events-auto h-full w-full overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-float)]">
       <VenueMap
         className="h-full w-full"
         floors={COLOSSEUM}
