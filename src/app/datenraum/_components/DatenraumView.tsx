@@ -884,14 +884,16 @@ function Segments({
   } as CSSProperties;
   const keys = [state.leaving, state.current].filter((k, i, all): k is string => !!k && all.indexOf(k) === i);
   const fade = "linear-gradient(to right, transparent, #000 " + cardLeadIn + "px)";
-  // The frame runs the window's full height, as the text does — the cards
-  // sit where they belong in it, their shadows whole, and going they pass
-  // on up under the title's blur rather than ending at an edge of their own.
-  const frame = { top: rect.y, bottom: viewH - rect.y - rect.h };
+  // The frame runs the window's full height, as the text does, and on to
+  // its right edge — the cards sit where they belong in it, their shadows
+  // whole (the fade's mask cuts off whatever's outside the frame), pictures
+  // scrolled sideways run on out at the edge, and going they pass on up
+  // under the title's blur rather than ending at an edge of their own.
+  const frame = { top: rect.y, bottom: viewH - rect.y - rect.h, right: EDGE };
   return (
     <div
       className="absolute"
-      style={{ left: rect.x, top: 0, width: rect.w, height: viewH, maskImage: fade, WebkitMaskImage: fade }}
+      style={{ left: rect.x, top: 0, width: rect.w + EDGE, height: viewH, maskImage: fade, WebkitMaskImage: fade }}
     >
       {keys.map((key) => {
         const segment = segmentByKey(key);
@@ -939,13 +941,14 @@ type SegmentProps = {
   // Beside the text: how far in from the segment's (faded) left edge it
   // starts — pictures scrolled back run on into that.
   leadIn?: number;
-  // How far in from the top and bottom of its frame it sits.
-  frame?: { top: number; bottom: number };
+  // How far in from the top, bottom and right of its frame it sits.
+  frame?: Frame;
   // Beside the text, a tour is drawn by the page's one TourLayer, not here.
   sharedTour?: boolean;
 };
 
-const NO_FRAME = { top: ROW_PAD, bottom: ROW_PAD };
+type Frame = { top: number; bottom: number; right: number };
+const NO_FRAME: Frame = { top: ROW_PAD, bottom: ROW_PAD, right: 0 };
 
 function SegmentView({
   segment,
@@ -966,7 +969,7 @@ function SegmentView({
   return (
     <div
       className="pointer-events-none h-full"
-      style={{ paddingLeft: leadIn, paddingTop: frame.top, paddingBottom: frame.bottom }}
+      style={{ paddingLeft: leadIn, paddingRight: frame.right, paddingTop: frame.top, paddingBottom: frame.bottom }}
     >
       {segment.kind === "tour" ? (
         <TourCard url={segment.url} ui={ui} />
@@ -1007,26 +1010,27 @@ function ImageSlider({
   ui: Record<string, string>;
   onPassWheel: (deltaY: number) => void;
   leadIn?: number;
-  frame?: { top: number; bottom: number };
+  frame?: Frame;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const firstRef = useRef<HTMLDivElement>(null);
   const [lead, setLead] = useState(leadIn);
   const dragRef = useRef<{ x: number; left: number; id: number } | null>(null);
 
-  // The lead-in: the row's width less the first picture's, so its right
-  // edge meets the row's (EDGE in from the window's), measured whenever
-  // either changes size.
+  // The lead-in: the row's width less the first picture's and the frame's
+  // right margin, so its right edge sits EDGE in from the window's, measured
+  // whenever either changes size.
+  const right = frame.right;
   useLayoutEffect(() => {
     const row = rowRef.current, first = firstRef.current;
     if (!row || !first) return;
-    const measure = () => setLead(Math.max(leadIn, ROW_PAD, row.clientWidth - first.offsetWidth));
+    const measure = () => setLead(Math.max(leadIn, ROW_PAD, row.clientWidth - right - first.offsetWidth));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(row);
     ro.observe(first);
     return () => ro.disconnect();
-  }, [leadIn]);
+  }, [leadIn, right]);
   const passRef = useRef(onPassWheel);
   useEffect(() => {
     passRef.current = onPassWheel;
@@ -1074,7 +1078,7 @@ function ImageSlider({
       onPointerCancel={onPointerUp}
       // The row reaches its frame's top and bottom (so it doesn't cut the
       // pictures' shadows off), and only the pictures in it take input.
-      style={{ paddingLeft: lead, paddingRight: ROW_PAD, paddingTop: frame.top, paddingBottom: frame.bottom }}
+      style={{ paddingLeft: lead, paddingRight: Math.max(right, ROW_PAD), paddingTop: frame.top, paddingBottom: frame.bottom }}
       className="pointer-events-none flex h-full cursor-grab touch-pan-x select-none gap-3 overflow-x-auto overscroll-x-contain [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
       {names.map((name, i) => {
