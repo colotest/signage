@@ -114,42 +114,6 @@ const FLAT_100_200 = {
 
 export const DATENRAUM_SECTIONS: DatenraumSection[] = [
   {
-    id: "lage",
-    title: { de: "Lage", en: "Location" },
-    bottomMap: true,
-    intro: {
-      de: [p(`Perfekt angebunden an den kulturreichen Kiez im Herzen von Berlin. ${LOREM}`)],
-      en: [p(`Perfectly connected to the culturally rich neighbourhood in the heart of Berlin. ${LOREM}`)],
-    },
-    entries: [
-      {
-        id: "eingang-schoenhauser",
-        group: { de: "Eingänge", en: "Entrances" },
-        title: { de: "Schönhauser Allee 123", en: "Schönhauser Allee 123" },
-        subtitle: { de: "Historischer Kinoeingang", en: "Historic cinema entrance" },
-        places: [around("eg", 0.9006, 0.7699, 0.035)],
-        body: { de: [p(LOREM)], en: [p(LOREM)] },
-      },
-      {
-        id: "eingang-gleimstrasse",
-        group: { de: "Eingänge", en: "Entrances" },
-        title: { de: "Gleimstraße 31", en: "Gleimstraße 31" },
-        subtitle: { de: "Modernisierter Atriumseingang", en: "Modernised atrium entrance" },
-        places: [around("eg", 0.5293, 0.9119, 0.035)],
-        body: { de: [p(LOREM)], en: [p(LOREM)] },
-      },
-      {
-        id: "anlieferung",
-        group: { de: "Anlieferung", en: "Deliveries" },
-        title: { de: "Gleimstraße 35", en: "Gleimstraße 35" },
-        subtitle: { de: "Umfassender Warenwirtschafts-/Zulieferungshof", en: "Extensive goods and delivery yard" },
-        // PLACEHOLDER
-        places: [around("eg", 0.2, 0.86, 0.06)],
-        body: { de: [p(LOREM)], en: [p(LOREM)] },
-      },
-    ],
-  },
-  {
     id: "areale",
     title: { de: "Areale", en: "Spaces" },
     bottomMap: true,
@@ -434,6 +398,42 @@ export const DATENRAUM_SECTIONS: DatenraumSection[] = [
             p("and in the restrooms, above the urinals (A3, Wagenhalle: 23, W-Hof: 20, Galerie: 22)"),
           ],
         },
+      },
+    ],
+  },
+  {
+    id: "lage",
+    title: { de: "Lage", en: "Location" },
+    bottomMap: true,
+    intro: {
+      de: [p(`Perfekt angebunden an den kulturreichen Kiez im Herzen von Berlin. ${LOREM}`)],
+      en: [p(`Perfectly connected to the culturally rich neighbourhood in the heart of Berlin. ${LOREM}`)],
+    },
+    entries: [
+      {
+        id: "eingang-schoenhauser",
+        group: { de: "Eingänge", en: "Entrances" },
+        title: { de: "Schönhauser Allee 123", en: "Schönhauser Allee 123" },
+        subtitle: { de: "Historischer Kinoeingang", en: "Historic cinema entrance" },
+        places: [around("eg", 0.9006, 0.7699, 0.035)],
+        body: { de: [p(LOREM)], en: [p(LOREM)] },
+      },
+      {
+        id: "eingang-gleimstrasse",
+        group: { de: "Eingänge", en: "Entrances" },
+        title: { de: "Gleimstraße 31", en: "Gleimstraße 31" },
+        subtitle: { de: "Modernisierter Atriumseingang", en: "Modernised atrium entrance" },
+        places: [around("eg", 0.5293, 0.9119, 0.035)],
+        body: { de: [p(LOREM)], en: [p(LOREM)] },
+      },
+      {
+        id: "anlieferung",
+        group: { de: "Anlieferung", en: "Deliveries" },
+        title: { de: "Gleimstraße 35", en: "Gleimstraße 35" },
+        subtitle: { de: "Umfassender Warenwirtschafts-/Zulieferungshof", en: "Extensive goods and delivery yard" },
+        // PLACEHOLDER
+        places: [around("eg", 0.2, 0.86, 0.06)],
+        body: { de: [p(LOREM)], en: [p(LOREM)] },
       },
     ],
   },

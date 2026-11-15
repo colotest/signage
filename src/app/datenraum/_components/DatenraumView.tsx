@@ -50,8 +50,16 @@ const TOP_ZONE = 128;
 // Wide: how much of the width the content takes; segments have the rest.
 const SEGMENT_SPLIT = 0.6;
 const EDGE = 20;
-// A segment's smallest height (the map's buttons need about this much).
-const SEGMENT_MIN_H = 400;
+// Wide: how far the segments reach back over the content, fading in (and
+// blurring what's beneath) across it — the pictures run on under it.
+const FADE = 96;
+// The text column's widest, and its side padding (md:px-10), wide.
+const COLUMN_MAX = 680;
+const COLUMN_PAD = 40;
+// A 360° tour is drawn this much wider on either side than its card shows:
+// the tour's own navigation panel, in its top right corner, falls outside
+// it (the tour has no way to leave it closed), and the view stays centred.
+const TOUR_CROP = 300;
 // Where in the content's part of the screen something counts as being read:
 // the last heading or title whose top has passed this far down it.
 const READING_LINE = 0.38;
@@ -78,11 +86,13 @@ type Layout = {
 function layoutFor(w: number, h: number): Layout {
   const wide = w >= WIDE_PX;
   const columnW = wide ? Math.round(w * SEGMENT_SPLIT) : w;
-  const areaX = columnW + 4, areaW = w - EDGE - areaX;
-  const areaY = TOP_ZONE, areaH = h - EDGE - areaY;
-  const segH = Math.min(areaH, Math.max(areaW * 0.85, SEGMENT_MIN_H));
-  const cornerW = Math.min(380, columnW * 0.42);
-  const cornerH = Math.round(cornerW * 0.66);
+  // The segments: the full height, from where they fade in over the
+  // content to the right edge.
+  const segX = columnW - FADE;
+  // The corner map: as wide as the text, in line with it.
+  const textX = (columnW - Math.min(COLUMN_MAX, columnW)) / 2 + COLUMN_PAD;
+  const cornerW = Math.min(COLUMN_MAX, columnW) - COLUMN_PAD * 2;
+  const cornerH = Math.round(cornerW * 0.5);
   return {
     w,
     h,
@@ -91,8 +101,8 @@ function layoutFor(w: number, h: number): Layout {
     columnW,
     readingY: TOP_ZONE + (h - TOP_ZONE) * READING_LINE,
     bigTitlePx: Math.max(48, Math.min(w * 0.14, h * 0.2, 200)),
-    segment: { x: areaX, y: areaY + (areaH - segH) / 2, w: areaW, h: segH },
-    corner: { x: EDGE, y: h - EDGE - cornerH, w: cornerW, h: cornerH },
+    segment: { x: segX, y: EDGE, w: w - EDGE - segX, h: h - EDGE * 2 },
+    corner: { x: textX, y: h - EDGE - cornerH, w: cornerW, h: cornerH },
   };
 }
 
@@ -499,6 +509,20 @@ export function DatenraumView({
       {layout && (
         <div className="pointer-events-none absolute inset-0">
           {sideSegments && (
+            // What scrolls beneath the segments' faded edge, blurred.
+            <div
+              aria-hidden
+              style={{
+                left: layout.segment.x,
+                width: FADE,
+                opacity: segments.current ? 1 : 0,
+                maskImage: "linear-gradient(to right, transparent, #000)",
+                WebkitMaskImage: "linear-gradient(to right, transparent, #000)",
+              }}
+              className="absolute inset-y-0 backdrop-blur-sm transition-opacity duration-500"
+            />
+          )}
+          {sideSegments && (
             <Segments
               rect={layout.segment}
               viewH={layout.h}
@@ -671,7 +695,7 @@ function SectionView({
             >
               <span
                 className={cn(
-                  `${brandFont.className} text-[28px] uppercase leading-[1.05] tracking-tight transition-colors`,
+                  "text-[22px] font-bold leading-tight tracking-tight transition-colors",
                   entryLit(entry) ? "text-accent" : "group-hover:text-accent",
                 )}
               >
@@ -784,8 +808,12 @@ function Segments({
     "--to": `${state.down ? above : below}px`,
   } as CSSProperties;
   const keys = [state.leaving, state.current].filter((k, i, all): k is string => !!k && all.indexOf(k) === i);
+  const fade = "linear-gradient(to right, transparent, #000 " + FADE + "px)";
   return (
-    <div className="absolute" style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
+    <div
+      className="absolute"
+      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, maskImage: fade, WebkitMaskImage: fade }}
+    >
       {keys.map((key) => {
         const segment = segmentByKey(key);
         if (!segment) return null;
@@ -800,7 +828,15 @@ function Segments({
               leaving ? "datenraum-segment-out pointer-events-none" : "datenraum-segment-in pointer-events-auto",
             )}
           >
-            <SegmentView segment={segment} images={images} pins={pins} lang={lang} ui={ui} onPassWheel={onPassWheel} />
+            <SegmentView
+              segment={segment}
+              images={images}
+              pins={pins}
+              lang={lang}
+              ui={ui}
+              onPassWheel={onPassWheel}
+              leadIn={FADE}
+            />
           </div>
         );
       })}
@@ -815,12 +851,23 @@ type SegmentProps = {
   lang: Lang;
   ui: Record<string, string>;
   onPassWheel: (deltaY: number) => void;
+  // Beside the text: how far in from the segment's (faded) left edge it
+  // starts — pictures scrolled back run on into that.
+  leadIn?: number;
 };
 
-function SegmentView({ segment, images, pins, lang, ui, onPassWheel }: SegmentProps) {
-  if (segment.kind === "images") return <ImageSlider names={segment.images} images={images} ui={ui} onPassWheel={onPassWheel} />;
-  if (segment.kind === "tour") return <TourCard url={segment.url} ui={ui} />;
-  return <PlanCard pins={segment.pins === "power" ? pins.power : []} lang={lang} />;
+function SegmentView({ segment, images, pins, lang, ui, onPassWheel, leadIn = 0 }: SegmentProps) {
+  if (segment.kind === "images")
+    return <ImageSlider names={segment.images} images={images} ui={ui} onPassWheel={onPassWheel} leadIn={leadIn} />;
+  return (
+    <div className="h-full" style={{ paddingLeft: leadIn }}>
+      {segment.kind === "tour" ? (
+        <TourCard url={segment.url} ui={ui} />
+      ) : (
+        <PlanCard pins={segment.pins === "power" ? pins.power : []} lang={lang} />
+      )}
+    </div>
+  );
 }
 
 // Narrow: a title's segment under its text.
@@ -839,6 +886,7 @@ function InlineSegment(props: SegmentProps) {
 function ImageSlider({
   names,
   images,
+  leadIn = 0,
   ui,
   onPassWheel,
 }: {
@@ -846,6 +894,7 @@ function ImageSlider({
   images: Record<string, DatenraumImage>;
   ui: Record<string, string>;
   onPassWheel: (deltaY: number) => void;
+  leadIn?: number;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; left: number; id: number } | null>(null);
@@ -892,6 +941,7 @@ function ImageSlider({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      style={leadIn ? { paddingLeft: leadIn } : undefined}
       className="flex h-full cursor-grab touch-pan-x select-none gap-3 overflow-x-auto overscroll-x-contain px-1 py-1 [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
       {names.map((name, i) => {
@@ -927,8 +977,23 @@ function TourCard({ url, ui }: { url: string; ui: Record<string, string> }) {
         loading="lazy"
         allow="fullscreen; accelerometer; gyroscope; magnetometer; xr-spatial-tracking"
         allowFullScreen
-        className="h-full w-full border-0"
+        style={{ left: -TOUR_CROP, width: `calc(100% + ${TOUR_CROP * 2}px)` }}
+        className="absolute top-0 h-full max-w-none border-0"
       />
+      {/* The tour's credit, cut off with its edges, given again where it
+          shows — as the tour has it (nexpics' copyright element). */}
+      <a
+        href="https://www.nexpics.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute bottom-2.5 left-2 flex items-start gap-[5px] text-[13px] leading-none text-black [font-family:-apple-system,BlinkMacSystemFont,'Segoe_UI',Roboto,'Helvetica_Neue',sans-serif]"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- nexpics' own logo, from their server */}
+        <img src="https://tours.nexpics.com/elements/nexpics-logo_000000.png" alt="nexpics" className="mt-[4px] w-[90px]" />
+        <span>
+          <i>by</i> mediaglobe ©
+        </span>
+      </a>
       <a
         href={url}
         target="_blank"
