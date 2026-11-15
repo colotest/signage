@@ -37,7 +37,13 @@ import { MapNotePin } from "./MapNotePin";
 // a 360° tour — rises into view as the one before rises away (sinks, going
 // back up). In the bottom left, a small map lights up the spaces being read
 // about. On a narrow screen each title's segment sits under its text.
-const TITLE_PX = 26;
+// The title, on one line: its size, and its width for each pixel of it
+// (Compacta, uppercase, tracking-tight).
+const TITLE_PX = 52;
+const TITLE_WIDTH_PER_PX = 4.8;
+// The light/dark and language buttons in the top left corner, as far as
+// they reach in: on a narrow screen the title fits beside them.
+const CONTROLS_W = 140;
 // Narrower than this, segments sit in the text rather than beside it, and
 // there's no corner map.
 const WIDE_PX = 768;
@@ -484,6 +490,15 @@ export function DatenraumView({
   );
 
   const sideSegments = !!layout?.wide && mode === "overview";
+  const title = (() => {
+    if (!layout || layout.wide) {
+      const w = layout?.w ?? 0;
+      return { px: TITLE_PX, x: w / 2, w: TITLE_PX * TITLE_WIDTH_PER_PX };
+    }
+    const room = layout.w - CONTROLS_W - 24;
+    const px = Math.min(TITLE_PX, room / TITLE_WIDTH_PER_PX);
+    return { px, x: CONTROLS_W + 12 + room / 2, w: px * TITLE_WIDTH_PER_PX };
+  })();
 
   return (
     // Fills the page's scroll area edge to edge (undoing its padding): the
@@ -624,21 +639,21 @@ export function DatenraumView({
             className="absolute left-0 top-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--surface)_85%,transparent),transparent)] backdrop-blur-md"
           />
 
-          {/* The title, floating at the top over the whole page. */}
+          {/* The title, on one line floating at the top: over the middle of
+              the page, or on a narrow screen beside the corner's buttons,
+              smaller if it has to be to fit there. */}
           <h1
-            style={{ fontSize: TITLE_PX, left: layout.w / 2, top: TITLE_Y }}
+            style={{ fontSize: title.px, left: title.x, top: TITLE_Y }}
             className={`${brandFont.className} absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center uppercase leading-[0.86] tracking-tight text-foreground`}
           >
-            Colosseum
-            <br />
-            Event
+            Colosseum Event
           </h1>
           <button
             type="button"
             aria-label="↑"
             onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
-            style={{ left: layout.w / 2 - 70, top: TITLE_Y - 26 }}
-            className="no-press pointer-events-auto absolute h-[52px] w-[140px]"
+            style={{ left: title.x - title.w / 2, top: TITLE_Y - title.px / 2, width: title.w, height: title.px }}
+            className="no-press pointer-events-auto absolute"
           />
 
           {layout.wide && (
