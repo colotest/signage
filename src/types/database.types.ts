@@ -80,6 +80,8 @@ export type Database = {
           created_by: string | null;
           // Roles allowed to edit it besides its owner; empty = anyone (0032).
           edit_role_ids: string[];
+          // What fills it on its own, if anything: "kultur_poster" (0049).
+          feed: string | null;
         };
         Insert: {
           id?: string;
@@ -88,6 +90,7 @@ export type Database = {
           created_at?: string;
           created_by?: string | null;
           edit_role_ids?: string[];
+          feed?: string | null;
         };
         Update: {
           id?: string;
@@ -96,6 +99,7 @@ export type Database = {
           created_at?: string;
           created_by?: string | null;
           edit_role_ids?: string[];
+          feed?: string | null;
         };
         Relationships: [
           {
@@ -231,6 +235,9 @@ export type Database = {
           upload_link_folder_id: string | null;
           // Roles allowed to edit it besides its owner; empty = anyone (0032).
           edit_role_ids: string[];
+          // What a feed made it from, and a hash of what went in (0049).
+          source_key: string | null;
+          source_hash: string | null;
         };
         Insert: {
           id?: string;
@@ -245,6 +252,8 @@ export type Database = {
           uploaded_via_link?: boolean;
           upload_link_folder_id?: string | null;
           edit_role_ids?: string[];
+          source_key?: string | null;
+          source_hash?: string | null;
         };
         Update: {
           id?: string;
@@ -259,6 +268,8 @@ export type Database = {
           uploaded_via_link?: boolean;
           upload_link_folder_id?: string | null;
           edit_role_ids?: string[];
+          source_key?: string | null;
+          source_hash?: string | null;
         };
         Relationships: [
           {

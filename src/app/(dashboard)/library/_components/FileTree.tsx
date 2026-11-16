@@ -24,6 +24,7 @@ import { useViewer } from "@/lib/auth/ViewerContext";
 import { setEditRole } from "@/lib/actions/restrictions";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
 import { ReplaceDeckButton } from "./ReplaceDeckButton";
+import { KulturPosterButton } from "./KulturPosterButton";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -1193,6 +1194,10 @@ function FolderRow({
             ) : (
               <span className="truncate text-[15px] font-medium">{folder.name}</span>
             )}
+            {/* A folder the app fills itself (0049), from its own button —
+                in the Library, not the Playback Menu's picker (which has
+                no upload links either). */}
+            {folder.feed === "kultur_poster" && uploadLinks && !renaming && <KulturPosterButton />}
             <RoleDots roles={flags} />
           </span>
         }

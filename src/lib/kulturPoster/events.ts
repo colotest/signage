@@ -1,0 +1,121 @@
+import "server-only";
+
+// The events on sale at colosseumberlin.com/event, read off the page
+// itself: it's a Wix site, and the Events widget ships its list in the
+// page as JSON (the "wix-warmup-data" script) before any of it is drawn.
+// Only what the page first shows, though — the widget loads the rest on
+// scrolling — so events far enough out may be missing until they move up.
+// Wix's Events API (with the site's own key) would give all of them; this
+// is the stand-in until that's set up.
+
+const SOURCE = "https://www.colosseumberlin.com/event";
+const SITE = "https://www.colosseumberlin.com";
+
+export type TicketEvent = {
+  // Wix's own id, which stays put when the event is renamed or moved.
+  id: string;
+  title: string;
+  // ISO instants, and the time zone the venue gives them in.
+  start: string;
+  end: string;
+  timeZone: string;
+  // Where tickets are sold: Wix's own event page, or the outside shop the
+  // event links to.
+  ticketUrl: string;
+};
+
+// Wix's registration statuses that mean tickets can be had: its own
+// checkout (OPEN_TICKETS) or a link out to another shop (OPEN_EXTERNAL).
+const ON_SALE = new Set([5, 6]);
+const EXTERNAL = 3;
+
+type WixEvent = {
+  id?: string;
+  title?: string;
+  slug?: string;
+  status?: number;
+  scheduling?: { config?: { startDate?: string; endDate?: string; timeZoneId?: string; scheduleTbd?: boolean } };
+  registration?: { type?: number; status?: number; external?: { registration?: string } | null };
+};
+
+export async function fetchTicketEvents(): Promise<TicketEvent[]> {
+  const res = await fetch(SOURCE, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; ColoCloud)" },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`colosseumberlin.com/event answered ${res.status}`);
+  const html = await res.text();
+
+  const match = html.match(/<script[^>]*id="wix-warmup-data"[^>]*>([\s\S]*?)<\/script>/);
+  if (!match) throw new Error("colosseumberlin.com/event no longer carries its events in the page");
+  const events = findEvents(JSON.parse(match[1]));
+  // Nothing at all is far likelier the page changing than the venue having
+  // nothing on — and an empty list would put every poster in the archive.
+  if (events.length === 0) throw new Error("No events found on colosseumberlin.com/event");
+  return events;
+}
+
+// Any object with a title, a slug and a schedule is an event, wherever
+// in the warmup data Wix keeps it (its keys there are the widget's ids,
+// which change when the page is edited). The same event can sit in more
+// than one list, so each is taken once.
+function findEvents(data: unknown): TicketEvent[] {
+  const found = new Map<string, TicketEvent>();
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node || typeof node !== "object") return;
+    const event = node as WixEvent;
+    if (event.id && event.title && event.slug && event.scheduling?.config) {
+      const parsed = toTicketEvent(event);
+      if (parsed && !found.has(parsed.id)) found.set(parsed.id, parsed);
+      return;
+    }
+    Object.values(node).forEach(walk);
+  };
+  walk(data);
+  return [...found.values()].sort((a, b) => a.start.localeCompare(b.start));
+}
+
+function toTicketEvent(event: WixEvent): TicketEvent | null {
+  const config = event.scheduling!.config!;
+  const registration = event.registration;
+  if (!config.startDate || config.scheduleTbd) return null;
+  if (!registration || !ON_SALE.has(registration.status ?? -1)) return null;
+  // Over and done with, should the page still list it.
+  if (new Date(config.endDate ?? config.startDate) < new Date()) return null;
+
+  const own = `${SITE}/event-details/${event.slug}`;
+  const external = registration.type === EXTERNAL ? registration.external?.registration?.trim() : undefined;
+  return {
+    id: event.id!,
+    // As written on the site, but with its stray double spaces closed up
+    // ("Elena Gruschka  AUSVERKAUFT").
+    title: event.title!.replace(/\s+/g, " ").trim(),
+    start: config.startDate,
+    end: config.endDate ?? config.startDate,
+    timeZone: config.timeZoneId ?? "Europe/Berlin",
+    ticketUrl: ascii(external && !pointsHome(external) ? external : own),
+  };
+}
+
+// Escaped, as a browser would send it ("dreißig" in a path): not every
+// phone's camera reads a QR code's non-ASCII the same way.
+function ascii(url: string) {
+  try {
+    return new URL(url).href;
+  } catch {
+    return url;
+  }
+}
+
+// An outside link that's only the site's own front page (one event has
+// "http://www.colosseumberlin.com") says nothing a QR code should send
+// people to: the event's own page does better.
+function pointsHome(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, "") === "colosseumberlin.com" && parsed.pathname.replace(/\/+$/, "") === "";
+  } catch {
+    return true;
+  }
+}
