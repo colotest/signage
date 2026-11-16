@@ -37,6 +37,7 @@ export const UI: Record<Lang, Record<string, string>> = {
     openTour: "In neuem Tab öffnen",
     tour: "360°-Tour",
     floor: "Etage",
+    interact: "Zum Bedienen tippen",
   },
   en: {
     overview: "Overview",
@@ -52,6 +53,7 @@ export const UI: Record<Lang, Record<string, string>> = {
     openTour: "Open in a new tab",
     tour: "360° tour",
     floor: "Floor",
+    interact: "Tap to explore",
   },
 };
 

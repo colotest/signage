@@ -980,11 +980,46 @@ function SegmentView({
   );
 }
 
-// Narrow: a title's segment under its text.
+// Narrow: a title's segment under its text. A map or a tour takes every
+// drag on it for itself (to pan, or to look round), and as wide as the
+// screen it'd leave nowhere to scroll the page by: so, until it's tapped,
+// it's covered by something that lets the page scroll through it — and
+// covered again once it's off the screen or someone touches elsewhere.
+// (Pictures scroll sideways and let the page have the rest.)
 function InlineSegment(props: SegmentProps) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(false);
+  const guarded = props.segment.kind !== "images";
+  useEffect(() => {
+    if (!active) return;
+    const box = boxRef.current!;
+    const io = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) setActive(false);
+    });
+    io.observe(box);
+    const onDown = (e: PointerEvent) => {
+      if (!box.contains(e.target as Node)) setActive(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      io.disconnect();
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [active]);
   return (
-    <div className="-mx-6 mt-4 aspect-[4/3] md:-mx-10">
+    <div ref={boxRef} className="relative -mx-6 mt-4 aspect-[4/3] md:-mx-10">
       <SegmentView {...props} />
+      {guarded && !active && (
+        <button
+          type="button"
+          onClick={() => setActive(true)}
+          className="no-press absolute inset-0 z-10 flex touch-pan-y items-start justify-center pt-3"
+        >
+          <span className="rounded-full border border-border glass-material px-3 py-1.5 text-[12px] font-semibold text-foreground shadow-[var(--shadow-float)]">
+            {props.ui.interact}
+          </span>
+        </button>
+      )}
     </div>
   );
 }
@@ -1079,7 +1114,7 @@ function ImageSlider({
       // The row reaches its frame's top and bottom (so it doesn't cut the
       // pictures' shadows off), and only the pictures in it take input.
       style={{ paddingLeft: lead, paddingRight: Math.max(right, ROW_PAD), paddingTop: frame.top, paddingBottom: frame.bottom }}
-      className="pointer-events-none flex h-full cursor-grab touch-pan-x select-none gap-3 overflow-x-auto overscroll-x-contain [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+      className="pointer-events-none flex h-full cursor-grab touch-pan-x touch-pan-y select-none gap-3 overflow-x-auto overscroll-x-contain [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
       {names.map((name, i) => {
         const image = images[name];
