@@ -517,10 +517,17 @@ export function DatenraumView({
   return (
     // Fills the page's scroll area edge to edge (undoing its padding): the
     // content scrolls in its own box, under the stage.
-    // touch-none: a drag starting on the page itself (see onRootDown) is
-    // handed on by hand, not panned by the browser; drags in the content
-    // and the segments, which scroll by themselves, aren't affected.
-    <div ref={rootRef} className="relative -mx-5 -my-6 h-[calc(100%+3rem)] touch-none overflow-hidden bg-surface">
+    // With segments beside the text: touch-none, so a drag starting on the
+    // page itself (see onRootDown) is handed on by hand, not panned by the
+    // browser; drags in the content and the segments, which scroll by
+    // themselves, aren't affected. Without (a phone, or the gallery),
+    // there's nothing beneath the content, and it's an ordinary page —
+    // iOS may not scroll a box under touch-none, or one that doesn't
+    // itself take input, at all.
+    <div
+      ref={rootRef}
+      className={cn("relative -mx-5 -my-6 h-[calc(100%+3rem)] overflow-hidden bg-surface", sideSegments && "touch-none")}
+    >
       {layout && sideSegments && (
         // Beneath the content: the segments, their pictures reaching back
         // behind the text, which floats over them — fading in, blurred and
@@ -569,9 +576,12 @@ export function DatenraumView({
         </div>
       )}
 
-      {/* Only what's in it takes clicks, so the segments beneath stay in
-          reach wherever the text doesn't cover them. */}
-      <div ref={scrollRef} className="pointer-events-none absolute inset-0 overflow-y-auto overscroll-contain">
+      {/* With segments beneath, only what's in it takes clicks, so they
+          stay in reach wherever the text doesn't cover them. */}
+      <div
+        ref={scrollRef}
+        className={cn("absolute inset-0 overflow-y-auto overscroll-contain", sideSegments && "pointer-events-none")}
+      >
         {layout && (
           <>
             <div className="pointer-events-auto" style={{ width: mode === "overview" ? layout.columnW : "100%" }}>
@@ -1111,10 +1121,15 @@ function ImageSlider({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      // The row reaches its frame's top and bottom (so it doesn't cut the
-      // pictures' shadows off), and only the pictures in it take input.
+      // Beside the text, the row reaches its frame's top and bottom (so it
+      // doesn't cut the pictures' shadows off), and only the pictures in it
+      // take input; in the text (a phone) it's an ordinary row, which iOS
+      // will scroll, not one that doesn't itself take input.
       style={{ paddingLeft: lead, paddingRight: Math.max(right, ROW_PAD), paddingTop: frame.top, paddingBottom: frame.bottom }}
-      className="pointer-events-none flex h-full cursor-grab touch-pan-x touch-pan-y select-none gap-3 overflow-x-auto overscroll-x-contain [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+      className={cn(
+        "flex h-full cursor-grab touch-pan-x touch-pan-y select-none gap-3 overflow-x-auto overscroll-x-contain [scrollbar-width:none] active:cursor-grabbing [&::-webkit-scrollbar]:hidden",
+        frame !== NO_FRAME && "pointer-events-none",
+      )}
     >
       {names.map((name, i) => {
         const image = images[name];
