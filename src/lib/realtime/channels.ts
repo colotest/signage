@@ -19,6 +19,9 @@ export function controlChannelName(screenId: number) {
 // screenPages/dials.ts) — the whole set each time, so a message that goes
 // missing costs nothing once the next arrives. Live only: it holds until
 // the player reloads, and the page's own defaults come back after that.
+//
+// "pair" puts a pairing code up over what's playing, for pairing the TV
+// that's showing it (see src/app/screen/_components/PairingCode.tsx).
 export type ControlMessage =
-  | { type: "play" | "pause" | "next" | "prev" | "reload" }
+  | { type: "play" | "pause" | "next" | "prev" | "reload" | "pair" }
   | { type: "tune"; page: string; tuning: Record<string, number> };

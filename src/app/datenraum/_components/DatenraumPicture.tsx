@@ -3,13 +3,13 @@
 import Image, { getImageProps } from "next/image";
 import { useState } from "react";
 
-// A Datenraum picture, resized by next/image rather than the original file:
+// A Datenraum picture, resized (by the media route, through next/image —
+// see src/lib/media/imageLoader.ts) rather than the original file:
 // uploads are often full-resolution PNGs of several megabytes (up to 12),
 // where a WebP at the size it's shown is a fraction of that. Urgent ones
 // (what's in view first) are fetched straight away and ahead of the rest;
-// the others wait until they're near and come after. If resizing fails —
-// the optimizer can give up on a very large original — the original is
-// shown instead (as in MediaThumb).
+// the others wait until they're near and come after. If resizing fails,
+// the original is shown instead (as in MediaThumb).
 export function DatenraumPicture({
   src,
   alt,

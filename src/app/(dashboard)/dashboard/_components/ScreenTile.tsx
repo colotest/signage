@@ -320,6 +320,7 @@ export function ScreenTile({
                   onSelectRotation={handleSelectRotation}
                   onRename={() => setRenaming(true)}
                   onReload={() => send({ type: "reload" })}
+                  onShowPairingCode={() => send({ type: "pair" })}
                 />
               )}
               {!renaming && tunable && (

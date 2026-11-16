@@ -817,6 +817,63 @@ export type Database = {
         ];
       };
       // The Datenraum's picture collection (0048).
+      screen_pairings: {
+        Row: {
+          code: string;
+          secret_hash: string;
+          screen_id: number | null;
+          claimed_by: string | null;
+          created_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          code: string;
+          secret_hash: string;
+          screen_id?: number | null;
+          claimed_by?: string | null;
+          created_at?: string;
+          expires_at: string;
+        };
+        Update: {
+          code?: string;
+          secret_hash?: string;
+          screen_id?: number | null;
+          claimed_by?: string | null;
+          created_at?: string;
+          expires_at?: string;
+        };
+        Relationships: [];
+      };
+      screen_devices: {
+        Row: {
+          id: string;
+          screen_id: number;
+          secret_hash: string;
+          label: string | null;
+          paired_by: string | null;
+          created_at: string;
+          last_seen_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          screen_id: number;
+          secret_hash: string;
+          label?: string | null;
+          paired_by?: string | null;
+          created_at?: string;
+          last_seen_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          screen_id?: number;
+          secret_hash?: string;
+          label?: string | null;
+          paired_by?: string | null;
+          created_at?: string;
+          last_seen_at?: string | null;
+        };
+        Relationships: [];
+      };
       datenraum_gallery: {
         Row: {
           id: string;

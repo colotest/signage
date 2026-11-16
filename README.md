@@ -11,8 +11,8 @@ A free (at base scale) web-based digital signage system for a single event venue
 - **Playback Menus and setups** — each screen's Playback Menu edits that screen's *setup*: its Now Playing list plus background, transition, speed and slide direction. Nothing reaches the TV until the menu's blue checkmark commits it; the white ✕ (or swiping the menu away) closes it and keeps the setup saved for later, leaving what's on air alone.
 - **Groups** — **+ New Group** (admins) picks screens and names the group. A group's tile has the same card as a screen's, acting on every screen in it, above a grid of small monitors showing each member's live picture, which admins can drag into place (grid size and Edit Group are in its wrench menu). A group has its own setup, so a screen can be set up one way on its own and another way in a group; whichever was committed last is what it shows, and a member whose screen is showing something other than the group's setup has its name fade in and out. Timed playback (alarm clocks, Calendar) stays per screen.
 - **Users and roles** — everyone signs in with their own email and password, and every change they make is recorded against them. What each person can reach comes from their **roles** (Users page → ⋯ → **New Role**): each role switches pages on (Screens, Media, Forms, Users) and, inside Screens and Users, ticks individual screens and groups, the wrench menus, reordering, and each of the Users page's options. Roles add up; someone with no role sees only the Datenraum. Media comes with Screens. Each role has a coloured dot that flags what it applies to, shown only to its own members. Owners can limit editing of their own files and folders to roles they hold (the file's ⋯ → **Limit to …**). The **super admin** can do everything and holds every role. Signup links (⋯ → **New Signup**) are single-use, last 7 days, can carry the new user's nickname and roles, and can be emailed to them from the same popup. Everyone can change their own password and login email from the account menu, and reset a forgotten password from the login page (see **Email** below). The Server Actions enforce all of this themselves; hiding the controls is just the UI side.
-- **Player** (`/screen/{id}`) — no login, meant to be opened fullscreen on a TV/Fire Stick/kiosk browser. Subscribes to Supabase Realtime so playlist changes appear within about a second, and caches its last-known content so it keeps showing something if the network drops. It reports what it's showing (on every change, plus a 20-second heartbeat) to `screen_status`, which is where each dashboard tile's live preview and Online/Offline dot come from — a screen that stops reporting for 75 seconds (power cut, network gone) shows as Offline.
-- **Supabase** holds all persistent data (`screens`, `folders`, `media_items`, `playlist_items`) and the `media` storage bucket. Row-Level Security allows public reads (needed by the unauthenticated player) but denies all writes — every mutation goes through a Server Action using the `service_role` key, which checks the dashboard's session cookie itself first.
+- **Player** (`/screen/{id}`) — no login, meant to be opened fullscreen on a TV/Fire Stick/kiosk browser. A TV is **paired** with its screen instead: it shows a six-character code, which someone types into that screen's wrench menu (**Paired TVs**) on the dashboard; the TV then keeps a cookie for good (see **Locking down the data** below). Subscribes to Supabase Realtime so playlist changes appear within about a second, and caches its last-known content so it keeps showing something if the network drops. It reports what it's showing (on every change, plus a 20-second heartbeat) to `screen_status`, which is where each dashboard tile's live preview and Online/Offline dot come from — a screen that stops reporting for 75 seconds (power cut, network gone) shows as Offline.
+- **Supabase** holds all persistent data (`screens`, `folders`, `media_items`, `playlist_items`) and the `media` storage bucket. Row-Level Security still allows public reads of the player's tables (being closed off — see **Locking down the data**) but denies all writes — every mutation goes through a Server Action using the `service_role` key, which checks the dashboard's session cookie itself first. Files are fetched through the app's own `/m/<path>` route, which checks for a login or a paired TV and then hands over a short-lived signed link; it also makes the resized copies thumbnails use (kept in the bucket under `_thumbs/`).
 
 ## One-time Supabase setup
 
@@ -40,6 +40,8 @@ NEXT_PUBLIC_SUPABASE_URL=       # Project URL from step 4 above
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # anon / publishable key
 SUPABASE_SERVICE_ROLE_KEY=      # service_role / secret key — never expose this to the client
 SESSION_SECRET=                 # random string, e.g. `openssl rand -base64 32`
+SUPABASE_JWT_SECRET=            # Project Settings → JWT Keys → Legacy JWT secret (see Locking down the data)
+SCREEN_PAIRING_REQUIRED=        # "true" once every TV is paired (see Locking down the data)
 RESEND_API_KEY=                 # optional locally — see Email below
 EMAIL_FROM=                     # e.g. Colo Cloud <noreply@example.com>
 APP_URL=                        # e.g. https://signage.example.com (production)
@@ -72,8 +74,19 @@ Without `RESEND_API_KEY`, `npm run dev` prints each email (links included) to th
 ## Setting up a TV / kiosk device
 
 1. On the dashboard, click **+ Add Screen** — this creates a screen and its player URL, shown on the tile as `/screen/{id}`.
-2. Open `https://your-app.vercel.app/screen/{id}` in the TV's browser (or a kiosk-mode browser app on a Fire Stick / Raspberry Pi) and make it fullscreen. No login is needed for this URL.
-3. Back on the dashboard, tap the screen tile to open its **Playback Menu**, then **+ Media** to pick files from the library, and press the blue checkmark to put them on the screen. The player updates automatically.
+2. Open `https://your-app.vercel.app/screen/{id}` (or just `/screen`) in the TV's browser (or a kiosk-mode browser app on a Fire Stick / Raspberry Pi) and make it fullscreen. No login is needed on the TV.
+3. Pair it: the TV shows a code; on the dashboard open the screen's wrench menu and type it in under **Paired TVs**. A TV that's already playing the screen (from before pairing) can be asked for a code with **Show code on TV**. Unpairing it there stops it at once.
+4. Back on the dashboard, tap the screen tile to open its **Playback Menu**, then **+ Media** to pick files from the library, and press the blue checkmark to put them on the screen. The player updates automatically.
+
+## Locking down the data
+
+The goal: nothing in the database or the media bucket is readable without a login or a paired TV. It goes in steps, so nothing stops working in between:
+
+1. **This step is built** — run [`0049_screen_pairing.sql`](supabase/migrations/0049_screen_pairing.sql) in the SQL Editor, set `SUPABASE_JWT_SECRET` (Project Settings → JWT Keys → the legacy JWT secret) and deploy. Every file now goes through `/m/` (dashboard, Datenraum, paired TVs); the browser talks to Supabase with a short-lived token of its own (`/api/supabase-token`: a "staff" one when signed in, a "screen" one for a paired TV); TVs can be paired. A TV that isn't paired yet still plays as before, from the public bucket.
+2. Pair every TV (see above). Each tile's wrench menu shows its paired TVs and when they were last seen.
+3. Set `SCREEN_PAIRING_REQUIRED=true` and redeploy: an unpaired TV then only shows a code.
+4. *To do:* a migration that drops the `public read …` policies in favour of ones that read the token (staff: everything; a screen: its own playlist and schedules), makes the control channels private, and takes the status functions away from `anon`.
+5. *To do:* **Storage** → `media` → turn **Public bucket** off.
 
 ## Fire TV app
 

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useRef, useState } from "react";
 import { updateHandover } from "@/lib/actions/handover";
+import { mediaUrl } from "@/lib/media/url";
 import type { EventSummary } from "@/lib/events";
 import {
   applyHandoverPatch,
@@ -92,7 +93,8 @@ export function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// A photo's address, from its path in the (public) media bucket.
+// A photo's address, from its path in the media bucket (see
+// src/lib/media/url.ts).
 export function handoverPhotoUrl(path: string) {
-  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/media/${path}`;
+  return mediaUrl(path);
 }

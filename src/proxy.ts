@@ -16,6 +16,9 @@ import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth/session";
 // /Datenraum and the old /guest lead there too, then through the same gate).
 // /venues/*, the floor plans, stay open: they're static files, also drawn
 // by the Events page's maps.
+// /m/* (every media file) and /api/supabase-token are open here too: a TV
+// has no session, and they check who's asking themselves — a signed-in
+// user or a paired TV.
 // And /tv.apk, the Fire TV app, fetched by a stick's Downloader with no
 // session (see android/), and /email/*, what emails load from the site
 // (the brand font) — a mail app has no session either.
@@ -51,6 +54,6 @@ export const config = {
     // The Home Screen files are fetched by iOS itself, which doesn't carry
     // the session cookie — gated, they came back as a redirect to /login,
     // so the web app got no icon at all and no manifest to install from.
-    "/((?!screen|signup|upload/|forgot|reset/|confirm-email/|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|tv.apk|email/|venues/).*)",
+    "/((?!screen|signup|upload/|forgot|reset/|confirm-email/|_next/static|_next/image|favicon.ico|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|tv.apk|email/|venues/|m/|api/supabase-token).*)",
   ],
 };

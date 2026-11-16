@@ -1,6 +1,7 @@
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import type { Deck, MediaType } from "@/types/domain";
+import { removeThumbs } from "@/lib/media/thumbs";
 import { pageName, type DeckPageInput } from "./insertDeck";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -50,6 +51,7 @@ export async function repointMediaItem(
   if (removeError) {
     console.error(`Failed to remove old storage object "${existing.storage_path}" after replace:`, removeError.message);
   }
+  await removeThumbs(admin.storage.from(BUCKET), [existing.storage_path]);
 }
 
 // Swaps a newer PDF in under the same deck. Page 1 stays page 1 — the same
@@ -134,4 +136,5 @@ export async function replaceDeckFiles(
   if (removeError) {
     console.error(`Failed to remove ${staleObjects.length} replaced objects for deck "${deck.name}":`, removeError.message);
   }
+  await removeThumbs(admin.storage.from(BUCKET), staleObjects);
 }

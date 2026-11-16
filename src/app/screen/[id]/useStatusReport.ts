@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import type { createBrowserClient } from "@/lib/supabase/client";
+import { currentBearer, type createBrowserClient } from "@/lib/supabase/client";
 import { HEARTBEAT_MS } from "@/lib/realtime/screenStatus";
 
 type Supabase = ReturnType<typeof createBrowserClient>;
@@ -116,7 +116,8 @@ export function useStatusReport({
       fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/report_screen_offline`, {
         method: "POST",
         keepalive: true,
-        headers: { "Content-Type": "application/json", apikey: key, Authorization: `Bearer ${key}` },
+        // The TV's own token when it has one (see supabase/client.ts).
+        headers: { "Content-Type": "application/json", apikey: key, Authorization: `Bearer ${currentBearer()}` },
         body: JSON.stringify({ p_screen_id: screenId, p_session_id: sessionId }),
       }).catch(() => {});
     }

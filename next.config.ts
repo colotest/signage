@@ -1,18 +1,13 @@
 import type { NextConfig } from "next";
 
-const supabaseHost = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname;
-
 const nextConfig: NextConfig = {
   images: {
-    // Dashboard/library thumbnails (MediaThumb) are resized from the public
-    // media bucket.
-    remotePatterns: [{ protocol: "https", hostname: supabaseHost, pathname: "/storage/v1/object/public/media/**" }],
-    formats: ["image/webp"],
-    // Uploads never change in place — replacing a file writes a new
-    // storage path — so a resized copy can be kept as long as allowed.
-    // (Supabase serves them as no-cache, which would otherwise make every
-    // copy expire after the 4h default.)
-    minimumCacheTTL: 2678400, // 31 days
+    // Media files are resized by their own route, which checks who's
+    // asking first (src/app/m/[...path]/route.ts) — not by Next's
+    // optimizer, which fetches without the viewer's cookies and shares
+    // what it made with anyone. See src/lib/media/imageLoader.ts.
+    loader: "custom",
+    loaderFile: "./src/lib/media/imageLoader.ts",
   },
   // The fonts the Übergabeprotokoll's PDF is set in (src/lib/handoverPdf.ts),
   // read from disk by the Events page's server actions: shipped with it.

@@ -10,7 +10,7 @@ import {
 import { parsePins } from "@/lib/eventPins";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { floorOf } from "@/lib/venueFloors";
-import { mediaPublicUrl } from "@/types/domain";
+import { mediaUrl } from "@/lib/media/url";
 
 // Where the Datenraum's pictures are uploaded in the media library, from
 // its root down.
@@ -42,11 +42,10 @@ export async function fetchDatenraumImages(): Promise<Record<string, DatenraumIm
       .eq("media_type", "image")
       .order("created_at");
     if (error || !items) return {};
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const images: Record<string, DatenraumImage> = {};
     for (const item of items) {
       images[imageKey(item.name)] = {
-        url: mediaPublicUrl(supabaseUrl, item.storage_path),
+        url: mediaUrl(item.storage_path),
         width: item.width,
         height: item.height,
       };
@@ -68,7 +67,6 @@ export async function fetchDatenraumGallery(): Promise<GalleryImage[]> {
       .order("position")
       .order("created_at");
     if (error || !data) return [];
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     return data.flatMap((row) => {
       const item = row.media_item;
       if (!item) return [];
@@ -77,7 +75,7 @@ export async function fetchDatenraumGallery(): Promise<GalleryImage[]> {
           id: row.id,
           mediaItemId: row.media_item_id,
           name: item.name.replace(/\.[a-z0-9]+$/i, ""),
-          url: mediaPublicUrl(supabaseUrl, item.storage_path),
+          url: mediaUrl(item.storage_path),
           width: item.width,
           height: item.height,
           tags: row.tags.filter((tag) => GALLERY_TAGS.has(tag)),

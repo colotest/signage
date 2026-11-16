@@ -7,6 +7,8 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import { controlChannelName, playlistChannelName } from "@/lib/realtime/channels";
 import type { ControlMessage } from "@/lib/realtime/channels";
 import { mediaPublicUrl } from "@/types/domain";
+import { MEDIA_ROUTE, mediaUrl } from "@/lib/media/url";
+import { PairingCode } from "../_components/PairingCode";
 import type {
   FitMode,
   MediaItem,
@@ -39,7 +41,8 @@ async function pruneMediaCache(keep: Set<string>) {
   try {
     const cache = await caches.open(MEDIA_CACHE_NAME);
     for (const request of await cache.keys()) {
-      if (request.url.includes(MEDIA_PATH) && !keep.has(request.url)) await cache.delete(request);
+      const isMedia = request.url.includes(MEDIA_PATH) || new URL(request.url).pathname.startsWith(MEDIA_ROUTE);
+      if (isMedia && !keep.has(request.url)) await cache.delete(request);
     }
   } catch {
     // Storage unavailable — nothing to tidy, and playback doesn't depend on it.
@@ -160,16 +163,37 @@ export function Player({
   screen: initialScreen,
   initialPlaylist,
   nativeMedia,
+  mediaToken,
 }: {
   screen: Screen;
   initialPlaylist: PlaylistItemWithMedia[];
   // Opened by the Fire TV app, which draws the media (see nativeMedia.ts).
   nativeMedia: boolean;
+  // A paired TV's (see screenDevice.ts): its files come through the app's
+  // own /m/ route, with this in their address — the same address
+  // everywhere, as the service worker and the Fire TV app keep files by
+  // it. A TV that isn't paired (until pairing is required) still loads
+  // them from the public bucket.
+  mediaToken: string | null;
 }) {
   const [screen, setScreen] = useState(initialScreen);
   const [playlist, setPlaylist] = useState(initialPlaylist);
   const [currentIndex, setCurrentIndex] = useState(0);
   const supabase = useMemo(() => createBrowserClient(), []);
+  const mediaSrc = useCallback(
+    (storagePath: string) =>
+      mediaToken ? mediaUrl(storagePath, { token: mediaToken }) : mediaPublicUrl(SUPABASE_URL, storagePath),
+    [mediaToken],
+  );
+  // The same, in full, for what compares addresses (the service worker's
+  // cache, keyed by full URL) or hands them to the Fire TV app. Effects
+  // and handlers only: it needs the page's own address.
+  const absoluteSrc = useCallback(
+    (storagePath: string) => new URL(mediaSrc(storagePath), window.location.href).href,
+    [mediaSrc],
+  );
+  // Asked for from the dashboard (the wrench menu's "Show code on TV").
+  const [showPairing, setShowPairing] = useState(false);
 
   // Reset to a valid index if the playlist shrinks (e.g. an item was
   // unassigned). Adjusted during render — same pattern as firstVideoItemId
@@ -475,7 +499,7 @@ export function Player({
       const keep = new Set(timerUrlsRef.current);
       for (const item of playlist) {
         if (nativeKind(item.media_item) === "none") continue;
-        const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
+        const url = absoluteSrc(item.media_item.storage_path);
         keep.add(url);
         bridge.preload(url); // a no-op for a file it already has
       }
@@ -489,7 +513,7 @@ export function Player({
       for (const item of playlist) {
         if (item.media_item.media_type === "page") continue; // rendered in code, nothing to fetch
         if (bridge && nativeKind(item.media_item) !== "none") continue; // the app's, above
-        const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
+        const url = absoluteSrc(item.media_item.storage_path);
         keep.add(url);
         if (prefetchedUrlsRef.current.has(url)) continue;
         prefetchedUrlsRef.current.add(url);
@@ -505,7 +529,7 @@ export function Player({
     return () => {
       cancelled = true;
     };
-  }, [playlist, nativeMedia]);
+  }, [playlist, nativeMedia, absoluteSrc]);
 
   // Timed playback (see useScheduledSwitch): from a minute ahead, pull the
   // timed playlist's media in — videos/PDFs as whole-file GETs the service
@@ -518,7 +542,7 @@ export function Player({
   function preloadMedia(items: MediaItem[]) {
     for (const media of items) {
       if (media.media_type === "page") continue; // rendered in code, nothing to fetch
-      const url = mediaPublicUrl(SUPABASE_URL, media.storage_path);
+      const url = absoluteSrc(media.storage_path);
       timerUrlsRef.current.add(url); // kept by the prune above until it's switched to
       const bridge = nativeMedia ? nativeMediaBridge() : undefined;
       if (bridge && nativeKind(media) !== "none") {
@@ -552,7 +576,7 @@ export function Player({
   function fireTimer(timer: PendingTimer) {
     // Its media is the playlist now, which keeps it from being pruned.
     for (const entry of timer.entries) {
-      timerUrlsRef.current.delete(mediaPublicUrl(SUPABASE_URL, entry.media_item.storage_path));
+      timerUrlsRef.current.delete(absoluteSrc(entry.media_item.storage_path));
     }
     const items: PlaylistItemWithMedia[] = timer.entries.map((entry, i) => ({
       id: `scheduled-${timer.id}-${entry.id}`,
@@ -702,6 +726,9 @@ export function Player({
           case "tune":
             setPageTuning((current) => ({ ...current, [message.page]: message.tuning }));
             break;
+          case "pair":
+            setShowPairing(true);
+            break;
         }
       })
       .subscribe();
@@ -760,7 +787,7 @@ export function Player({
     nativeHandleRef.current = handle;
     const slide: NativeSlide = {
       kind,
-      url: current && kind !== "none" ? mediaPublicUrl(SUPABASE_URL, current.media_item.storage_path) : null,
+      url: current && kind !== "none" ? absoluteSrc(current.media_item.storage_path) : null,
       transition: slideTransition,
       direction: screen.slide_direction ?? "right",
       durationMs: transitionMs,
@@ -776,8 +803,8 @@ export function Player({
     const items = playlistRef.current;
     const next = items.length > 1 ? items[(indexRef.current + 1) % items.length] : null;
     const nextKind = next ? nativeKind(next.media_item) : "none";
-    if (next && nextKind === "image") bridge.prepare(mediaPublicUrl(SUPABASE_URL, next.media_item.storage_path));
-    if (next && nextKind === "video") bridge.prepareFirstFrame?.(mediaPublicUrl(SUPABASE_URL, next.media_item.storage_path));
+    if (next && nextKind === "image") bridge.prepare(absoluteSrc(next.media_item.storage_path));
+    if (next && nextKind === "video") bridge.prepareFirstFrame?.(absoluteSrc(next.media_item.storage_path));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nativeKey]);
 
@@ -896,6 +923,7 @@ export function Player({
                   item={outgoing}
                   pageTuning={pageTuning}
                   nativeMedia={nativeMedia}
+                  mediaSrc={mediaSrc}
                   fitMode={screen.fit_mode}
                   now={serverNow}
                   paused
@@ -911,6 +939,7 @@ export function Player({
                 item={current}
                 pageTuning={pageTuning}
                 nativeMedia={nativeMedia}
+                mediaSrc={mediaSrc}
                 fitMode={screen.fit_mode}
                 now={serverNow}
                 paused={paused}
@@ -929,6 +958,7 @@ export function Player({
           </>
         )}
       </div>
+      {showPairing && <PairingCode overlay onClose={() => setShowPairing(false)} />}
     </div>
   );
 }
@@ -937,6 +967,7 @@ function Slide({
   item,
   pageTuning,
   nativeMedia,
+  mediaSrc,
   fitMode,
   now,
   paused,
@@ -950,6 +981,7 @@ function Slide({
   item: PlaylistItemWithMedia;
   pageTuning: Record<string, Record<string, number>>;
   nativeMedia: boolean;
+  mediaSrc: (storagePath: string) => string;
   fitMode: FitMode;
   now: () => number;
   paused: boolean;
@@ -968,7 +1000,7 @@ function Slide({
   // The Fire TV app's image or video shows through here — see Player.
   if (nativeMedia && nativeKind(item.media_item) !== "none") return null;
 
-  const url = mediaPublicUrl(SUPABASE_URL, item.media_item.storage_path);
+  const url = mediaSrc(item.media_item.storage_path);
   const fitClass = fitMode === "cover" ? "object-cover" : "object-contain";
 
   if (item.media_item.media_type === "video") {

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { ScreenPage } from "@/components/screenPages";
-import { mediaPublicUrl } from "@/types/domain";
+import { mediaUrl } from "@/lib/media/url";
 import type { FitMode, MediaItem } from "@/types/domain";
 import { isMotionFrozen, onPageMotionThaw } from "@/lib/animation/motionFreeze";
 
@@ -75,12 +75,12 @@ export function MediaThumb({
   }
 
   if (item.media_type === "image") {
-    const url = mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path);
+    const url = mediaUrl(item.storage_path);
     return <ImageThumb key={url} url={url} alt={item.name} sizes={sizes} fitClass={fitClass} />;
   }
 
   if (item.media_type === "video") {
-    const url = mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path);
+    const url = mediaUrl(item.storage_path);
     if (live && sync) {
       return <SyncedVideo url={url} fitClass={fitClass} sync={sync} />;
     }
@@ -104,11 +104,12 @@ export function MediaThumb({
   );
 }
 
-// Resized by next/image rather than the original file: uploads are
+// Resized (by the media route, through next/image — see
+// src/lib/media/imageLoader.ts) rather than the original file: uploads are
 // full-resolution print/screen assets (some several MB, 4500×8000), and a
 // 32px list thumbnail was downloading all of it. The TV player doesn't use
 // this component and still gets the originals. If resizing fails (the
-// optimizer gives up on an original that takes too long to fetch), falls
+// route can't read the original), falls
 // back to the original rather than showing nothing.
 function ImageThumb({ url, alt, sizes, fitClass }: { url: string; alt: string; sizes: string; fitClass: string }) {
   const [failed, setFailed] = useState(false);

@@ -10,6 +10,10 @@
 // back for an unrelated byte range) — see the range-request check below.
 const CACHE_NAME = "signage-player-v2";
 const MEDIA_PATH = "/storage/v1/object/public/";
+// A paired TV's files come through the app's own route instead (see
+// src/lib/media/url.ts), which sends each on to a short-lived signed link:
+// kept by the route's address, which doesn't change.
+const MEDIA_ROUTE = "/m/";
 
 // Builds a 206 Partial Content response by slicing a *complete* cached
 // response — never a partial one, which is what the v2 bump above fixed.
@@ -56,7 +60,7 @@ self.addEventListener("fetch", (event) => {
 
   // Supabase Storage media (images/videos/PDFs): kept locally, so a screen
   // downloads each file once and keeps playing it offline.
-  if (url.pathname.includes(MEDIA_PATH)) {
+  if (url.pathname.includes(MEDIA_PATH) || (url.origin === self.location.origin && url.pathname.startsWith(MEDIA_ROUTE))) {
     // Range requests — how <video> streams and buffers — must always go
     // straight to the network. Cache Storage keys entries by URL alone, with
     // no awareness of the Range header, so caching a partial response here
@@ -104,6 +108,10 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
+
+  // Pairing and the database token are live answers, never kept: an old
+  // one served offline would only mislead.
+  if (url.origin === self.location.origin && (url.pathname === "/screen/pair" || url.pathname.startsWith("/api/"))) return;
 
   // The player page itself and its JS/CSS: network-first, falling back to
   // the last cached copy if the network is unavailable.

@@ -67,6 +67,22 @@ export async function verifySession(token: string | undefined): Promise<string |
 // seconds, and the password's change the database's.
 const CLOCK_GRACE_SECONDS = 2;
 
+// Whether the session cookie's user still exists and the cookie is still
+// good (not from before a password change) — getCurrentUser without the
+// roles, for routes that only need to know someone's signed in and are
+// asked a lot (every media file, every thumbnail). Their id, or null.
+export async function getSignedInUserId(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const session = await readSession(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+  if (!session) return null;
+  const { data: row, error } = await createAdminClient().from("users").select("*").eq("id", session.userId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) return null;
+  const changedAt = row.password_changed_at ? Date.parse(row.password_changed_at) / 1000 : null;
+  if (changedAt !== null && session.issuedAt < changedAt - CLOCK_GRACE_SECONDS) return null;
+  return row.id;
+}
+
 // The signed-in user, with their roles and what those add up to.
 export type CurrentUser = User & {
   access: Access;

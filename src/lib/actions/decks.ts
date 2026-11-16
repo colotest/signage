@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { folderName, plural, quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
 import { requireEditable } from "@/lib/auth/owned";
+import { removeThumbs } from "@/lib/media/thumbs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { insertDeck, pageName, type DeckPageInput } from "@/lib/uploads/insertDeck";
 import { replaceDeckFiles } from "@/lib/uploads/replace";
@@ -167,6 +168,7 @@ export async function deleteDeck(id: string) {
   const objects = [deck.storage_path, ...(pages ?? []).map((page) => page.storage_path)];
   const { error: storageError } = await admin.storage.from(BUCKET).remove(objects);
   if (storageError) throw new Error(storageError.message);
+  await removeThumbs(admin.storage.from(BUCKET), objects);
 
   // media_items.deck_id cascades, which in turn cascades through
   // playlist_entries/playlist_items — so this also takes the deck off any

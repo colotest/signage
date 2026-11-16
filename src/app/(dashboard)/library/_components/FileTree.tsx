@@ -16,7 +16,8 @@ import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
 import { deleteDeck, moveDeck, renameDeck } from "@/lib/actions/decks";
 import { animateEntrance, removeWithAnimation } from "@/lib/animation/listMotion";
 import { useFlipRows } from "@/lib/animation/useFlipRows";
-import { mediaPublicUrl, type DeckWithPages, type Folder, type MediaItem } from "@/types/domain";
+import type { DeckWithPages, Folder, MediaItem } from "@/types/domain";
+import { mediaUrl } from "@/lib/media/url";
 import { RenameableTitle } from "./RenameableTitle";
 import { RoleDot, RoleDots } from "@/components/RoleDot";
 import { canEditOwned, canRestrictOwned } from "@/lib/auth/access";
@@ -25,7 +26,6 @@ import { setEditRole } from "@/lib/actions/restrictions";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
 import { ReplaceDeckButton } from "./ReplaceDeckButton";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 type Router = ReturnType<typeof useRouter>;
 
@@ -1376,12 +1376,13 @@ function FileRow({
             deleting one would leave no way to add it back. */}
         {item.media_type !== "page" && (
           <>
-            {/* Supabase's own ?download= is what actually saves the file
-                under its library name: the file lives on the storage
-                domain, so a plain download attribute (different origin)
-                would be ignored and the browser would just open it. */}
+            {/* ?download= (passed on to Supabase's own) is what actually
+                saves the file under its library name: the file lives on
+                the storage domain, so a plain download attribute
+                (different origin) would be ignored and the browser would
+                just open it. */}
             <a
-              href={`${mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path)}?download=${encodeURIComponent(item.name)}`}
+              href={mediaUrl(item.storage_path, { download: item.name })}
               download={item.name}
               className={MENU_ITEM_CLASS}
             >
@@ -1707,7 +1708,7 @@ function DeckRow({
             screen are images rendered from it. Same ?download= trick as a
             file's own Download above. */}
         <a
-          href={`${mediaPublicUrl(SUPABASE_URL, deck.storage_path)}?download=${encodeURIComponent(fileName)}`}
+          href={mediaUrl(deck.storage_path, { download: fileName })}
           download={fileName}
           className={MENU_ITEM_CLASS}
         >

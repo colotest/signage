@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { folderName, quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
 import { requireEditable } from "@/lib/auth/owned";
+import { removeThumbs } from "@/lib/media/thumbs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { repointMediaItem } from "@/lib/uploads/replace";
 import type { MediaType } from "@/types/domain";
@@ -215,6 +216,7 @@ export async function deleteMediaItem(id: string) {
 
   const { error: storageError } = await admin.storage.from(BUCKET).remove([item.storage_path]);
   if (storageError) throw new Error(storageError.message);
+  await removeThumbs(admin.storage.from(BUCKET), [item.storage_path]);
 
   // playlist_items.media_item_id cascades, so this also removes it from any screen.
   const { error: deleteError } = await admin.from("media_items").delete().eq("id", id);

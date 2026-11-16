@@ -8,6 +8,7 @@ import { removeWithAnimation } from "@/lib/animation/listMotion";
 import { cn } from "@/lib/utils/cn";
 import type { ScreenRotation } from "@/types/domain";
 import { WrenchIcon } from "@/components/icons/WrenchIcon";
+import { ScreenPairing } from "./ScreenPairing";
 
 const ROTATION_OPTIONS: { value: ScreenRotation; label: string }[] = [
   { value: 0, label: "0°" },
@@ -33,6 +34,7 @@ export function ScreenSetupMenu({
   onSelectRotation,
   onRename,
   onReload,
+  onShowPairingCode,
 }: {
   screenId: number;
   playerPath: string;
@@ -40,6 +42,7 @@ export function ScreenSetupMenu({
   onSelectRotation: (rotation: ScreenRotation) => void;
   onRename: () => void;
   onReload: () => void;
+  onShowPairingCode: () => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -105,7 +108,7 @@ export function ScreenSetupMenu({
         dragSelect={false}
         role="dialog"
         aria-label="Screen setup"
-        className="w-56 p-3"
+        className="w-64 p-3"
       >
         <button
           type="button"
@@ -126,6 +129,8 @@ export function ScreenSetupMenu({
         >
           {playerPath}
         </a>
+
+        {open && <ScreenPairing screenId={screenId} onShowCode={onShowPairingCode} />}
 
         <div className="mt-3 border-t border-border pt-3">
           <p className="mb-1.5 text-[11px] text-muted">Rotation</p>
