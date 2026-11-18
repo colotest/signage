@@ -36,6 +36,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Watchdog.installCrashHandler(this)
         Prefs.applyIntent(this, intent)
         val playerUrl = Prefs.playerUrl(this)
         if (playerUrl == null) {
@@ -75,10 +76,17 @@ class MainActivity : Activity() {
         }
     }
 
+    // On screen: Watchdog reopens the player from now on should it crash.
+    override fun onStart() {
+        super.onStart()
+        Watchdog.start(this)
+    }
+
     // Sent to the home screen: stop decoding for nobody. Coming back starts
     // the page afresh, which picks up wherever the playlist is now.
     override fun onStop() {
         super.onStop()
+        Watchdog.stop(this)
         web?.onPause()
         if (::stage.isInitialized) stage.clear()
     }

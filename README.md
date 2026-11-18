@@ -101,9 +101,11 @@ allow installing unknown apps for **Downloader** (install Downloader from the
 Appstore first). In Downloader, open `colo-cloud.app/tv.apk` and install. On
 first launch, pick the screen's number (the `{id}` in its `/screen/{id}`
 address) with up and down, and press OK. Press ☰ on the remote at any time
-to change it. On Fire OS 8, the app reopens itself after a power cut only
+to change it. The app reopens itself after a power cut, and within a minute
+of a crash (a few seconds for most). On Fire OS 8 it can do either only
 once it's allowed to, over adb:
-`adb shell appops set app.colocloud.tv SYSTEM_ALERT_WINDOW allow`.
+`adb shell appops set app.colocloud.tv SYSTEM_ALERT_WINDOW allow`. Leaving
+it with Home or ☰ doesn't count as a crash.
 
 **Trying it against a dev server:** in the emulator, set the server to
 `http://10.0.2.2:3000`. On a stick plugged into the computer, run
