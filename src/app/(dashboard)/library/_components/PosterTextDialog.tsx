@@ -14,10 +14,10 @@ const FORM_ID = "poster-text-form";
 type Loaded = { title: string; auto: PosterText; override: PosterText | null };
 
 // A Kultur Poster's Edit Poster Text: the lines its event's title was taken
-// apart into, to set by hand where the rules got them wrong. Applies to
-// both of the event's posters (A1 and 1080×1920) and is kept for every pull
-// after, until it's set back to automatic. Saving pulls straight away, so
-// the posters are remade before it closes.
+// apart into, to set by hand where the rules got them wrong. Applies to all
+// three of the poster's files (the A1 PDF and both images) and is kept for
+// every pull after, until it's set back to automatic. Saving pulls straight
+// away, so the poster is remade before it closes.
 export function PosterTextDialog({ sourceKey, open, onClose }: { sourceKey: string; open: boolean; onClose: () => void }) {
   const router = useRouter();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -125,7 +125,7 @@ export function PosterTextDialog({ sourceKey, open, onClose }: { sourceKey: stri
           <Field label="Label" placeholder="e.g. AUSVERKAUFT" {...field("badge")} />
           {error && <p className="text-[13px] text-danger">{error}</p>}
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[12px] text-muted">{status ?? "Applies to the A1 and the 1080×1920 poster."}</p>
+            <p className="text-[12px] text-muted">{status ?? "Applies to the A1 Poster and both images."}</p>
             {loaded?.override && (
               <button type="button" disabled={busy} onClick={() => apply(null)} className="press-ghost shrink-0 text-[13px] text-accent disabled:opacity-40">
                 Automatic

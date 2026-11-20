@@ -12,7 +12,7 @@ import type {
   SetupWithItems,
 } from "@/types/domain";
 import type { PlaylistWithEntries } from "../library/_components/PlaylistSection";
-import { decksWithPages } from "../library/page";
+import { decksWithPages, postersWithParts } from "../library/page";
 
 export default async function DashboardPage() {
   const viewer = await pageViewer("screens");
@@ -39,6 +39,7 @@ export default async function DashboardPage() {
     { data: members, error: membersError },
     { data: setups, error: setupsError },
     { data: setupItems, error: setupItemsError },
+    { data: posters, error: postersError },
   ] = await Promise.all([
     admin
       .from("screens")
@@ -74,10 +75,12 @@ export default async function DashboardPage() {
       .select("*, media_item:media_items(*)")
       .order("setup_id", { ascending: true })
       .order("position", { ascending: true }),
+    admin.from("posters").select("*").order("created_at", { ascending: false }),
   ]);
 
   if (screensError) throw new Error(screensError.message);
   if (decksError) throw new Error(decksError.message);
+  if (postersError) throw new Error(postersError.message);
   if (playlistError) throw new Error(playlistError.message);
   if (foldersError) throw new Error(foldersError.message);
   if (mediaError) throw new Error(mediaError.message);
@@ -183,6 +186,7 @@ export default async function DashboardPage() {
     (screen) => !canSeeScreen(viewer.access, screen.id) && inVisibleGroups.has(screen.id),
   );
 
+  const withPages = decksWithPages(decks ?? [], media ?? []);
   return (
     <ScreenGrid
       screens={visibleScreens}
@@ -192,7 +196,8 @@ export default async function DashboardPage() {
       library={{
         folders: folders ?? [],
         media: media ?? [],
-        decks: decksWithPages(decks ?? [], media ?? []),
+        decks: withPages,
+        posters: postersWithParts(posters ?? [], withPages, media ?? []),
         playlists: playlistsWithEntries,
         uploaders,
       }}

@@ -16,6 +16,8 @@ const LIVE_TABLES = [
   "folders",
   "media_items",
   "decks",
+  // A poster moved, renamed or remade (0051).
+  "posters",
   "playlists",
   "playlist_entries",
   "scheduled_playbacks",

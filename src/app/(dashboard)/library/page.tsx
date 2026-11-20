@@ -2,7 +2,7 @@ import { pageViewer } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchUploaderNames } from "@/lib/uploads/uploaders";
 import { LibraryView } from "./_components/LibraryView";
-import type { DeckWithPages, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
+import type { DeckWithPages, MediaItem, PlaylistEntryWithMedia, Poster, PosterWithParts } from "@/types/domain";
 import type { PlaylistWithEntries } from "./_components/PlaylistSection";
 
 export default async function LibraryPage() {
@@ -17,6 +17,7 @@ export default async function LibraryPage() {
     { data: playlistEntries, error: entriesError },
     { data: decks, error: decksError },
     { data: uploadLinks, error: uploadLinksError },
+    { data: posters, error: postersError },
     uploaders,
   ] = await Promise.all([
     admin.from("folders").select("*").order("name", { ascending: true }),
@@ -29,6 +30,7 @@ export default async function LibraryPage() {
       .order("position", { ascending: true }),
     admin.from("decks").select("*").order("created_at", { ascending: false }),
     admin.from("folder_upload_links").select("folder_id, token"),
+    admin.from("posters").select("*").order("created_at", { ascending: false }),
     fetchUploaderNames(admin),
   ]);
 
@@ -38,6 +40,7 @@ export default async function LibraryPage() {
   if (entriesError) throw new Error(entriesError.message);
   if (decksError) throw new Error(decksError.message);
   if (uploadLinksError) throw new Error(uploadLinksError.message);
+  if (postersError) throw new Error(postersError.message);
 
   const entriesByPlaylist = new Map<string, PlaylistEntryWithMedia[]>();
   for (const entry of (playlistEntries ?? []) as unknown as PlaylistEntryWithMedia[]) {
@@ -51,11 +54,13 @@ export default async function LibraryPage() {
     entries: entriesByPlaylist.get(playlist.id) ?? [],
   }));
 
+  const withPages = decksWithPages(decks ?? [], media ?? []);
   return (
     <LibraryView
       folders={folders ?? []}
       media={media ?? []}
-      decks={decksWithPages(decks ?? [], media ?? [])}
+      decks={withPages}
+      posters={postersWithParts(posters ?? [], withPages, media ?? [])}
       playlists={playlistsWithEntries}
       uploaders={uploaders}
       uploadLinks={Object.fromEntries((uploadLinks ?? []).map((link) => [link.folder_id, link.token]))}
@@ -78,4 +83,17 @@ export function decksWithPages(decks: DeckWithPages[] | Omit<DeckWithPages, "pag
     pages.sort((a, b) => (a.deck_position ?? 0) - (b.deck_position ?? 0));
   }
   return decks.map((deck) => ({ ...deck, pages: pagesByDeck.get(deck.id) ?? [] }));
+}
+
+// A poster's files, out of the decks and media the library already has:
+// each carries the poster's id (see 0051_posters.sql).
+export function postersWithParts(posters: Poster[], decks: DeckWithPages[], media: MediaItem[]): PosterWithParts[] {
+  const a1 = new Map(decks.filter((deck) => deck.poster_id).map((deck) => [deck.poster_id!, deck]));
+  const images = new Map(media.filter((item) => item.poster_id).map((item) => [`${item.poster_id}:${item.poster_part}`, item]));
+  return posters.map((poster) => ({
+    ...poster,
+    a1: a1.get(poster.id) ?? null,
+    screen: images.get(`${poster.id}:screen`) ?? null,
+    newsletter: images.get(`${poster.id}:newsletter`) ?? null,
+  }));
 }

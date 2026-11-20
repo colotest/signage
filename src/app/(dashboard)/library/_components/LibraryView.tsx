@@ -18,9 +18,10 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Menu } from "@/components/ui/Menu";
 import { MediaThumb } from "@/components/MediaThumb";
-import type { DeckWithPages, Folder, MediaItem, PlaylistEntryWithMedia } from "@/types/domain";
+import type { DeckWithPages, Folder, MediaItem, PlaylistEntryWithMedia, PosterWithParts } from "@/types/domain";
 import { moveMediaItem } from "@/lib/actions/media";
 import { moveDeck } from "@/lib/actions/decks";
+import { movePoster } from "@/lib/actions/posters";
 import { moveFolder } from "@/lib/actions/folders";
 import {
   addMediaToPlaylist,
@@ -51,11 +52,16 @@ type DropTarget = { type: "folder"; folderId: string | null } | { type: "playlis
 // What's being dragged, from the draggable's id: a file's is its own media
 // id (which the playlists side relies on); a folder's and a PDF's are
 // prefixed, as they're only ever moved between folders.
-type Dragged = { type: "file"; id: string } | { type: "folder"; id: string } | { type: "deck"; id: string };
+type Dragged =
+  | { type: "file"; id: string }
+  | { type: "folder"; id: string }
+  | { type: "deck"; id: string }
+  | { type: "poster"; id: string };
 
 function parseDragged(activeId: string): Dragged {
   if (activeId.startsWith("move-folder-")) return { type: "folder", id: activeId.slice("move-folder-".length) };
   if (activeId.startsWith("move-deck-")) return { type: "deck", id: activeId.slice("move-deck-".length) };
+  if (activeId.startsWith("move-poster-")) return { type: "poster", id: activeId.slice("move-poster-".length) };
   return { type: "file", id: activeId };
 }
 
@@ -80,6 +86,7 @@ export function LibraryView({
   folders,
   media,
   decks,
+  posters,
   playlists,
   uploadLinks,
   uploaders,
@@ -87,6 +94,7 @@ export function LibraryView({
   folders: Folder[];
   media: MediaItem[];
   decks: DeckWithPages[];
+  posters: PosterWithParts[];
   playlists: PlaylistWithEntries[];
   // Folder id → upload link token, for the folders that have one.
   uploadLinks: Record<string, string>;
@@ -141,12 +149,20 @@ export function LibraryView({
     setSyncedDecks(decks);
     setLocalDecks(decks);
   }
+  const [localPosters, setLocalPosters] = useState(posters);
+  const [syncedPosters, setSyncedPosters] = useState(posters);
+  if (posters !== syncedPosters) {
+    setSyncedPosters(posters);
+    setLocalPosters(posters);
+  }
   const folderById = useMemo(() => new Map(localFolders.map((f) => [f.id, f])), [localFolders]);
+  const posterById = useMemo(() => new Map(localPosters.map((p) => [p.id, p])), [localPosters]);
   const deckById = useMemo(() => new Map(localDecks.map((d) => [d.id, d])), [localDecks]);
   const [dragging, setDragging] = useState<Dragged | null>(null);
   const draggingItem = dragging?.type === "file" ? (mediaById.get(dragging.id) ?? null) : null;
   const draggingFolder = dragging?.type === "folder" ? (folderById.get(dragging.id) ?? null) : null;
   const draggingDeck = dragging?.type === "deck" ? (deckById.get(dragging.id) ?? null) : null;
+  const draggingPoster = dragging?.type === "poster" ? (posterById.get(dragging.id) ?? null) : null;
   // The *resolved* drop target rather than which specific row/card is under
   // the pointer — a folder id (or null for root) drives a border around
   // that whole folder's row + its expanded files in FileTree; a playlist id
@@ -166,6 +182,9 @@ export function LibraryView({
     }
     if (overId.startsWith("deck-")) {
       return { type: "folder", folderId: deckById.get(overId.slice("deck-".length))?.folder_id ?? null };
+    }
+    if (overId.startsWith("poster-")) {
+      return { type: "folder", folderId: posterById.get(overId.slice("poster-".length))?.folder_id ?? null };
     }
     if (overId.startsWith("playlist-")) return { type: "playlist", playlistId: overId.slice("playlist-".length) };
     return undefined;
@@ -239,6 +258,16 @@ export function LibraryView({
       return;
     }
 
+    if (dragged.type === "poster" && target.type === "folder") {
+      const poster = posterById.get(dragged.id);
+      if (!poster || poster.folder_id === target.folderId) return;
+      setLocalPosters((current) => current.map((p) => (p.id === dragged.id ? { ...p, folder_id: target.folderId } : p)));
+      movePoster(dragged.id, target.folderId)
+        .catch(() => {})
+        .then(() => router.refresh());
+      return;
+    }
+
     if (dragged.type !== "file") return;
     const mediaId = dragged.id;
 
@@ -247,7 +276,8 @@ export function LibraryView({
       // A PDF's page moves with its deck, never on its own — dropping one
       // on a folder does nothing, while dropping it on a playlist (below)
       // works like any other file.
-      if (!item || item.deck_id || item.folder_id === target.folderId) return;
+      // Nor does a poster's image, which lives in its poster.
+      if (!item || item.deck_id || item.poster_id || item.folder_id === target.folderId) return;
       // Nor does a file its owner has limited to roles the viewer lacks.
       if (!canEditOwned(viewer, { ownerId: item.uploaded_by, editRoleIds: item.edit_role_ids ?? [] })) return;
       setLocalMedia((current) =>
@@ -514,6 +544,7 @@ export function LibraryView({
             folders={localFolders}
             media={localMedia}
             decks={localDecks}
+            posters={localPosters}
             uploadLinks={uploadLinks}
             uploaders={uploaders}
             selectionMode={activePlaylistId !== null}
@@ -572,6 +603,15 @@ export function LibraryView({
               {draggingDeck.pages[0] && <MediaThumb item={draggingDeck.pages[0]} />}
             </div>
             <span className="max-w-[220px] truncate text-[13px] font-medium">{draggingDeck.name}</span>
+          </div>
+        )}
+        {draggingPoster && (
+          <div className="drag-pickup flex items-center gap-2.5 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 shadow-[var(--shadow-card)]">
+            {/* Its screen image, as on its row. */}
+            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-[4px] bg-black/[.04] dark:bg-white/[.06]">
+              {draggingPoster.screen && <MediaThumb item={draggingPoster.screen} />}
+            </div>
+            <span className="max-w-[220px] truncate text-[13px] font-medium">{draggingPoster.name}</span>
           </div>
         )}
       </DragOverlay>

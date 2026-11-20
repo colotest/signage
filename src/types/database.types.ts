@@ -71,6 +71,36 @@ export type Database = {
         Relationships: [];
       };
       // Kultur Poster text set by hand, by Wix event (0050).
+      posters: {
+        Row: {
+          id: string;
+          folder_id: string | null;
+          name: string;
+          source_key: string | null;
+          source_hash: string | null;
+          uploaded_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          folder_id?: string | null;
+          name: string;
+          source_key?: string | null;
+          source_hash?: string | null;
+          uploaded_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          folder_id?: string | null;
+          name?: string;
+          source_key?: string | null;
+          source_hash?: string | null;
+          uploaded_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       kultur_poster_texts: {
         Row: {
           event_id: string;
@@ -193,6 +223,9 @@ export type Database = {
           upload_link_folder_id: string | null;
           // Roles allowed to edit it besides its owner; empty = anyone (0032).
           edit_role_ids: string[];
+          // The Poster it belongs to and which of its images it is (0051).
+          poster_id: string | null;
+          poster_part: "screen" | "newsletter" | null;
         };
         Insert: {
           id?: string;
@@ -212,6 +245,8 @@ export type Database = {
           uploaded_via_link?: boolean;
           upload_link_folder_id?: string | null;
           edit_role_ids?: string[];
+          poster_id?: string | null;
+          poster_part?: "screen" | "newsletter" | null;
         };
         Update: {
           id?: string;
@@ -231,6 +266,8 @@ export type Database = {
           uploaded_via_link?: boolean;
           upload_link_folder_id?: string | null;
           edit_role_ids?: string[];
+          poster_id?: string | null;
+          poster_part?: "screen" | "newsletter" | null;
         };
         Relationships: [
           {
@@ -269,6 +306,8 @@ export type Database = {
           // What a feed made it from, and a hash of what went in (0049).
           source_key: string | null;
           source_hash: string | null;
+          // The Poster it belongs to (0051), if one.
+          poster_id: string | null;
         };
         Insert: {
           id?: string;
@@ -285,6 +324,7 @@ export type Database = {
           edit_role_ids?: string[];
           source_key?: string | null;
           source_hash?: string | null;
+          poster_id?: string | null;
         };
         Update: {
           id?: string;
@@ -301,6 +341,7 @@ export type Database = {
           edit_role_ids?: string[];
           source_key?: string | null;
           source_hash?: string | null;
+          poster_id?: string | null;
         };
         Relationships: [
           {

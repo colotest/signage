@@ -4,25 +4,25 @@ import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { plural, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
-import { requireEditable } from "@/lib/auth/owned";
 import { fetchTicketEvents, type TicketEvent } from "@/lib/kulturPoster/events";
 import { POSTER_FORMATS, POSTER_LAYOUT_VERSION, dayLabel, posterContent, posterPdf, type PosterFormat } from "@/lib/kulturPoster/posterPdf";
 import { titleParts, type PosterText } from "@/lib/kulturPoster/titleParts";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { insertDeck, type DeckPageInput } from "@/lib/uploads/insertDeck";
-import { replaceDeckFiles } from "@/lib/uploads/replace";
+import { writePosterFiles, type PosterFilesInput } from "@/lib/uploads/posters";
 
 // Kultur Poster: the folder's reload button pulls the events on sale from
-// colosseumberlin.com/event and makes each an A1 poster and a 1080×1920
-// still. The PDFs are made here; the browser then turns their pages into
-// images and uploads them, as for any PDF (see KulturPosterButton) — so
-// the posters are ordinary decks, for playlists like anything else.
+// colosseumberlin.com/event and makes each a Poster (see 0051_posters.sql)
+// of three files: an A1 PDF for print, a 9:16 PNG for the portrait screens
+// and a 16:9 PNG for the newsletter. The PDFs are made here; the browser
+// then renders the images from them and uploads the lot (see
+// kulturPosterPull) — so the screen's image is an ordinary one, for
+// playlists like anything else.
 //
-// Each deck remembers its event and format (source_key) and a hash of
-// what went into it, so a pull only redoes the posters whose event
-// changed, and a changed one is replaced in place: a screen showing it
-// shows the new one. A poster whose event is no longer listed goes to
-// the folder's Archiv, and comes back out if the event does.
+// Each poster remembers its event (source_key) and a hash of what went
+// into it, so a pull only redoes the posters whose event changed, and a
+// changed one is replaced in place: a screen showing it shows the new one.
+// A poster whose event is no longer listed goes to the folder's Archiv,
+// and comes back out if the event does.
 //
 // A poster's text is the event's title taken apart by rule (titleParts),
 // unless it's been set by hand from the poster's own menu, which is kept
@@ -31,6 +31,7 @@ import { replaceDeckFiles } from "@/lib/uploads/replace";
 const FEED = "kultur_poster";
 const ARCHIVE_FEED = "kultur_poster_archiv";
 const KEY_PREFIX = "wix-event:";
+const BUCKET = "media";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -38,24 +39,25 @@ export type PosterJob = {
   sourceKey: string;
   hash: string;
   name: string;
-  // The deck to replace, or none for a new poster.
-  deckId: string | null;
-  // The PDF, base64.
-  pdf: string;
+  // The poster to remake, or none for a new one.
+  posterId: string | null;
+  // Each file's PDF, base64; the images are rendered from theirs.
+  pdfs: Record<PosterFormat, string>;
 };
 
 export async function planKulturPoster(): Promise<{ jobs: PosterJob[]; unchanged: number; archived: number }> {
   const user = await requirePage("media");
   const admin = createAdminClient();
   const feedId = await feedFolderId(admin);
-  const [events, { data: decks, error: decksError }, archiveId, overrides] = await Promise.all([
+  const [events, { data: posters, error: postersError }, archiveId, overrides] = await Promise.all([
     fetchTicketEvents(),
-    admin.from("decks").select("id, folder_id, source_key, source_hash").like("source_key", `${KEY_PREFIX}%`),
+    admin.from("posters").select("id, folder_id, source_key, source_hash").like("source_key", `${KEY_PREFIX}%`),
     archiveFolderId(admin, feedId, false),
     posterTexts(admin),
+    dropSinglePosterPdfs(admin),
   ]);
-  if (decksError) throw new Error(decksError.message);
-  const byKey = new Map((decks ?? []).map((deck) => [deck.source_key!, deck]));
+  if (postersError) throw new Error(postersError.message);
+  const byKey = new Map((posters ?? []).map((poster) => [poster.source_key!, poster]));
 
   const jobs: PosterJob[] = [];
   const listed = new Set<string>();
@@ -63,39 +65,35 @@ export async function planKulturPoster(): Promise<{ jobs: PosterJob[]; unchanged
   let unchanged = 0;
   for (const event of events) {
     const override = overrides.get(event.id) ?? null;
-    for (const format of Object.keys(POSTER_FORMATS) as PosterFormat[]) {
-      const sourceKey = `${KEY_PREFIX}${event.id}:${format}`;
-      const name = posterName(event, format);
-      const hash = createHash("sha256")
-        .update(JSON.stringify({ v: POSTER_LAYOUT_VERSION, format, name, ...posterContent(event, override) }))
-        .digest("hex");
-      listed.add(sourceKey);
-      const existing = byKey.get(sourceKey);
-      if (existing?.source_hash === hash) {
-        if (archiveId && existing.folder_id === archiveId) restore.push(existing.id);
-        unchanged++;
-        continue;
-      }
-      jobs.push({
-        sourceKey,
-        hash,
-        name,
-        deckId: existing?.id ?? null,
-        pdf: Buffer.from(await posterPdf(event, format, override)).toString("base64"),
-      });
+    const sourceKey = `${KEY_PREFIX}${event.id}`;
+    const name = posterName(event);
+    const hash = createHash("sha256")
+      .update(JSON.stringify({ v: POSTER_LAYOUT_VERSION, name, ...posterContent(event, override) }))
+      .digest("hex");
+    listed.add(sourceKey);
+    const existing = byKey.get(sourceKey);
+    if (existing?.source_hash === hash) {
+      if (archiveId && existing.folder_id === archiveId) restore.push(existing.id);
+      unchanged++;
+      continue;
     }
+    const pdfs = {} as Record<PosterFormat, string>;
+    for (const format of Object.keys(POSTER_FORMATS) as PosterFormat[]) {
+      pdfs[format] = Buffer.from(await posterPdf(event, format, override)).toString("base64");
+    }
+    jobs.push({ sourceKey, hash, name, posterId: existing?.id ?? null, pdfs });
   }
 
   // Only from the folder itself: one moved somewhere else on purpose stays
   // where it was put.
-  const stale = (decks ?? []).filter((deck) => !listed.has(deck.source_key!) && deck.folder_id === feedId).map((deck) => deck.id);
+  const stale = (posters ?? []).filter((poster) => !listed.has(poster.source_key!) && poster.folder_id === feedId).map((poster) => poster.id);
   if (stale.length > 0) {
     const archive = archiveId ?? (await archiveFolderId(admin, feedId, true))!;
-    const { error } = await admin.from("decks").update({ folder_id: archive }).in("id", stale);
+    const { error } = await admin.from("posters").update({ folder_id: archive }).in("id", stale);
     if (error) throw new Error(error.message);
   }
   if (restore.length > 0) {
-    const { error } = await admin.from("decks").update({ folder_id: feedId }).in("id", restore);
+    const { error } = await admin.from("posters").update({ folder_id: feedId }).in("id", restore);
     if (error) throw new Error(error.message);
   }
 
@@ -106,53 +104,53 @@ export async function planKulturPoster(): Promise<{ jobs: PosterJob[]; unchanged
       `${plural(jobs.length, "poster")} to make` +
       (stale.length ? `, ${plural(stale.length, "poster")} archived` : ""),
   });
-  if (stale.length > 0 || restore.length > 0) revalidatePath("/library");
+  revalidatePath("/library");
   return { jobs, unchanged, archived: stale.length };
 }
 
-// One poster's pages, once they're in storage: a new deck in the folder,
+// One poster's files, once they're in storage: a new poster in the folder,
 // or swapped in under the one it replaces.
 export async function saveKulturPoster({
   sourceKey,
   hash,
   name,
-  deckId,
-  storagePath,
-  sizeBytes,
-  pages,
+  posterId,
+  files,
 }: {
   sourceKey: string;
   hash: string;
   name: string;
-  deckId: string | null;
-  storagePath: string;
-  sizeBytes: number;
-  pages: DeckPageInput[];
+  posterId: string | null;
+  files: PosterFilesInput;
 }) {
   if (!sourceKey.startsWith(KEY_PREFIX)) throw new Error("Not a Kultur Poster");
+  const user = await requirePage("media");
   const admin = createAdminClient();
+  const feedId = await feedFolderId(admin);
 
-  if (deckId) {
-    // A poster someone has limited to certain roles is theirs to keep up
-    // to date, like any other PDF.
-    await requireEditable("deck", deckId);
-    const { data: deck, error } = await admin.from("decks").select("*").eq("id", deckId).eq("source_key", sourceKey).single();
+  if (posterId) {
+    const { data: poster, error } = await admin.from("posters").select("id, folder_id").eq("id", posterId).eq("source_key", sourceKey).single();
     if (error) throw new Error(error.message);
-    // Named for the event as it's called now, its pages too.
-    await replaceDeckFiles(admin, { ...deck, name }, { storagePath, sizeBytes, pages });
-    const feedId = await feedFolderId(admin);
+    // Named for the event as it's called now, its files too.
+    await writePosterFiles(admin, { id: poster.id, name }, files, user.id);
     const archiveId = await archiveFolderId(admin, feedId, false);
     const { error: updateError } = await admin
-      .from("decks")
-      .update({ name, source_hash: hash, ...(deck.folder_id === archiveId ? { folder_id: feedId } : {}) })
-      .eq("id", deckId);
+      .from("posters")
+      .update({ name, source_hash: hash, ...(poster.folder_id === archiveId ? { folder_id: feedId } : {}) })
+      .eq("id", posterId);
     if (updateError) throw new Error(updateError.message);
   } else {
-    const user = await requirePage("media");
-    const feedId = await feedFolderId(admin);
-    const deck = await insertDeck(admin, { name, folderId: feedId, storagePath, sizeBytes, pages, uploadedBy: user.id });
-    const { error } = await admin.from("decks").update({ source_key: sourceKey, source_hash: hash }).eq("id", deck.id);
+    // Hashed only once all three files are in: a poster that failed half
+    // way is made again by the next pull.
+    const { data: poster, error } = await admin
+      .from("posters")
+      .insert({ name, folder_id: feedId, source_key: sourceKey, uploaded_by: user.id })
+      .select("id")
+      .single();
     if (error) throw new Error(error.message);
+    await writePosterFiles(admin, { id: poster.id, name }, files, user.id);
+    const { error: hashError } = await admin.from("posters").update({ source_hash: hash }).eq("id", poster.id);
+    if (hashError) throw new Error(hashError.message);
   }
 
   revalidatePath("/library");
@@ -160,8 +158,28 @@ export async function saveKulturPoster({
 }
 
 // Dated, so one event on two days (Wix lists them apart) reads apart.
-function posterName(event: TicketEvent, format: PosterFormat) {
-  return `${event.title} · ${dayLabel(event)} · ${POSTER_FORMATS[format].label}`;
+function posterName(event: TicketEvent) {
+  return `${event.title} · ${dayLabel(event)}`;
+}
+
+// Before Posters, each event was two PDFs of its own (an A1 and a
+// 1080×1920), each its own feed-made deck; the Posters replace them.
+async function dropSinglePosterPdfs(admin: Admin) {
+  const { data: decks, error } = await admin
+    .from("decks")
+    .select("id, storage_path")
+    .like("source_key", `${KEY_PREFIX}%`)
+    .is("poster_id", null);
+  if (error) throw new Error(error.message);
+  if (!decks?.length) return;
+  const ids = decks.map((deck) => deck.id);
+  const { data: pages, error: pagesError } = await admin.from("media_items").select("storage_path").in("deck_id", ids);
+  if (pagesError) throw new Error(pagesError.message);
+  const { error: deleteError } = await admin.from("decks").delete().in("id", ids);
+  if (deleteError) throw new Error(deleteError.message);
+  const objects = [...decks, ...(pages ?? [])].map((row) => row.storage_path);
+  const { error: removeError } = await admin.storage.from(BUCKET).remove(objects);
+  if (removeError) console.error(`Failed to remove ${objects.length} objects of the old poster PDFs:`, removeError.message);
 }
 
 // ── Poster text set by hand ──
@@ -178,7 +196,7 @@ export async function kulturPosterText(sourceKey: string): Promise<{ title: stri
   return { title: event.title, auto: titleParts(event.title, event.description), override: overrides.get(eventId) ?? null };
 }
 
-// Sets the text for both of an event's posters, or (null) hands it back to
+// Sets the text for all of an event's poster's files, or (null) hands it back to
 // the rules. The posters themselves are remade by the pull that follows.
 export async function setKulturPosterText(sourceKey: string, text: PosterText | null) {
   const user = await requirePage("media");
@@ -209,7 +227,7 @@ export async function setKulturPosterText(sourceKey: string, text: PosterText | 
 }
 
 function eventIdOf(sourceKey: string) {
-  const match = sourceKey.match(/^wix-event:(.+):(a1|screen)$/);
+  const match = sourceKey.match(/^wix-event:([^:]+)$/);
   if (!match) throw new Error("Not a Kultur Poster");
   return match[1];
 }
