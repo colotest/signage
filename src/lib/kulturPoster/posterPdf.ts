@@ -22,10 +22,11 @@ import { titleParts, type PosterText } from "./titleParts";
 // the brand at its top and the date and QR code at its foot. The type is
 // all Colo (Compacta), the brand's own face, and everything is drawn as
 // vectors (the QR code too), so A1 prints sharp. The newsletter's also
-// carries the event's picture from the site: in its top right corner, out
-// to the edges, with the date and QR code under it and the brand moved
-// over above the title. Measurements are the
-// house example's, on its 1080-wide still, scaled to the page.
+// carries the event's picture from the site, at its right, level with the
+// title, and the date over it, level with the brand — and no QR code, a
+// newsletter's reader being a click from the tickets anyway.
+// Measurements are the house example's, on its 1080-wide still, scaled to
+// the page.
 
 export type PosterFormat = "a1" | "screen" | "newsletter";
 
@@ -41,7 +42,7 @@ export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number
 // Bumped whenever the layout changes, so the next pull redoes every
 // poster rather than only those whose event changed (see
 // planKulturPoster's hash).
-export const POSTER_LAYOUT_VERSION = 7;
+export const POSTER_LAYOUT_VERSION = 8;
 
 const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 const PAPER = hex("#fdf9f9");
@@ -97,8 +98,8 @@ function upright(page: PDFPage, colo: PDFFont, content: Content, W: number, H: n
   drawTitle(page, colo, content.text, titleMargin, W - titleMargin * 2, presentsBaseline - 100 * u, dateTop + 100 * u, u);
 }
 
-// The newsletter's: the title at the left, at full height; the brand, the
-// date and the QR code in a column at the right.
+// The newsletter's, for an event without a picture: the title at the
+// left, at full height; the brand and the date in a column at the right.
 function across(page: PDFPage, colo: PDFFont, content: Content, W: number, H: number) {
   const u = H / 1080;
   const margin = 72 * u;
@@ -107,19 +108,24 @@ function across(page: PDFPage, colo: PDFFont, content: Content, W: number, H: nu
   const titleMargin = 54 * u;
 
   drawBrand(page, colo, columnCentre, H - margin, columnWidth, u);
-  drawDateAndQr(page, colo, content, columnCentre, margin, columnWidth, u);
+  drawDateAndQr(page, colo, content, columnCentre, margin, columnWidth, u, false);
   const titleWidth = W - margin - columnWidth - 64 * u - titleMargin;
   drawTitle(page, colo, content.text, titleMargin, titleWidth, H - margin, margin, u);
 }
 
-// The newsletter's with the event's picture: that in the top right corner,
-// out to the page's edges, the date and QR code side by side under it; the
-// brand at the top left, and the title under it. The picture is as wide
-// always, and as tall as its own shape asks within bounds, so a wide one
-// (often lettered: a festival's line-up, a book's cover) loses little at
-// its sides, and a tall one little at its top and foot.
+// The newsletter's with the event's picture: the brand at the top left
+// and the title under it, as large as it fits; at the right, out to the
+// page's edge, the picture, its middle level with the title's name, and
+// the date over it, flush with its left edge and level with the brand.
+// The picture is as wide always, and as tall as its own shape asks within
+// bounds, so a wide one (often lettered: a festival's line-up, a book's
+// cover) loses little at its sides, and a tall one little at its top and
+// foot.
 const PANEL_WIDTH = 880;
-const PANEL_HEIGHT = { min: 500, max: 760 };
+// At most the room between the date and the page's bottom margin.
+const PANEL_HEIGHT = { min: 500, max: 690 };
+const ACROSS_MARGIN = 72;
+const PANEL_GAP = 64;
 
 function panelSize(image: NonNullable<TicketEvent["image"]>, u: number) {
   const height = Math.min(PANEL_HEIGHT.max, Math.max(PANEL_HEIGHT.min, (PANEL_WIDTH * image.height) / image.width));
@@ -128,34 +134,14 @@ function panelSize(image: NonNullable<TicketEvent["image"]>, u: number) {
 
 function acrossWithImage(page: PDFPage, colo: PDFFont, content: Content, W: number, H: number, image: PDFImage) {
   const u = H / 1080;
-  const margin = 72 * u;
+  const margin = ACROSS_MARGIN * u;
   const titleMargin = 54 * u;
   // As cut to its panel (see embedEventImage).
   const panelWidth = image.width / 2;
   const panelHeight = image.height / 2;
   const panelX = W - panelWidth;
-  page.drawImage(image, { x: panelX, y: H - panelHeight, width: panelWidth, height: panelHeight });
 
-  // Under it, the date flush left and the QR code flush right, both
-  // centred in the room left.
-  const qrSize = 170 * u;
-  const inset = 64 * u;
-  const dateX = panelX + inset;
-  const qrX = W - margin - qrSize;
-  const lines = content.date.map((line) => writable(colo, line.toUpperCase()));
-  const dateWidth = qrX - 48 * u - dateX;
-  const size = Math.min(100 * u, ...lines.map((line) => (dateWidth / colo.widthOfTextAtSize(line, 100)) * 100));
-  const dateHeight = size * (lines.length - 1) + size * CAP_HEIGHT;
-  const roomBelow = H - panelHeight;
-  const middle = roomBelow / 2;
-  drawQr(page, content.ticketUrl, qrX, middle - qrSize / 2, qrSize);
-  let baseline = middle - dateHeight / 2 + size * (lines.length - 1);
-  for (const line of lines) {
-    page.drawText(line, { x: dateX, y: baseline, size, font: colo, color: RED });
-    baseline -= size;
-  }
-
-  // The brand flush left over the title, a little smaller than upright.
+  // The brand flush left at the top, a little smaller than upright.
   const markWidth = 400 * u;
   const markScale = markWidth / COLOSSEUM_MARK.width;
   const markTop = H - margin;
@@ -164,8 +150,30 @@ function acrossWithImage(page: PDFPage, colo: PDFFont, content: Content, W: numb
   const presentsBaseline = markTop - COLOSSEUM_MARK.height * markScale - 26 * u - presentsSize * CAP_HEIGHT;
   page.drawText("PRÄSENTIERT", { x: titleMargin, y: presentsBaseline, size: presentsSize, font: colo, color: RED });
 
+  // The date level with it: its last line on PRÄSENTIERT's baseline, its
+  // first's capitals as high as the mark's top — or smaller, if it
+  // wouldn't fit across.
+  const lines = content.date.map((line) => writable(colo, line.toUpperCase()));
+  const brandHeight = markTop - presentsBaseline;
+  const dateWidth = W - margin - panelX;
+  const size = Math.min(
+    brandHeight / ((lines.length - 1) + CAP_HEIGHT),
+    ...lines.map((line) => (dateWidth / colo.widthOfTextAtSize(line, 100)) * 100),
+  );
+  let baseline = presentsBaseline;
+  for (const line of [...lines].reverse()) {
+    page.drawText(line, { x: panelX, y: baseline, size, font: colo, color: RED });
+    baseline += size;
+  }
+
   const titleWidth = panelX - 64 * u - titleMargin;
-  drawTitle(page, colo, content.text, titleMargin, titleWidth, presentsBaseline - 90 * u, margin, u);
+  const name = drawTitle(page, colo, content.text, titleMargin, titleWidth, presentsBaseline - 90 * u, margin, u);
+
+  // The picture's middle level with the name's, so far as it fits between
+  // the date and the bottom margin.
+  const highest = presentsBaseline - PANEL_GAP * u;
+  const middle = Math.min(highest - panelHeight / 2, Math.max(margin + panelHeight / 2, (name.top + name.bottom) / 2));
+  page.drawImage(image, { x: panelX, y: middle - panelHeight / 2, width: panelWidth, height: panelHeight });
 }
 
 // The event's picture, cut to its panel by Wix's image service — at twice
@@ -193,14 +201,15 @@ function drawBrand(page: PDFPage, colo: PDFFont, centreX: number, markTop: numbe
 
 // The QR code, its foot at qrBottom, and the date's two lines above it,
 // centred on centreX — both the same size: the example's, or less if the
-// longer wouldn't fit across measure. Returns the date's top.
-function drawDateAndQr(page: PDFPage, colo: PDFFont, content: Content, centreX: number, qrBottom: number, measure: number, u: number) {
+// longer wouldn't fit across measure. Without the QR code, the date stands
+// at qrBottom itself. Returns the date's top.
+function drawDateAndQr(page: PDFPage, colo: PDFFont, content: Content, centreX: number, qrBottom: number, measure: number, u: number, qr = true) {
   const qrSize = 170 * u;
-  drawQr(page, content.ticketUrl, centreX - qrSize / 2, qrBottom, qrSize);
+  if (qr) drawQr(page, content.ticketUrl, centreX - qrSize / 2, qrBottom, qrSize);
 
   const lines = content.date.map((line) => writable(colo, line.toUpperCase()));
   const size = Math.min(100 * u, ...lines.map((line) => (measure / colo.widthOfTextAtSize(line, 100)) * 100));
-  let baseline = qrBottom + qrSize + 32 * u;
+  let baseline = qr ? qrBottom + qrSize + 32 * u : qrBottom;
   // Bottom line first, up from the QR code.
   for (const line of [...lines].reverse()) {
     centred(page, colo, line, size, baseline, centreX);
@@ -231,15 +240,17 @@ function drawTitle(page: PDFPage, colo: PDFFont, text: PosterText, x: number, wi
   // height below where it starts.
   let top = boxBottom + (boxTop - boxBottom + total) / 2;
   const drawBlock = (block: TextBlock) => {
+    const blockTop = top;
     let y = top - block.size * CAP_HEIGHT;
     for (const line of block.lines) {
       page.drawText(line, { x, y, size: block.size, font: colo, color: RED });
       y -= block.leading;
     }
     top -= blockHeight(block) + gap;
+    return { top: blockTop, bottom: blockTop - blockHeight(block) };
   };
   if (above) drawBlock(above);
-  drawBlock(title);
+  const name = drawBlock(title);
   if (below) drawBlock(below);
   if (label) {
     // Paper-coloured capitals on a red bar.
@@ -247,6 +258,9 @@ function drawTitle(page: PDFPage, colo: PDFFont, text: PosterText, x: number, wi
     page.drawRectangle({ x, y: top - labelHeight, width: textWidth + label.padX * 2, height: labelHeight, color: RED });
     page.drawText(label.text, { x: x + label.padX, y: top - label.padY - label.size * CAP_HEIGHT, size: label.size, font: colo, color: PAPER });
   }
+  // Where the name stands, for the newsletter's picture to stand level
+  // with.
+  return name;
 }
 
 // The months as the posters write them: their first three letters.
