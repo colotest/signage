@@ -59,6 +59,7 @@ async function makePoster(job: PosterJob) {
     sourceKey: job.sourceKey,
     hash: job.hash,
     name: job.name,
+    linkUrl: job.linkUrl,
     posterId: job.posterId,
     files: {
       a1: { storagePath: slots.a1.storagePath, sizeBytes: a1.size, page: image(slots.a1Page, a1Page) },

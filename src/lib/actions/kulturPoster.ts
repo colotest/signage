@@ -39,6 +39,8 @@ export type PosterJob = {
   sourceKey: string;
   hash: string;
   name: string;
+  // Its event's ticket page.
+  linkUrl: string;
   // The poster to remake, or none for a new one.
   posterId: string | null;
   // Each file's PDF, base64; the images are rendered from theirs.
@@ -81,7 +83,7 @@ export async function planKulturPoster(): Promise<{ jobs: PosterJob[]; unchanged
     for (const format of Object.keys(POSTER_FORMATS) as PosterFormat[]) {
       pdfs[format] = Buffer.from(await posterPdf(event, format, override)).toString("base64");
     }
-    jobs.push({ sourceKey, hash, name, posterId: existing?.id ?? null, pdfs });
+    jobs.push({ sourceKey, hash, name, linkUrl: event.ticketUrl, posterId: existing?.id ?? null, pdfs });
   }
 
   // Only from the folder itself: one moved somewhere else on purpose stays
@@ -114,12 +116,14 @@ export async function saveKulturPoster({
   sourceKey,
   hash,
   name,
+  linkUrl,
   posterId,
   files,
 }: {
   sourceKey: string;
   hash: string;
   name: string;
+  linkUrl: string;
   posterId: string | null;
   files: PosterFilesInput;
 }) {
@@ -136,7 +140,7 @@ export async function saveKulturPoster({
     const archiveId = await archiveFolderId(admin, feedId, false);
     const { error: updateError } = await admin
       .from("posters")
-      .update({ name, source_hash: hash, ...(poster.folder_id === archiveId ? { folder_id: feedId } : {}) })
+      .update({ name, link_url: linkUrl, source_hash: hash, ...(poster.folder_id === archiveId ? { folder_id: feedId } : {}) })
       .eq("id", posterId);
     if (updateError) throw new Error(updateError.message);
   } else {
@@ -144,7 +148,7 @@ export async function saveKulturPoster({
     // way is made again by the next pull.
     const { data: poster, error } = await admin
       .from("posters")
-      .insert({ name, folder_id: feedId, source_key: sourceKey, uploaded_by: user.id })
+      .insert({ name, link_url: linkUrl, folder_id: feedId, source_key: sourceKey, uploaded_by: user.id })
       .select("id")
       .single();
     if (error) throw new Error(error.message);

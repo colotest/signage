@@ -25,6 +25,9 @@ export type TicketEvent = {
   // Where tickets are sold: Wix's own event page, or the outside shop the
   // event links to.
   ticketUrl: string;
+  // The event's picture on the site (Wix's file id, for its image
+  // service), if it has one.
+  image: { id: string; width: number; height: number } | null;
 };
 
 // Wix's registration statuses that mean tickets can be had: its own
@@ -40,6 +43,7 @@ type WixEvent = {
   status?: number;
   scheduling?: { config?: { startDate?: string; endDate?: string; timeZoneId?: string; scheduleTbd?: boolean } };
   registration?: { type?: number; status?: number; external?: { registration?: string } | null };
+  mainImage?: { id?: string; width?: number; height?: number } | null;
 };
 
 export async function fetchTicketEvents(): Promise<TicketEvent[]> {
@@ -118,9 +122,21 @@ function toTicketEvent(event: WixEvent): { event: TicketEvent; copy: boolean } |
       end: config.endDate ?? config.startDate,
       timeZone: config.timeZoneId ?? "Europe/Berlin",
       ticketUrl: ascii(external && !pointsHome(external) ? external : own),
+      image: imageOf(event),
     },
     copy: COPY_SUFFIX.test(title),
   };
+}
+
+// The event's picture cut to exactly width × height, from its middle, by
+// Wix's own image service — always a JPEG, whatever was uploaded.
+export function eventImageUrl(image: NonNullable<TicketEvent["image"]>, width: number, height: number) {
+  return `https://static.wixstatic.com/media/${encodeURIComponent(image.id)}/v1/fill/w_${Math.round(width)},h_${Math.round(height)},al_c,q_85/image.jpg`;
+}
+
+function imageOf(event: WixEvent): TicketEvent["image"] {
+  const { id, width, height } = event.mainImage ?? {};
+  return id && width && height ? { id, width, height } : null;
 }
 
 // Escaped, as a browser would send it ("dreißig" in a path): not every
