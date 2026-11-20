@@ -33,6 +33,7 @@ import {
 import { cancelScheduledPlayback, schedulePlaylist } from "@/lib/actions/schedules";
 import type {
   DeckWithPages,
+  PosterWithParts,
   Folder,
   MediaItem,
   ScheduledPlayback,
@@ -63,6 +64,7 @@ export type LibraryData = {
   folders: Folder[];
   media: MediaItem[];
   decks: DeckWithPages[];
+  posters: PosterWithParts[];
   playlists: PlaylistWithEntries[];
   // User id → short name, for the file browser's Uploaded By.
   uploaders: Record<string, string>;
@@ -1109,6 +1111,7 @@ export function PlaybackMenu({
                 </div>
                 <FileTree
                   decks={library.decks}
+                  posters={library.posters}
                   uploaders={library.uploaders}
                   search={search}
                   className="min-h-0 flex-1"

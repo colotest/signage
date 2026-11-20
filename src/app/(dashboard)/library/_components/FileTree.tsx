@@ -14,9 +14,10 @@ import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders"
 import { createUploadLink, revokeUploadLink } from "@/lib/actions/uploadLinks";
 import { deleteMediaItem, moveMediaItem } from "@/lib/actions/media";
 import { deleteDeck, moveDeck, renameDeck } from "@/lib/actions/decks";
+import { deletePoster, movePoster } from "@/lib/actions/posters";
 import { animateEntrance, removeWithAnimation } from "@/lib/animation/listMotion";
 import { useFlipRows } from "@/lib/animation/useFlipRows";
-import { mediaPublicUrl, type DeckWithPages, type Folder, type MediaItem } from "@/types/domain";
+import { mediaPublicUrl, type DeckWithPages, type Folder, type MediaItem, type PosterWithParts } from "@/types/domain";
 import { RenameableTitle } from "./RenameableTitle";
 import { RoleDot, RoleDots } from "@/components/RoleDot";
 import { canEditOwned, canRestrictOwned } from "@/lib/auth/access";
@@ -26,6 +27,7 @@ import { ReplaceMediaButton } from "./ReplaceMediaButton";
 import { ReplaceDeckButton } from "./ReplaceDeckButton";
 import { KulturPosterButton } from "./KulturPosterButton";
 import { PosterTextDialog } from "./PosterTextDialog";
+import { POSTER_PART_LABELS, posterPartFileName } from "@/lib/posters";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -34,11 +36,11 @@ type Router = ReturnType<typeof useRouter>;
 // Folder id → upload link token (see 0024_folder_upload_links.sql). Null
 // where the tree is only a file picker, which then shows no link controls.
 const UploadLinksContext = createContext<Record<string, string> | null>(null);
-type FolderNode = Folder & { children: FolderNode[]; files: MediaItem[]; decks: DeckWithPages[] };
+type FolderNode = Folder & { children: FolderNode[]; files: MediaItem[]; decks: DeckWithPages[]; posters: PosterWithParts[] };
 
-function buildTree(folders: Folder[], media: MediaItem[], decks: DeckWithPages[]) {
+function buildTree(folders: Folder[], media: MediaItem[], decks: DeckWithPages[], posters: PosterWithParts[]) {
   const nodeById = new Map<string, FolderNode>();
-  for (const f of folders) nodeById.set(f.id, { ...f, children: [], files: [], decks: [] });
+  for (const f of folders) nodeById.set(f.id, { ...f, children: [], files: [], decks: [], posters: [] });
   const roots: FolderNode[] = [];
   for (const f of folders) {
     const node = nodeById.get(f.id)!;
@@ -51,17 +53,27 @@ function buildTree(folders: Folder[], media: MediaItem[], decks: DeckWithPages[]
     // A PDF's pages are listed inside their deck, never loose among the
     // files — the deck is the thing that lives in a folder.
     if (m.deck_id) continue;
+    // Nor a poster's images, which are listed inside their poster.
+    if (m.poster_id) continue;
     const parent = m.folder_id ? nodeById.get(m.folder_id) : undefined;
     if (parent) parent.files.push(m);
     else rootFiles.push(m);
   }
   const rootDecks: DeckWithPages[] = [];
   for (const deck of decks) {
+    // A poster's A1 PDF likewise.
+    if (deck.poster_id) continue;
     const parent = deck.folder_id ? nodeById.get(deck.folder_id) : undefined;
     if (parent) parent.decks.push(deck);
     else rootDecks.push(deck);
   }
-  return { roots, rootFiles, rootDecks, nodeById };
+  const rootPosters: PosterWithParts[] = [];
+  for (const poster of posters) {
+    const parent = poster.folder_id ? nodeById.get(poster.folder_id) : undefined;
+    if (parent) parent.posters.push(poster);
+    else rootPosters.push(poster);
+  }
+  return { roots, rootFiles, rootDecks, rootPosters, nodeById };
 }
 
 // Keeps what the query names: a file or deck whose name matches, and a
@@ -83,18 +95,24 @@ function filterNode(node: FolderNode, query: string): FolderNode | null {
   });
   const files = node.files.filter((file) => matchesQuery(file.name, query));
   const decks = node.decks.filter((deck) => matchesQuery(deck.name, query));
-  if (children.length === 0 && files.length === 0 && decks.length === 0) return null;
-  return { ...node, children, files, decks };
+  const posters = node.posters.filter((poster) => matchesQuery(poster.name, query));
+  if (children.length === 0 && files.length === 0 && decks.length === 0 && posters.length === 0) return null;
+  return { ...node, children, files, decks, posters };
 }
 
 // Everything a folder holds, deck pages included and in page order — what
-// ticking a folder's own checkbox selects.
+// ticking a folder's own checkbox selects. Of a poster, its two images.
 function collectMediaIds(node: FolderNode): string[] {
   return [
     ...node.files.map((f) => f.id),
+    ...node.posters.flatMap(posterImageIds),
     ...node.decks.flatMap((deck) => deck.pages.map((page) => page.id)),
     ...node.children.flatMap(collectMediaIds),
   ];
+}
+
+function posterImageIds(poster: PosterWithParts) {
+  return [poster.screen, poster.newsletter].flatMap((image) => (image ? [image.id] : []));
 }
 
 export type SortKey = "name" | "kind" | "resolution" | "uploader" | "size" | "date";
@@ -107,6 +125,7 @@ type Uploaded = Pick<MediaItem, "uploaded_by" | "uploaded_via_link" | "upload_li
 // folder id → name, for files that came in through a folder's upload link.
 type UploaderNames = { users: Record<string, string>; folders: Map<string, string> };
 const NO_UPLOADERS: Record<string, string> = {};
+const NO_POSTERS: PosterWithParts[] = [];
 const UploadersContext = createContext<UploaderNames>({ users: {}, folders: new Map() });
 
 // A link upload reads as the shared folder it came in through ("Menus 🔗"),
@@ -161,6 +180,7 @@ export function FileTree({
   folders,
   media,
   decks,
+  posters = NO_POSTERS,
   selectionMode,
   selectedIds,
   onToggleMedia,
@@ -182,6 +202,7 @@ export function FileTree({
   folders: Folder[];
   media: MediaItem[];
   decks: DeckWithPages[];
+  posters?: PosterWithParts[];
   selectionMode: boolean;
   selectedIds: Set<string>;
   onToggleMedia: (id: string) => void;
@@ -271,8 +292,8 @@ export function FileTree({
   );
   const query = search.trim().toLowerCase();
   const searching = query.length > 0;
-  const { roots, rootFiles, rootDecks } = useMemo(() => {
-    const tree = buildTree(folders, media, decks);
+  const { roots, rootFiles, rootDecks, rootPosters } = useMemo(() => {
+    const tree = buildTree(folders, media, decks, posters);
     if (!query) return tree;
     return {
       ...tree,
@@ -282,8 +303,9 @@ export function FileTree({
       }),
       rootFiles: tree.rootFiles.filter((file) => matchesQuery(file.name, query)),
       rootDecks: tree.rootDecks.filter((deck) => matchesQuery(deck.name, query)),
+      rootPosters: tree.rootPosters.filter((poster) => matchesQuery(poster.name, query)),
     };
-  }, [folders, media, decks, query]);
+  }, [folders, media, decks, posters, query]);
 
   // While searching every folder left standing is open: what's left is the
   // matches themselves, and they're no use shut away.
@@ -336,6 +358,25 @@ export function FileTree({
     return copy;
   }
 
+  // Posters likewise: by name, uploader, their files' size together or
+  // date, and by name for the columns they don't have.
+  function sortPosters(items: PosterWithParts[]) {
+    const copy = [...items];
+    copy.sort((a, b) => {
+      const value = (poster: PosterWithParts): string | number => {
+        if (sortKey === "size") return posterSize(poster);
+        if (sortKey === "date") return new Date(poster.created_at).getTime();
+        if (sortKey === "uploader") return uploaderLabel(posterUploaded(poster), uploaderNames).toLowerCase();
+        return poster.name.toLowerCase();
+      };
+      const av = value(a);
+      const bv = value(b);
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return copy;
+  }
+
   function toggleExpanded(id: string) {
     setExpanded((current) => {
       const next = new Set(current);
@@ -379,7 +420,7 @@ export function FileTree({
     onActivateFolder(wasExpanded ? folder.parent_id : folder.id);
   }
 
-  if (roots.length === 0 && rootFiles.length === 0 && rootDecks.length === 0) {
+  if (roots.length === 0 && rootFiles.length === 0 && rootDecks.length === 0 && rootPosters.length === 0) {
     return (
       <div
         onDragEnter={handleNativeDragEnter}
@@ -523,6 +564,7 @@ export function FileTree({
               folders={sortFolders(roots)}
               files={sortFiles(rootFiles)}
               decks={sortDecks(rootDecks)}
+              posters={sortPosters(rootPosters)}
               depth={0}
               isRoot
               expanded={shownExpanded}
@@ -541,6 +583,7 @@ export function FileTree({
               sortFiles={sortFiles}
               sortFolders={sortFolders}
               sortDecks={sortDecks}
+              sortPosters={sortPosters}
               dropTargetFolderId={dropTargetFolderId}
               router={router}
             />
@@ -557,6 +600,7 @@ function TreeLevel({
   folders,
   files,
   decks,
+  posters,
   depth,
   isRoot,
   expanded,
@@ -575,12 +619,14 @@ function TreeLevel({
   sortFiles,
   sortFolders,
   sortDecks,
+  sortPosters,
   dropTargetFolderId,
   router,
 }: {
   folders: FolderNode[];
   files: MediaItem[];
   decks: DeckWithPages[];
+  posters: PosterWithParts[];
   depth: number;
   isRoot?: boolean;
   expanded: Set<string>;
@@ -603,6 +649,7 @@ function TreeLevel({
   sortFiles: (items: MediaItem[]) => MediaItem[];
   sortFolders: (nodes: FolderNode[]) => FolderNode[];
   sortDecks: (items: DeckWithPages[]) => DeckWithPages[];
+  sortPosters: (items: PosterWithParts[]) => PosterWithParts[];
   dropTargetFolderId: string | null | undefined;
   router: Router;
 }) {
@@ -657,6 +704,7 @@ function TreeLevel({
                 folders={sortFolders(folder.children)}
                 files={sortFiles(folder.files)}
                 decks={sortDecks(folder.decks)}
+                posters={sortPosters(folder.posters)}
                 depth={depth + 1}
                 expanded={expanded}
                 onFolderRowClick={onFolderRowClick}
@@ -674,6 +722,7 @@ function TreeLevel({
                 sortFiles={sortFiles}
                 sortFolders={sortFolders}
                 sortDecks={sortDecks}
+                sortPosters={sortPosters}
                 dropTargetFolderId={dropTargetFolderId}
                 router={router}
               />
@@ -687,6 +736,60 @@ function TreeLevel({
                 router={router}
               />
             )}
+          </div>
+        );
+      })}
+
+      {posters.map((poster) => {
+        const imageIds = posterImageIds(poster);
+        const selectedCount = imageIds.filter((id) => selectedIds.has(id)).length;
+        const checkState: "all" | "some" | "none" =
+          imageIds.length === 0 || selectedCount === 0 ? "none" : selectedCount === imageIds.length ? "all" : "some";
+        const open = expanded.has(poster.id);
+        return (
+          <div key={poster.id}>
+            <PosterRow
+              poster={poster}
+              depth={depth}
+              isExpanded={open}
+              onToggleExpanded={() => onToggleDeck(poster.id)}
+              selectionMode={selectionMode}
+              checkState={checkState}
+              onToggleSelect={() => onToggleFolderIds(imageIds, checkState !== "all")}
+              router={router}
+            />
+            {/* Its files, each as what it is: the PDF, then the images. */}
+            {open && poster.a1 && (
+              <DeckRow
+                deck={poster.a1}
+                depth={depth + 1}
+                posterPart={{ label: POSTER_PART_LABELS.a1, fileName: posterPartFileName(poster.name, "a1", "pdf") }}
+                isExpanded={false}
+                onToggleExpanded={() => {}}
+                selectionMode={selectionMode}
+                checkState={poster.a1.pages.every((page) => selectedIds.has(page.id)) && poster.a1.pages.length > 0 ? "all" : "none"}
+                onToggleSelect={() => onToggleFolderIds(poster.a1!.pages.map((page) => page.id), !poster.a1!.pages.every((page) => selectedIds.has(page.id)))}
+                router={router}
+              />
+            )}
+            {open &&
+              (["screen", "newsletter"] as const).map((part) => {
+                const image = poster[part];
+                return (
+                  image && (
+                    <FileRow
+                      key={image.id}
+                      item={image}
+                      depth={depth + 1}
+                      posterPart={{ label: POSTER_PART_LABELS[part], fileName: posterPartFileName(poster.name, part, "png") }}
+                      selectionMode={selectionMode}
+                      selected={selectedIds.has(image.id)}
+                      onToggleSelect={() => onToggleMedia(image.id)}
+                      router={router}
+                    />
+                  )
+                );
+              })}
           </div>
         );
       })}
@@ -1135,7 +1238,7 @@ function FolderRow({
   }
 
   const isHighlighted = selectionMode ? checkState === "all" : isUploadTarget;
-  const itemCount = folder.children.length + folder.files.length + folder.decks.length;
+  const itemCount = folder.children.length + folder.files.length + folder.decks.length + folder.posters.length;
 
   return (
     <div
@@ -1252,6 +1355,7 @@ function FolderRow({
 function FileRow({
   item,
   depth,
+  posterPart,
   inDeck = false,
   deckOwner,
   selectionMode,
@@ -1261,6 +1365,9 @@ function FileRow({
 }: {
   item: MediaItem;
   depth: number;
+  // A poster's image: put in a playlist like any other, but not renamed,
+  // replaced, moved or deleted on its own.
+  posterPart?: PosterPartRow;
   // A page of a PDF: renamed, deleted and put in a playlist like anything
   // else, but with no file of its own to replace and no folder to move to —
   // the deck it belongs to has both.
@@ -1341,6 +1448,9 @@ function FileRow({
 
       <RowInfo
         title={
+          posterPart ? (
+            <span className="truncate text-[15px] font-medium">{posterPart.label}</span>
+          ) : (
           <span className="flex min-w-0 items-center gap-1.5">
             <RenameableTitle
               id={item.id}
@@ -1354,6 +1464,7 @@ function FileRow({
             />
             {!inDeck && <RoleDots roles={flags} />}
           </span>
+          )
         }
         date={formatDate(item.created_at)}
         uploader={uploader}
@@ -1368,12 +1479,12 @@ function FileRow({
       <RowMenu label={`${item.name} actions`}>
         {/* Grouped with the file's own details rather than the actions
             below: it's about this file, not something done to it. */}
-        {editable && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
+        {editable && !posterPart && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
         <MenuInfo>{kindLabel(item)}</MenuInfo>
         {dimensions && <MenuInfo>{dimensions}</MenuInfo>}
         {item.media_type !== "page" && <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>}
         {(item.folder_id || item.media_type !== "page") && <div className="my-1 border-t border-border" />}
-        {item.folder_id && !inDeck && editable && (
+        {item.folder_id && !inDeck && !posterPart && editable && (
           <MenuItem disabled={pending} onClick={handleMoveToRoot}>
             Move to Root
           </MenuItem>
@@ -1387,21 +1498,21 @@ function FileRow({
                 domain, so a plain download attribute (different origin)
                 would be ignored and the browser would just open it. */}
             <a
-              href={`${mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path)}?download=${encodeURIComponent(item.name)}`}
-              download={item.name}
+              href={`${mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path)}?download=${encodeURIComponent(posterPart?.fileName ?? item.name)}`}
+              download={posterPart?.fileName ?? item.name}
               className={MENU_ITEM_CLASS}
             >
               Download
             </a>
-            {!inDeck && editable && <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />}
-            {editable && (
+            {!inDeck && !posterPart && editable && <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />}
+            {editable && !posterPart && (
               <MenuItem danger disabled={pending} onClick={handleDelete}>
                 Delete
               </MenuItem>
             )}
           </>
         )}
-        {!inDeck && <LimitMenuItems kind="media" id={item.id} owner={owner} router={router} />}
+        {!inDeck && !posterPart && <LimitMenuItems kind="media" id={item.id} owner={owner} router={router} />}
       </RowMenu>
     </div>
   );
@@ -1562,9 +1673,14 @@ function SortButton({
 // other file — its own duration in a playlist, its own deletion — while
 // this row is the original PDF: rename it, move it, download it, replace it
 // with a newer version, or delete the lot.
+// One of a Poster's files, shown inside it: called by which it is, and only
+// downloaded from there — it's made, moved and deleted with its poster.
+type PosterPartRow = { label: string; fileName: string };
+
 function DeckRow({
   deck,
   depth,
+  posterPart,
   isExpanded,
   onToggleExpanded,
   selectionMode,
@@ -1574,6 +1690,8 @@ function DeckRow({
 }: {
   deck: DeckWithPages;
   depth: number;
+  // A poster's A1 PDF: shown as one file, its page left out.
+  posterPart?: PosterPartRow;
   isExpanded: boolean;
   onToggleExpanded: () => void;
   selectionMode: boolean;
@@ -1588,7 +1706,7 @@ function DeckRow({
   const owner = { ownerId: deck.uploaded_by, editRoleIds: deck.edit_role_ids ?? [] };
   const { editable, flags } = useEditRights(owner);
   const cover = deck.pages[0];
-  const fileName = `${deck.name}.pdf`;
+  const fileName = posterPart?.fileName ?? `${deck.name}.pdf`;
   // Dragged into a folder like any file (see LibraryView) — not while
   // picking for a playlist, nor while its name is being edited.
   const {
@@ -1596,17 +1714,11 @@ function DeckRow({
     listeners,
     setNodeRef: setDragRef,
     isDragging,
-  } = useDraggable({ id: `move-deck-${deck.id}`, disabled: selectionMode || renaming });
+  } = useDraggable({ id: `move-deck-${deck.id}`, disabled: selectionMode || renaming || !!posterPart });
   // And something can be dropped on it, landing in whichever folder the
   // PDF itself is in, as with a file row — otherwise a drop that happened
   // to end on a PDF had nowhere to land, and snapped back.
   const { setNodeRef: setDropRef } = useDroppable({ id: `deck-${deck.id}` });
-  // A Kultur Poster's text can be set by hand — in the Library, not the
-  // Playback Menu's picker (which has no upload links either). The popup
-  // sits outside the row, whose clicks and drags it would otherwise set off.
-  const uploadLinks = useContext(UploadLinksContext);
-  const isPoster = !!uploadLinks && !!deck.source_key?.startsWith("wix-event:");
-  const [editingText, setEditingText] = useState(false);
 
   function handleDelete() {
     if (
@@ -1629,7 +1741,6 @@ function DeckRow({
   }
 
   return (
-    <>
     <div
       ref={(node) => {
         setDragRef(node);
@@ -1638,7 +1749,7 @@ function DeckRow({
       }}
       {...attributes}
       {...listeners}
-      onClick={selectionMode ? onToggleSelect : onToggleExpanded}
+      onClick={selectionMode ? onToggleSelect : posterPart ? undefined : onToggleExpanded}
       data-flip-key={`deck-${deck.id}`}
       className={cn(
         "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
@@ -1660,6 +1771,9 @@ function DeckRow({
 
       <RowInfo
         title={
+          posterPart ? (
+            <span className="truncate text-[15px] font-medium">{posterPart.label}</span>
+          ) : (
           // The chevron rides along after the name rather than sitting out
           // in front of the cover, so what it opens reads left to right:
           // this deck, then its pages.
@@ -1686,6 +1800,7 @@ function DeckRow({
               <Chevron open={isExpanded} />
             </button>
           </span>
+          )
         }
         date={formatDate(deck.created_at)}
         uploader={uploader}
@@ -1705,14 +1820,13 @@ function DeckRow({
       <RowColumn width="w-40" wide>{formatDate(deck.created_at)}</RowColumn>
 
       <RowMenu label={`${deck.name} actions`}>
-        {editable && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
-        {isPoster && editable && <MenuItem onClick={() => setEditingText(true)}>Edit Poster Text…</MenuItem>}
+        {editable && !posterPart && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
         <MenuInfo>
           PDF · {deck.pages.length} {deck.pages.length === 1 ? "page" : "pages"}
         </MenuInfo>
         <MenuInfo>{formatBytes(deck.size_bytes)}</MenuInfo>
         <div className="my-1 border-t border-border" />
-        {deck.folder_id && editable && (
+        {deck.folder_id && editable && !posterPart && (
           <MenuItem disabled={pending} onClick={handleMoveToRoot}>
             Move to Root
           </MenuItem>
@@ -1727,16 +1841,165 @@ function DeckRow({
         >
           Download
         </a>
-        {editable && <ReplaceDeckButton deck={deck} className={MENU_ITEM_CLASS} />}
-        {editable && (
+        {!posterPart && (
+          <>
+            {editable && <ReplaceDeckButton deck={deck} className={MENU_ITEM_CLASS} />}
+            {editable && (
+              <MenuItem danger disabled={pending} onClick={handleDelete}>
+                Delete
+              </MenuItem>
+            )}
+            <LimitMenuItems kind="deck" id={deck.id} owner={owner} router={router} />
+          </>
+        )}
+      </RowMenu>
+    </div>
+  );
+}
+
+// A poster's files' sizes together.
+function posterSize(poster: PosterWithParts) {
+  return (poster.a1?.size_bytes ?? 0) + (poster.screen?.size_bytes ?? 0) + (poster.newsletter?.size_bytes ?? 0);
+}
+
+// Who made it, in the shape Uploaded By reads: a poster is only ever made
+// by someone signed in.
+function posterUploaded(poster: PosterWithParts): Uploaded {
+  return { uploaded_by: poster.uploaded_by, uploaded_via_link: false, upload_link_folder_id: null };
+}
+
+// A Poster (see 0051_posters.sql): one event's poster, its full name
+// spelled out here, and its files — the A1 PDF and the two images — inside
+// it, behind the chevron, called by which each is. It sits in a folder,
+// moves and is deleted as one, like a PDF does.
+function PosterRow({
+  poster,
+  depth,
+  isExpanded,
+  onToggleExpanded,
+  selectionMode,
+  checkState,
+  onToggleSelect,
+  router,
+}: {
+  poster: PosterWithParts;
+  depth: number;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
+  selectionMode: boolean;
+  checkState: "all" | "some" | "none";
+  onToggleSelect: () => void;
+  router: Router;
+}) {
+  const [pending, startTransition] = useTransition();
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const uploader = useUploaderLabel(posterUploaded(poster));
+  const fileCount = [poster.a1, poster.screen, poster.newsletter].filter(Boolean).length;
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: `move-poster-${poster.id}`,
+    disabled: selectionMode,
+  });
+  // Something dropped on it lands in its folder, as on a file row.
+  const { setNodeRef: setDropRef } = useDroppable({ id: `poster-${poster.id}` });
+  // A Kultur Poster's text can be set by hand — in the Library, not the
+  // Playback Menu's picker (which has no upload links either). The popup
+  // sits outside the row, whose clicks and drags it would otherwise set off.
+  const uploadLinks = useContext(UploadLinksContext);
+  const fromFeed = !!uploadLinks && !!poster.source_key?.startsWith("wix-event:");
+  const [editingText, setEditingText] = useState(false);
+
+  function handleDelete() {
+    if (!window.confirm(`Delete the poster "${poster.name}" and its ${fileCount} files? They're removed from any screens or playlists using them.`)) return;
+    startTransition(async () => {
+      await removeWithAnimation(rowRef.current?.parentElement, () => deletePoster(poster.id));
+      router.refresh();
+    });
+  }
+
+  function handleMoveToRoot() {
+    startTransition(async () => {
+      await movePoster(poster.id, null);
+      router.refresh();
+    });
+  }
+
+  return (
+    <>
+      <div
+        ref={(node) => {
+          setDragRef(node);
+          setDropRef(node);
+          rowRef.current = node;
+        }}
+        {...attributes}
+        {...listeners}
+        onClick={selectionMode ? onToggleSelect : onToggleExpanded}
+        data-flip-key={`poster-${poster.id}`}
+        className={cn(
+          "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2 last:border-0",
+          isDragging && "opacity-40",
+          selectionMode && checkState === "all"
+            ? "bg-accent/10 dark:bg-accent/15"
+            : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
+        )}
+      >
+        <Checkbox
+          visible={selectionMode}
+          state={checkState === "all" ? true : checkState === "some" ? "indeterminate" : false}
+          onChange={onToggleSelect}
+          collapsedClassName="-mr-2"
+        />
+        <div style={{ width: depth * 20 }} className="shrink-0" />
+        {/* The screen's image stands in for the poster. */}
+        <MediaThumbSlot item={poster.screen ?? poster.a1?.pages[0]} slotWidth={ROW_SLOT_W} slotHeight={ROW_SLOT_H} />
+
+        <RowInfo
+          title={
+            <span className="flex min-w-0 items-center gap-0.5">
+              <span className="truncate text-[15px] font-medium">{poster.name}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleExpanded();
+                }}
+                aria-label={isExpanded ? `Collapse ${poster.name}` : `Expand ${poster.name}`}
+                className="press-ghost -m-1 ml-1 shrink-0 p-1 text-muted"
+              >
+                <Chevron open={isExpanded} />
+              </button>
+            </span>
+          }
+          date={formatDate(poster.created_at)}
+          uploader={uploader}
+        />
+
+        <RowColumn width="w-28">Poster</RowColumn>
+        <RowColumn width="w-44">
+          {fileCount} {fileCount === 1 ? "file" : "files"}
+        </RowColumn>
+        <RowColumn width="w-28" wide>{uploader}</RowColumn>
+        <RowColumn width="w-20">{formatBytes(posterSize(poster))}</RowColumn>
+        <RowColumn width="w-40" wide>{formatDate(poster.created_at)}</RowColumn>
+
+        <RowMenu label={`${poster.name} actions`}>
+          {fromFeed && <MenuItem onClick={() => setEditingText(true)}>Edit Poster Text…</MenuItem>}
+          <MenuInfo>
+            Poster · {fileCount} {fileCount === 1 ? "file" : "files"}
+          </MenuInfo>
+          <MenuInfo>{formatBytes(posterSize(poster))}</MenuInfo>
+          <div className="my-1 border-t border-border" />
+          {poster.folder_id && (
+            <MenuItem disabled={pending} onClick={handleMoveToRoot}>
+              Move to Root
+            </MenuItem>
+          )}
           <MenuItem danger disabled={pending} onClick={handleDelete}>
             Delete
           </MenuItem>
-        )}
-        <LimitMenuItems kind="deck" id={deck.id} owner={owner} router={router} />
-      </RowMenu>
-    </div>
-    {isPoster && <PosterTextDialog sourceKey={deck.source_key!} open={editingText} onClose={() => setEditingText(false)} />}
+        </RowMenu>
+      </div>
+      {fromFeed && <PosterTextDialog sourceKey={poster.source_key!} open={editingText} onClose={() => setEditingText(false)} />}
     </>
   );
 }

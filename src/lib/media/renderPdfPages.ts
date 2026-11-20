@@ -34,11 +34,19 @@ export type RenderedPage = {
   height: number;
 };
 
+// How a page comes out: a JPEG with its long edge at MAX_EDGE unless asked
+// otherwise — a Kultur Poster's images are PNGs, at sizes of their own.
+export type RenderOptions = { type?: "image/jpeg" | "image/png"; maxEdge?: number };
+
 // Renders every page of a PDF to a JPEG, in the browser — there's no
 // server-side converter anywhere in this app, and this keeps it that way.
 // onProgress reports pages finished so an upload of a long deck can say
 // where it's got to.
-export async function renderPdfPages(file: File, onProgress?: (done: number, total: number) => void): Promise<RenderedPage[]> {
+export async function renderPdfPages(
+  file: File,
+  onProgress?: (done: number, total: number) => void,
+  { type = "image/jpeg", maxEdge = MAX_EDGE }: RenderOptions = {},
+): Promise<RenderedPage[]> {
   const pdfjs = await loadPdfJs();
   const data = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data }).promise;
@@ -51,7 +59,7 @@ export async function renderPdfPages(file: File, onProgress?: (done: number, tot
       // Fit the long edge to MAX_EDGE, within a 6× ceiling — enough for the
       // smallest common slide export (Google Slides, 720 pt wide) to reach
       // it, while a stray tiny page doesn't become a huge canvas.
-      const viewport = page.getViewport({ scale: Math.min(MAX_EDGE / Math.max(base.width, base.height), 6) });
+      const viewport = page.getViewport({ scale: Math.min(maxEdge / Math.max(base.width, base.height), 6) });
 
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(viewport.width);
@@ -67,7 +75,7 @@ export async function renderPdfPages(file: File, onProgress?: (done: number, tot
       await page.render({ canvas, canvasContext: context, viewport }).promise;
       page.cleanup();
 
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, JPEG_QUALITY));
       if (!blob) throw new Error(`Page ${pageNumber} wouldn't render.`);
       pages.push({ blob, width: canvas.width, height: canvas.height });
 

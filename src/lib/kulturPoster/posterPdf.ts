@@ -9,32 +9,36 @@ import type { TicketEvent } from "./events";
 import { hyphenationPieces } from "./hyphenate";
 import { titleParts, type PosterText } from "./titleParts";
 
-// A Kultur Poster: one event on one page, in two sizes — A1 for print and
-// a 1080×1920 still for the portrait screens. On the house's warm white, in
-// its deep red, top to bottom: the cursive Colosseum and PRÄSENTIERT under
-// it; the event's name in capitals, as large as it fits, flush left — with
-// the rest of its title on smaller lines of their own, a series or format
-// above it, a subtitle below it and a status as a label (see titleParts);
-// then its date, and the QR code to its tickets (in black, for the cameras) at
-// the bottom centre. The type is all Colo (Compacta), the brand's own
-// face, and everything is drawn as vectors (the QR code too), so A1
-// prints sharp. Measurements are the house example's, on its 1080-wide
-// still, scaled to the page.
+// A Kultur Poster: one event on one page, in three sizes — A1 for print, a
+// 9:16 still for the portrait screens and a 16:9 one for the newsletter.
+// On the house's warm white, in its deep red: the cursive Colosseum and
+// PRÄSENTIERT under it; the event's name in capitals, as large as it
+// fits, flush left — with the rest of its title on smaller lines of its
+// own, a series or format above it, a subtitle below it and a status as a
+// label (see titleParts); then its date, and the QR code to its tickets
+// (in black, for the cameras). Upright, those run top to bottom, the date
+// and QR code at the bottom centre; across, the title takes the left of
+// the page at full height, and the rest stands in a column at its right,
+// the brand at its top and the date and QR code at its foot. The type is
+// all Colo (Compacta), the brand's own face, and everything is drawn as
+// vectors (the QR code too), so A1 prints sharp. Measurements are the
+// house example's, on its 1080-wide still, scaled to the page.
 
-export type PosterFormat = "a1" | "screen";
+export type PosterFormat = "a1" | "screen" | "newsletter";
 
 export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number; height: number }> = {
   // 594 × 841 mm, in points.
-  a1: { label: "A1", width: 1683.78, height: 2383.94 },
-  // One point per pixel; the Library renders it at twice that (see
-  // renderPdfPages), so a 4K portrait screen gets it sharp too.
-  screen: { label: "1080×1920", width: 1080, height: 1920 },
+  a1: { label: "A1 Poster", width: 1683.78, height: 2383.94 },
+  // One point per pixel; the screen's is rendered at twice that (see
+  // kulturPosterPull), so a 4K portrait screen gets it sharp too.
+  screen: { label: "Screen 9:16", width: 1080, height: 1920 },
+  newsletter: { label: "Newsletter 16:9", width: 1920, height: 1080 },
 };
 
 // Bumped whenever the layout changes, so the next pull redoes every
 // poster rather than only those whose event changed (see
 // planKulturPoster's hash).
-export const POSTER_LAYOUT_VERSION = 5;
+export const POSTER_LAYOUT_VERSION = 6;
 
 const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 const PAPER = hex("#fdf9f9");
@@ -52,60 +56,93 @@ export function posterContent(event: TicketEvent, override?: PosterText | null) 
   return { text: override ?? titleParts(event.title, event.description), date: dateLines(event), ticketUrl: event.ticketUrl };
 }
 
+type Content = ReturnType<typeof posterContent>;
+
 export async function posterPdf(event: TicketEvent, format: PosterFormat, override?: PosterText | null): Promise<Uint8Array> {
-  const { width: W, height: H } = POSTER_FORMATS[format];
+  const { width: W, height: H, label } = POSTER_FORMATS[format];
   const content = posterContent(event, override);
-  const u = W / 1080;
-  // The date's and PRÄSENTIERT's room across, as in the example; the
-  // title takes a quarter of its margins, to be set that much larger.
-  const measure = W - 109 * u * 2;
-  const titleMargin = 27 * u;
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`${event.title} – ${POSTER_FORMATS[format].label}`);
+  doc.setTitle(`${event.title} – ${label}`);
   doc.setCreator("Colo Cloud");
   doc.registerFontkit(fontkit);
   const colo = await doc.embedFont(await readFile(join(process.cwd(), "src/fonts/colo.ttf")), { subset: true });
 
   const page = doc.addPage([W, H]);
   page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: PAPER });
+  if (W > H) across(page, colo, content, W, H);
+  else upright(page, colo, content, W, H);
+  return doc.save();
+}
 
-  // ── The brand, at the top: the cursive Colosseum, and PRÄSENTIERT ──
-  const markWidth = 463 * u;
+// The A1 and the screen's: top to bottom, all centred but the title.
+function upright(page: PDFPage, colo: PDFFont, content: Content, W: number, H: number) {
+  const u = W / 1080;
+  // The date's and PRÄSENTIERT's room across, as in the example; the
+  // title takes a quarter of its margins, to be set that much larger.
+  const measure = W - 109 * u * 2;
+  const titleMargin = 27 * u;
+
+  const presentsBaseline = drawBrand(page, colo, W / 2, H - 96 * u, measure, u);
+  const dateTop = drawDateAndQr(page, colo, content, W / 2, 101 * u, measure, u);
+  drawTitle(page, colo, content.text, titleMargin, W - titleMargin * 2, presentsBaseline - 100 * u, dateTop + 100 * u, u);
+}
+
+// The newsletter's: the title at the left, at full height; the brand, the
+// date and the QR code in a column at the right.
+function across(page: PDFPage, colo: PDFFont, content: Content, W: number, H: number) {
+  const u = H / 1080;
+  const margin = 72 * u;
+  const columnWidth = 560 * u;
+  const columnCentre = W - margin - columnWidth / 2;
+  const titleMargin = 54 * u;
+
+  drawBrand(page, colo, columnCentre, H - margin, columnWidth, u);
+  drawDateAndQr(page, colo, content, columnCentre, margin, columnWidth, u);
+  const titleWidth = W - margin - columnWidth - 64 * u - titleMargin;
+  drawTitle(page, colo, content.text, titleMargin, titleWidth, H - margin, margin, u);
+}
+
+// The cursive Colosseum, its top at markTop, and PRÄSENTIERT under it —
+// centred on centreX, no wider than measure. Returns PRÄSENTIERT's
+// baseline.
+function drawBrand(page: PDFPage, colo: PDFFont, centreX: number, markTop: number, measure: number, u: number) {
+  const markWidth = Math.min(463 * u, measure);
   const markScale = markWidth / COLOSSEUM_MARK.width;
-  const markTop = H - 96 * u;
-  page.drawSvgPath(COLOSSEUM_MARK.path, { x: (W - markWidth) / 2, y: markTop, scale: markScale, color: MARK });
-  const presentsSize = 100 * u;
+  page.drawSvgPath(COLOSSEUM_MARK.path, { x: centreX - markWidth / 2, y: markTop, scale: markScale, color: MARK });
+  const presentsSize = Math.min(100 * u, (measure / colo.widthOfTextAtSize("PRÄSENTIERT", 100)) * 100);
   const presentsBaseline = markTop - COLOSSEUM_MARK.height * markScale - 31 * u - presentsSize * CAP_HEIGHT;
-  centred(page, colo, "PRÄSENTIERT", presentsSize, presentsBaseline, W);
+  centred(page, colo, "PRÄSENTIERT", presentsSize, presentsBaseline, centreX);
+  return presentsBaseline;
+}
 
-  // ── The QR code at the bottom centre, and the date above it ──
+// The QR code, its foot at qrBottom, and the date's two lines above it,
+// centred on centreX — both the same size: the example's, or less if the
+// longer wouldn't fit across measure. Returns the date's top.
+function drawDateAndQr(page: PDFPage, colo: PDFFont, content: Content, centreX: number, qrBottom: number, measure: number, u: number) {
   const qrSize = 170 * u;
-  const qrBottom = 101 * u;
-  drawQr(page, content.ticketUrl, (W - qrSize) / 2, qrBottom, qrSize);
+  drawQr(page, content.ticketUrl, centreX - qrSize / 2, qrBottom, qrSize);
 
-  // Both lines the same size: the example's, or less if the longer one
-  // wouldn't fit across.
-  const dateLinesUpper = content.date.map((line) => writable(colo, line.toUpperCase()));
-  const dateSize = Math.min(100 * u, ...dateLinesUpper.map((line) => (measure / colo.widthOfTextAtSize(line, 100)) * 100));
+  const lines = content.date.map((line) => writable(colo, line.toUpperCase()));
+  const size = Math.min(100 * u, ...lines.map((line) => (measure / colo.widthOfTextAtSize(line, 100)) * 100));
   let baseline = qrBottom + qrSize + 32 * u;
   // Bottom line first, up from the QR code.
-  for (const line of [...dateLinesUpper].reverse()) {
-    centred(page, colo, line, dateSize, baseline, W);
-    baseline += dateSize * 1.0;
+  for (const line of [...lines].reverse()) {
+    centred(page, colo, line, size, baseline, centreX);
+    baseline += size * 1.0;
   }
-  const dateTop = baseline - dateSize * (1 - CAP_HEIGHT);
+  return baseline - size * (1 - CAP_HEIGHT);
+}
 
-  // ── The title, in the room between: its name as large as the rest of
-  // its lines leave room for, the whole group centred there ──
-  const boxTop = presentsBaseline - 100 * u;
-  const boxBottom = dateTop + 100 * u;
-  const width = W - titleMargin * 2;
-  const { kicker, headline, subtitle, badge } = content.text;
+// The title, flush left at x across width, in the room from boxTop down to
+// boxBottom: its name as large as the rest of its lines leave room for,
+// the whole group centred there.
+function drawTitle(page: PDFPage, colo: PDFFont, text: PosterText, x: number, width: number, boxTop: number, boxBottom: number, u: number) {
+  const { kicker, headline, subtitle, badge } = text;
   const gap = 40 * u;
   // The smaller lines on the scale of PRÄSENTIERT and the date: as large
   // as they are, at most, so they read from as far.
-  const small = (text: string | null) => (text ? fitSmall(colo, text.toUpperCase(), width, 100 * u, 64 * u, 2) : null);
+  const small = (line: string | null) => (line ? fitSmall(colo, line.toUpperCase(), width, 100 * u, 64 * u, 2) : null);
   const above = small(kicker);
   const below = small(subtitle);
   const label = badge ? { text: writable(colo, badge.toUpperCase()), size: 90 * u, padX: 28 * u, padY: 22 * u } : null;
@@ -121,7 +158,7 @@ export async function posterPdf(event: TicketEvent, format: PosterFormat, overri
   const drawBlock = (block: TextBlock) => {
     let y = top - block.size * CAP_HEIGHT;
     for (const line of block.lines) {
-      page.drawText(line, { x: titleMargin, y, size: block.size, font: colo, color: RED });
+      page.drawText(line, { x, y, size: block.size, font: colo, color: RED });
       y -= block.leading;
     }
     top -= blockHeight(block) + gap;
@@ -132,11 +169,9 @@ export async function posterPdf(event: TicketEvent, format: PosterFormat, overri
   if (label) {
     // Paper-coloured capitals on a red bar.
     const textWidth = colo.widthOfTextAtSize(label.text, label.size);
-    page.drawRectangle({ x: titleMargin, y: top - labelHeight, width: textWidth + label.padX * 2, height: labelHeight, color: RED });
-    page.drawText(label.text, { x: titleMargin + label.padX, y: top - label.padY - label.size * CAP_HEIGHT, size: label.size, font: colo, color: PAPER });
+    page.drawRectangle({ x, y: top - labelHeight, width: textWidth + label.padX * 2, height: labelHeight, color: RED });
+    page.drawText(label.text, { x: x + label.padX, y: top - label.padY - label.size * CAP_HEIGHT, size: label.size, font: colo, color: PAPER });
   }
-
-  return doc.save();
 }
 
 // The months as the posters write them: their first three letters.
@@ -293,10 +328,10 @@ function wrap(font: PDFFont, words: string[][], size: number, width: number, fil
   return { lines, hyphens, broken };
 }
 
-// A line of red centred across the page.
-function centred(page: PDFPage, font: PDFFont, raw: string, size: number, baseline: number, pageWidth: number) {
+// A line of red centred on centreX.
+function centred(page: PDFPage, font: PDFFont, raw: string, size: number, baseline: number, centreX: number) {
   const text = writable(font, raw);
-  page.drawText(text, { x: (pageWidth - font.widthOfTextAtSize(text, size)) / 2, y: baseline, size, font, color: RED });
+  page.drawText(text, { x: centreX - font.widthOfTextAtSize(text, size) / 2, y: baseline, size, font, color: RED });
 }
 
 // The QR code as one vector shape — each row's dark runs as rectangles in

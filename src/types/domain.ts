@@ -40,6 +40,17 @@ export type DeckWithPages = Deck & {
   pages: MediaItem[];
 };
 
+// One event's poster as a single thing in the library (see 0051_posters.sql):
+// the A1 PDF, and an image for the portrait screens and one for the
+// newsletter — any of which may be missing while one is being made.
+export type Poster = Database["public"]["Tables"]["posters"]["Row"];
+
+export type PosterWithParts = Poster & {
+  a1: DeckWithPages | null;
+  screen: MediaItem | null;
+  newsletter: MediaItem | null;
+};
+
 // What the player and Media Menu actually need: a playlist row joined with its media item.
 export type PlaylistItemWithMedia = PlaylistItem & {
   media_item: MediaItem;
