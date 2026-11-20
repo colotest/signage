@@ -7,7 +7,7 @@ import { Menu } from "@/components/ui/Menu";
 import { MediaThumbSlot } from "@/components/MediaThumb";
 import { InlineRename } from "@/components/InlineRename";
 import { ScrollWindow } from "@/components/ScrollWindow";
-import { CheckIcon } from "@/components/icons/PlaybackIcons";
+import { CheckIcon, OpenInIcon } from "@/components/icons/PlaybackIcons";
 import { cn } from "@/lib/utils/cn";
 import { formatBytes, formatResolutionAndDuration, kindLabel } from "@/lib/utils/format";
 import { createFolder, deleteFolder, renameFolder } from "@/lib/actions/folders";
@@ -1973,6 +1973,22 @@ function PosterRow({
           date={formatDate(poster.created_at)}
           uploader={uploader}
         />
+        {/* Its event's ticket page, beside its name as a shared folder's
+            🔗 is — clicked without opening the poster or dragging it. */}
+        {poster.link_url && (
+          <a
+            href={poster.link_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            title="Open the ticket page"
+            aria-label={`Open the ticket page for ${poster.name}`}
+            className="press-ghost -m-1 shrink-0 p-1 text-muted hover:text-accent"
+          >
+            <OpenInIcon className="h-4 w-4" />
+          </a>
+        )}
 
         <RowColumn width="w-28">Poster</RowColumn>
         <RowColumn width="w-44">

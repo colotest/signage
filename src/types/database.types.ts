@@ -74,6 +74,7 @@ export type Database = {
       posters: {
         Row: {
           id: string;
+          link_url: string | null;
           folder_id: string | null;
           name: string;
           source_key: string | null;
@@ -83,6 +84,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          link_url?: string | null;
           folder_id?: string | null;
           name: string;
           source_key?: string | null;
@@ -92,6 +94,7 @@ export type Database = {
         };
         Update: {
           id?: string;
+          link_url?: string | null;
           folder_id?: string | null;
           name?: string;
           source_key?: string | null;

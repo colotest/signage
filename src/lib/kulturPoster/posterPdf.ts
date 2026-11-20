@@ -2,10 +2,10 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import fontkit from "@pdf-lib/fontkit";
-import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
 import { COLOSSEUM_MARK } from "@/lib/colosseumMark";
-import type { TicketEvent } from "./events";
+import { eventImageUrl, type TicketEvent } from "./events";
 import { hyphenationPieces } from "./hyphenate";
 import { titleParts, type PosterText } from "./titleParts";
 
@@ -21,7 +21,10 @@ import { titleParts, type PosterText } from "./titleParts";
 // the page at full height, and the rest stands in a column at its right,
 // the brand at its top and the date and QR code at its foot. The type is
 // all Colo (Compacta), the brand's own face, and everything is drawn as
-// vectors (the QR code too), so A1 prints sharp. Measurements are the
+// vectors (the QR code too), so A1 prints sharp. The newsletter's also
+// carries the event's picture from the site: in its top right corner, out
+// to the edges, with the date and QR code under it and the brand moved
+// over above the title. Measurements are the
 // house example's, on its 1080-wide still, scaled to the page.
 
 export type PosterFormat = "a1" | "screen" | "newsletter";
@@ -38,7 +41,7 @@ export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number
 // Bumped whenever the layout changes, so the next pull redoes every
 // poster rather than only those whose event changed (see
 // planKulturPoster's hash).
-export const POSTER_LAYOUT_VERSION = 6;
+export const POSTER_LAYOUT_VERSION = 7;
 
 const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 const PAPER = hex("#fdf9f9");
@@ -53,7 +56,12 @@ const CAP_HEIGHT = 0.817;
 // to be made again. Its text is the title taken apart by rule, unless
 // someone has set it by hand (see setKulturPosterText).
 export function posterContent(event: TicketEvent, override?: PosterText | null) {
-  return { text: override ?? titleParts(event.title, event.description), date: dateLines(event), ticketUrl: event.ticketUrl };
+  return {
+    text: override ?? titleParts(event.title, event.description),
+    date: dateLines(event),
+    ticketUrl: event.ticketUrl,
+    image: event.image?.id ?? null,
+  };
 }
 
 type Content = ReturnType<typeof posterContent>;
@@ -70,8 +78,9 @@ export async function posterPdf(event: TicketEvent, format: PosterFormat, overri
 
   const page = doc.addPage([W, H]);
   page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: PAPER });
-  if (W > H) across(page, colo, content, W, H);
-  else upright(page, colo, content, W, H);
+  if (W <= H) upright(page, colo, content, W, H);
+  else if (event.image) acrossWithImage(page, colo, content, W, H, await embedEventImage(doc, event.image, H));
+  else across(page, colo, content, W, H);
   return doc.save();
 }
 
@@ -101,6 +110,72 @@ function across(page: PDFPage, colo: PDFFont, content: Content, W: number, H: nu
   drawDateAndQr(page, colo, content, columnCentre, margin, columnWidth, u);
   const titleWidth = W - margin - columnWidth - 64 * u - titleMargin;
   drawTitle(page, colo, content.text, titleMargin, titleWidth, H - margin, margin, u);
+}
+
+// The newsletter's with the event's picture: that in the top right corner,
+// out to the page's edges, the date and QR code side by side under it; the
+// brand at the top left, and the title under it. The picture is as wide
+// always, and as tall as its own shape asks within bounds, so a wide one
+// (often lettered: a festival's line-up, a book's cover) loses little at
+// its sides, and a tall one little at its top and foot.
+const PANEL_WIDTH = 880;
+const PANEL_HEIGHT = { min: 500, max: 760 };
+
+function panelSize(image: NonNullable<TicketEvent["image"]>, u: number) {
+  const height = Math.min(PANEL_HEIGHT.max, Math.max(PANEL_HEIGHT.min, (PANEL_WIDTH * image.height) / image.width));
+  return { width: PANEL_WIDTH * u, height: height * u };
+}
+
+function acrossWithImage(page: PDFPage, colo: PDFFont, content: Content, W: number, H: number, image: PDFImage) {
+  const u = H / 1080;
+  const margin = 72 * u;
+  const titleMargin = 54 * u;
+  // As cut to its panel (see embedEventImage).
+  const panelWidth = image.width / 2;
+  const panelHeight = image.height / 2;
+  const panelX = W - panelWidth;
+  page.drawImage(image, { x: panelX, y: H - panelHeight, width: panelWidth, height: panelHeight });
+
+  // Under it, the date flush left and the QR code flush right, both
+  // centred in the room left.
+  const qrSize = 170 * u;
+  const inset = 64 * u;
+  const dateX = panelX + inset;
+  const qrX = W - margin - qrSize;
+  const lines = content.date.map((line) => writable(colo, line.toUpperCase()));
+  const dateWidth = qrX - 48 * u - dateX;
+  const size = Math.min(100 * u, ...lines.map((line) => (dateWidth / colo.widthOfTextAtSize(line, 100)) * 100));
+  const dateHeight = size * (lines.length - 1) + size * CAP_HEIGHT;
+  const roomBelow = H - panelHeight;
+  const middle = roomBelow / 2;
+  drawQr(page, content.ticketUrl, qrX, middle - qrSize / 2, qrSize);
+  let baseline = middle - dateHeight / 2 + size * (lines.length - 1);
+  for (const line of lines) {
+    page.drawText(line, { x: dateX, y: baseline, size, font: colo, color: RED });
+    baseline -= size;
+  }
+
+  // The brand flush left over the title, a little smaller than upright.
+  const markWidth = 400 * u;
+  const markScale = markWidth / COLOSSEUM_MARK.width;
+  const markTop = H - margin;
+  page.drawSvgPath(COLOSSEUM_MARK.path, { x: titleMargin, y: markTop, scale: markScale, color: MARK });
+  const presentsSize = 84 * u;
+  const presentsBaseline = markTop - COLOSSEUM_MARK.height * markScale - 26 * u - presentsSize * CAP_HEIGHT;
+  page.drawText("PRÄSENTIERT", { x: titleMargin, y: presentsBaseline, size: presentsSize, font: colo, color: RED });
+
+  const titleWidth = panelX - 64 * u - titleMargin;
+  drawTitle(page, colo, content.text, titleMargin, titleWidth, presentsBaseline - 90 * u, margin, u);
+}
+
+// The event's picture, cut to its panel by Wix's image service — at twice
+// the panel's size, for sharpness, which acrossWithImage reads back.
+async function embedEventImage(doc: PDFDocument, image: NonNullable<TicketEvent["image"]>, H: number) {
+  const panel = panelSize(image, H / 1080);
+  const url = eventImageUrl(image, panel.width * 2, panel.height * 2);
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`The event's picture couldn't be had from Wix (${res.status})`);
+  return doc.embedJpg(new Uint8Array(await res.arrayBuffer()));
 }
 
 // The cursive Colosseum, its top at markTop, and PRÄSENTIERT under it —

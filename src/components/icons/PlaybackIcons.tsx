@@ -130,3 +130,20 @@ export function ArrowRightIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+// Opens somewhere else: an arrow out of the corner of a box.
+export function OpenInIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M13 5h6v6M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4" />
+    </svg>
+  );
+}
