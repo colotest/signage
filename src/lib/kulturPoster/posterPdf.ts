@@ -42,10 +42,11 @@ export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number
 // Bumped whenever the layout changes, so the next pull redoes every
 // poster rather than only those whose event changed (see
 // planKulturPoster's hash).
-export const POSTER_LAYOUT_VERSION = 8;
+export const POSTER_LAYOUT_VERSION = 9;
 
 const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
-const PAPER = hex("#fdf9f9");
+// For now a light grey in place of the house's warm white (#fdf9f9).
+const PAPER = hex("#d8d8d8");
 const RED = hex("#8b3535");
 // The cursive mark sits a shade lighter than the type.
 const MARK = hex("#934040");
