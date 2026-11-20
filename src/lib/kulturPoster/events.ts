@@ -15,6 +15,9 @@ export type TicketEvent = {
   // Wix's own id, which stays put when the event is renamed or moved.
   id: string;
   title: string;
+  // Wix's short description, which is often a subtitle ("Schauspielerin",
+  // "10 Jahre „Nur zu Besuch“") and sometimes a blurb's first sentence.
+  description: string;
   // ISO instants, and the time zone the venue gives them in.
   start: string;
   end: string;
@@ -32,6 +35,7 @@ const EXTERNAL = 3;
 type WixEvent = {
   id?: string;
   title?: string;
+  description?: string;
   slug?: string;
   status?: number;
   scheduling?: { config?: { startDate?: string; endDate?: string; timeZoneId?: string; scheduleTbd?: boolean } };
@@ -58,25 +62,41 @@ export async function fetchTicketEvents(): Promise<TicketEvent[]> {
 // Any object with a title, a slug and a schedule is an event, wherever
 // in the warmup data Wix keeps it (its keys there are the widget's ids,
 // which change when the page is edited). The same event can sit in more
-// than one list, so each is taken once.
+// than one list, so each is taken once — and an event duplicated in Wix
+// (the copy's title ends "(1)") is the same event: one with the same title
+// and start is taken once too, the original over its copy.
 function findEvents(data: unknown): TicketEvent[] {
   const found = new Map<string, TicketEvent>();
+  const copies = new Set<string>();
   const walk = (node: unknown) => {
     if (Array.isArray(node)) return node.forEach(walk);
     if (!node || typeof node !== "object") return;
     const event = node as WixEvent;
     if (event.id && event.title && event.slug && event.scheduling?.config) {
       const parsed = toTicketEvent(event);
-      if (parsed && !found.has(parsed.id)) found.set(parsed.id, parsed);
+      if (parsed && !found.has(parsed.event.id)) {
+        found.set(parsed.event.id, parsed.event);
+        if (parsed.copy) copies.add(parsed.event.id);
+      }
       return;
     }
     Object.values(node).forEach(walk);
   };
   walk(data);
-  return [...found.values()].sort((a, b) => a.start.localeCompare(b.start));
+
+  const once = new Map<string, TicketEvent>();
+  for (const event of found.values()) {
+    const key = `${event.title.toLowerCase()}|${event.start}`;
+    const kept = once.get(key);
+    if (!kept || (copies.has(kept.id) && !copies.has(event.id))) once.set(key, event);
+  }
+  return [...once.values()].sort((a, b) => a.start.localeCompare(b.start));
 }
 
-function toTicketEvent(event: WixEvent): TicketEvent | null {
+// Wix's numbering of a duplicated event's title.
+const COPY_SUFFIX = /\s*\(\d+\)$/;
+
+function toTicketEvent(event: WixEvent): { event: TicketEvent; copy: boolean } | null {
   const config = event.scheduling!.config!;
   const registration = event.registration;
   if (!config.startDate || config.scheduleTbd) return null;
@@ -86,15 +106,20 @@ function toTicketEvent(event: WixEvent): TicketEvent | null {
 
   const own = `${SITE}/event-details/${event.slug}`;
   const external = registration.type === EXTERNAL ? registration.external?.registration?.trim() : undefined;
+  const title = event.title!.replace(/\s+/g, " ").trim();
   return {
-    id: event.id!,
-    // As written on the site, but with its stray double spaces closed up
-    // ("Elena Gruschka  AUSVERKAUFT").
-    title: event.title!.replace(/\s+/g, " ").trim(),
-    start: config.startDate,
-    end: config.endDate ?? config.startDate,
-    timeZone: config.timeZoneId ?? "Europe/Berlin",
-    ticketUrl: ascii(external && !pointsHome(external) ? external : own),
+    event: {
+      id: event.id!,
+      // As written on the site, but with its stray double spaces closed up
+      // ("Elena Gruschka  AUSVERKAUFT") and a copy's "(1)" left off.
+      title: title.replace(COPY_SUFFIX, ""),
+      description: (event.description ?? "").trim(),
+      start: config.startDate,
+      end: config.endDate ?? config.startDate,
+      timeZone: config.timeZoneId ?? "Europe/Berlin",
+      ticketUrl: ascii(external && !pointsHome(external) ? external : own),
+    },
+    copy: COPY_SUFFIX.test(title),
   };
 }
 

@@ -70,6 +70,37 @@ export type Database = {
         };
         Relationships: [];
       };
+      // Kultur Poster text set by hand, by Wix event (0050).
+      kultur_poster_texts: {
+        Row: {
+          event_id: string;
+          kicker: string | null;
+          headline: string;
+          subtitle: string | null;
+          badge: string | null;
+          updated_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          event_id: string;
+          kicker?: string | null;
+          headline: string;
+          subtitle?: string | null;
+          badge?: string | null;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          event_id?: string;
+          kicker?: string | null;
+          headline?: string;
+          subtitle?: string | null;
+          badge?: string | null;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       folders: {
         Row: {
           id: string;

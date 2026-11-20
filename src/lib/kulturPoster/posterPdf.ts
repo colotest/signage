@@ -7,12 +7,15 @@ import QRCode from "qrcode";
 import { COLOSSEUM_MARK } from "@/lib/colosseumMark";
 import type { TicketEvent } from "./events";
 import { hyphenationPieces } from "./hyphenate";
+import { titleParts, type PosterText } from "./titleParts";
 
 // A Kultur Poster: one event on one page, in two sizes — A1 for print and
 // a 1080×1920 still for the portrait screens. On the house's warm white, in
 // its deep red, top to bottom: the cursive Colosseum and PRÄSENTIERT under
-// it; the event's title in capitals, as large as it fits, flush left; then
-// its date, and the QR code to its tickets (in black, for the cameras) at
+// it; the event's name in capitals, as large as it fits, flush left — with
+// the rest of its title on smaller lines of their own, a series or format
+// above it, a subtitle below it and a status as a label (see titleParts);
+// then its date, and the QR code to its tickets (in black, for the cameras) at
 // the bottom centre. The type is all Colo (Compacta), the brand's own
 // face, and everything is drawn as vectors (the QR code too), so A1
 // prints sharp. Measurements are the house example's, on its 1080-wide
@@ -31,7 +34,7 @@ export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number
 // Bumped whenever the layout changes, so the next pull redoes every
 // poster rather than only those whose event changed (see
 // planKulturPoster's hash).
-export const POSTER_LAYOUT_VERSION = 4;
+export const POSTER_LAYOUT_VERSION = 5;
 
 const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 const PAPER = hex("#fdf9f9");
@@ -43,14 +46,15 @@ const QR = hex("#000000");
 const CAP_HEIGHT = 0.817;
 
 // What goes on a poster, beyond its size: hashed to tell whether one has
-// to be made again.
-export function posterContent(event: TicketEvent) {
-  return { title: event.title, date: dateLines(event), ticketUrl: event.ticketUrl };
+// to be made again. Its text is the title taken apart by rule, unless
+// someone has set it by hand (see setKulturPosterText).
+export function posterContent(event: TicketEvent, override?: PosterText | null) {
+  return { text: override ?? titleParts(event.title, event.description), date: dateLines(event), ticketUrl: event.ticketUrl };
 }
 
-export async function posterPdf(event: TicketEvent, format: PosterFormat): Promise<Uint8Array> {
+export async function posterPdf(event: TicketEvent, format: PosterFormat, override?: PosterText | null): Promise<Uint8Array> {
   const { width: W, height: H } = POSTER_FORMATS[format];
-  const content = posterContent(event);
+  const content = posterContent(event, override);
   const u = W / 1080;
   // The date's and PRÄSENTIERT's room across, as in the example; the
   // title takes a quarter of its margins, to be set that much larger.
@@ -58,7 +62,7 @@ export async function posterPdf(event: TicketEvent, format: PosterFormat): Promi
   const titleMargin = 27 * u;
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`${content.title} – ${POSTER_FORMATS[format].label}`);
+  doc.setTitle(`${event.title} – ${POSTER_FORMATS[format].label}`);
   doc.setCreator("Colo Cloud");
   doc.registerFontkit(fontkit);
   const colo = await doc.embedFont(await readFile(join(process.cwd(), "src/fonts/colo.ttf")), { subset: true });
@@ -92,17 +96,44 @@ export async function posterPdf(event: TicketEvent, format: PosterFormat): Promi
   }
   const dateTop = baseline - dateSize * (1 - CAP_HEIGHT);
 
-  // ── The title, in the room between ──
+  // ── The title, in the room between: its name as large as the rest of
+  // its lines leave room for, the whole group centred there ──
   const boxTop = presentsBaseline - 100 * u;
   const boxBottom = dateTop + 100 * u;
-  const title = fitTitle(colo, content.title.toUpperCase(), W - titleMargin * 2, boxTop - boxBottom, 700 * u, 60 * u);
-  // Centred on the box by its capitals: the first line's cap tops to the
-  // last line's baseline.
-  const block = (title.lines.length - 1) * title.leading + title.size * CAP_HEIGHT;
-  let y = boxBottom + (boxTop - boxBottom + block) / 2 - title.size * CAP_HEIGHT;
-  for (const line of title.lines) {
-    page.drawText(line, { x: titleMargin, y, size: title.size, font: colo, color: RED });
-    y -= title.leading;
+  const width = W - titleMargin * 2;
+  const { kicker, headline, subtitle, badge } = content.text;
+  const gap = 40 * u;
+  // The smaller lines on the scale of PRÄSENTIERT and the date: as large
+  // as they are, at most, so they read from as far.
+  const small = (text: string | null) => (text ? fitSmall(colo, text.toUpperCase(), width, 100 * u, 64 * u, 2) : null);
+  const above = small(kicker);
+  const below = small(subtitle);
+  const label = badge ? { text: writable(colo, badge.toUpperCase()), size: 90 * u, padX: 28 * u, padY: 22 * u } : null;
+  const labelHeight = label ? label.size * CAP_HEIGHT + label.padY * 2 : 0;
+  const others =
+    (above ? blockHeight(above) + gap : 0) + (below ? blockHeight(below) + gap : 0) + (label ? labelHeight + gap : 0);
+  const title = fitTitle(colo, headline.toUpperCase(), width, boxTop - boxBottom - others, 700 * u, 60 * u);
+  const total = others + blockHeight(title);
+
+  // From the top of the group down, each block's first baseline a cap
+  // height below where it starts.
+  let top = boxBottom + (boxTop - boxBottom + total) / 2;
+  const drawBlock = (block: TextBlock) => {
+    let y = top - block.size * CAP_HEIGHT;
+    for (const line of block.lines) {
+      page.drawText(line, { x: titleMargin, y, size: block.size, font: colo, color: RED });
+      y -= block.leading;
+    }
+    top -= blockHeight(block) + gap;
+  };
+  if (above) drawBlock(above);
+  drawBlock(title);
+  if (below) drawBlock(below);
+  if (label) {
+    // Paper-coloured capitals on a red bar.
+    const textWidth = colo.widthOfTextAtSize(label.text, label.size);
+    page.drawRectangle({ x: titleMargin, y: top - labelHeight, width: textWidth + label.padX * 2, height: labelHeight, color: RED });
+    page.drawText(label.text, { x: titleMargin + label.padX, y: top - label.padY - label.size * CAP_HEIGHT, size: label.size, font: colo, color: PAPER });
   }
 
   return doc.save();
@@ -110,6 +141,13 @@ export async function posterPdf(event: TicketEvent, format: PosterFormat): Promi
 
 // The months as the posters write them: their first three letters.
 const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+// "13. Dez": the day it starts, for a poster's name in the library.
+export function dayLabel(event: TicketEvent) {
+  const part = (options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("de-DE", { timeZone: event.timeZone, ...options }).format(new Date(event.start));
+  return `${Number(part({ day: "numeric" }))}. ${MONTHS[Number(part({ month: "numeric" })) - 1]}`;
+}
 
 // "Freitag, 20. Nov" over "20:00 Uhr" — no year; an event over several
 // days as "28. – 29. Nov" (or "30. Nov – 2. Dez") over when it opens.
@@ -129,6 +167,26 @@ export function dateLines(event: TicketEvent): string[] {
       ? `${day(event.start)}. – ${day(event.end)}. ${month(event.end)}`
       : `${day(event.start)}. ${month(event.start)} – ${day(event.end)}. ${month(event.end)}`;
   return [range, `ab ${time} Uhr`];
+}
+
+type TextBlock = { size: number; leading: number; lines: string[] };
+
+// From the first line's cap tops to the last line's baseline.
+function blockHeight(block: TextBlock) {
+  return (block.lines.length - 1) * block.leading + block.size * CAP_HEIGHT;
+}
+
+// A smaller line — the series above the name, the subtitle below it — at
+// the largest size from max down to min that sets it in no more than
+// maxLines with its words whole; failing that, at min, as many as it
+// takes. Spaced for umlauts, which these lines are full of.
+function fitSmall(font: PDFFont, raw: string, width: number, max: number, min: number, maxLines: number): TextBlock {
+  const words = writable(font, raw).split(" ").map(hyphenationPieces);
+  for (let size = max; size >= min; size *= 0.98) {
+    const set = wrap(font, words, size, width, false);
+    if (!set.broken && set.lines.length <= maxLines) return { size, leading: size, lines: set.lines };
+  }
+  return { size: min, leading: min, lines: wrap(font, words, min, width, true).lines };
 }
 
 // A hyphen at a line's end asks a little more of the reader, so the title

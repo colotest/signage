@@ -25,6 +25,7 @@ import { setEditRole } from "@/lib/actions/restrictions";
 import { ReplaceMediaButton } from "./ReplaceMediaButton";
 import { ReplaceDeckButton } from "./ReplaceDeckButton";
 import { KulturPosterButton } from "./KulturPosterButton";
+import { PosterTextDialog } from "./PosterTextDialog";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -1134,7 +1135,7 @@ function FolderRow({
   }
 
   const isHighlighted = selectionMode ? checkState === "all" : isUploadTarget;
-  const itemCount = folder.children.length + folder.files.length;
+  const itemCount = folder.children.length + folder.files.length + folder.decks.length;
 
   return (
     <div
@@ -1600,6 +1601,12 @@ function DeckRow({
   // PDF itself is in, as with a file row — otherwise a drop that happened
   // to end on a PDF had nowhere to land, and snapped back.
   const { setNodeRef: setDropRef } = useDroppable({ id: `deck-${deck.id}` });
+  // A Kultur Poster's text can be set by hand — in the Library, not the
+  // Playback Menu's picker (which has no upload links either). The popup
+  // sits outside the row, whose clicks and drags it would otherwise set off.
+  const uploadLinks = useContext(UploadLinksContext);
+  const isPoster = !!uploadLinks && !!deck.source_key?.startsWith("wix-event:");
+  const [editingText, setEditingText] = useState(false);
 
   function handleDelete() {
     if (
@@ -1622,6 +1629,7 @@ function DeckRow({
   }
 
   return (
+    <>
     <div
       ref={(node) => {
         setDragRef(node);
@@ -1698,6 +1706,7 @@ function DeckRow({
 
       <RowMenu label={`${deck.name} actions`}>
         {editable && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
+        {isPoster && editable && <MenuItem onClick={() => setEditingText(true)}>Edit Poster Text…</MenuItem>}
         <MenuInfo>
           PDF · {deck.pages.length} {deck.pages.length === 1 ? "page" : "pages"}
         </MenuInfo>
@@ -1727,5 +1736,7 @@ function DeckRow({
         <LimitMenuItems kind="deck" id={deck.id} owner={owner} router={router} />
       </RowMenu>
     </div>
+    {isPoster && <PosterTextDialog sourceKey={deck.source_key!} open={editingText} onClose={() => setEditingText(false)} />}
+    </>
   );
 }
