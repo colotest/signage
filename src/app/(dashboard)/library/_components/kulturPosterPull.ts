@@ -29,9 +29,8 @@ export async function pullKulturPoster(onProgress: (done: number, total: number)
 
 // A poster's three files: its A1 PDF, with an image of its page to stand
 // for it in the library (no screen shows it, so it needn't be large), and
-// its two PNGs — the portrait screen's at twice its 1080×1920, as sharp as
-// a 4K screen shows it, the newsletter's at its own 1920×1080, plenty for
-// an email.
+// its two PNGs, each at twice its own size, 4K: the portrait screen's
+// 2160×3840 and the newsletter's 3840×2160.
 async function makePoster(job: PosterJob) {
   const pdf = (format: keyof PosterJob["pdfs"]) =>
     new File([Uint8Array.from(atob(job.pdfs[format]), (c) => c.charCodeAt(0))], `${job.name} – ${format}.pdf`, { type: "application/pdf" });
@@ -39,7 +38,7 @@ async function makePoster(job: PosterJob) {
   const [[a1Page], [screen], [newsletter]] = await Promise.all([
     renderPdfPages(a1, undefined, { maxEdge: 1600 }),
     renderPdfPages(pdf("screen"), undefined, { type: "image/png", maxEdge: 3840 }),
-    renderPdfPages(pdf("newsletter"), undefined, { type: "image/png", maxEdge: 1920 }),
+    renderPdfPages(pdf("newsletter"), undefined, { type: "image/png", maxEdge: 3840 }),
   ]);
   const slots = await createPosterUploadUrls();
 
