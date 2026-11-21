@@ -217,7 +217,7 @@ export function PosterTextDialog({ sourceKey, open, onClose }: { sourceKey: stri
           {/* An event's shows the site's link until one's set; emptied,
               it's the site's again. */}
           <Field
-            label={loaded?.siteTicketUrl ? "Ticket link (empty: the site's)" : "Ticket link"}
+            label="Ticket link"
             type="url"
             placeholder={loaded?.siteTicketUrl ?? "https://… (for the QR code and the Tickets button)"}
             value={ticketUrl}
