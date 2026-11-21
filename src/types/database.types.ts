@@ -108,8 +108,13 @@ export type Database = {
         Row: {
           event_id: string;
           kicker: string | null;
-          headline: string;
+          headline: string | null;
           subtitle: string | null;
+          date_lines: string[] | null;
+          ticket_url: string | null;
+          image_path: string | null;
+          image_width: number | null;
+          image_height: number | null;
           badge: string | null;
           updated_by: string | null;
           updated_at: string;
@@ -117,8 +122,13 @@ export type Database = {
         Insert: {
           event_id: string;
           kicker?: string | null;
-          headline: string;
+          headline?: string | null;
           subtitle?: string | null;
+          date_lines?: string[] | null;
+          ticket_url?: string | null;
+          image_path?: string | null;
+          image_width?: number | null;
+          image_height?: number | null;
           badge?: string | null;
           updated_by?: string | null;
           updated_at?: string;
@@ -126,8 +136,13 @@ export type Database = {
         Update: {
           event_id?: string;
           kicker?: string | null;
-          headline?: string;
+          headline?: string | null;
           subtitle?: string | null;
+          date_lines?: string[] | null;
+          ticket_url?: string | null;
+          image_path?: string | null;
+          image_width?: number | null;
+          image_height?: number | null;
           badge?: string | null;
           updated_by?: string | null;
           updated_at?: string;
