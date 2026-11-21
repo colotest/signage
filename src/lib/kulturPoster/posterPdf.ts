@@ -33,8 +33,8 @@ export type PosterFormat = "a1" | "screen" | "newsletter";
 export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number; height: number }> = {
   // 594 × 841 mm, in points.
   a1: { label: "A1 Poster", width: 1683.78, height: 2383.94 },
-  // One point per pixel; the screen's is rendered at twice that (see
-  // kulturPosterPull), so a 4K portrait screen gets it sharp too.
+  // One point per pixel; both are rendered at twice that, 4K (see
+  // kulturPosterPull).
   screen: { label: "Screen 9:16", width: 1080, height: 1920 },
   newsletter: { label: "Newsletter 16:9", width: 1920, height: 1080 },
 };
@@ -42,7 +42,7 @@ export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number
 // Bumped whenever the layout changes, so the next pull redoes every
 // poster rather than only those whose event changed (see
 // planKulturPoster's hash).
-export const POSTER_LAYOUT_VERSION = 9;
+export const POSTER_LAYOUT_VERSION = 10;
 
 const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 // For now a light grey in place of the house's warm white (#fdf9f9).
@@ -178,7 +178,8 @@ function acrossWithImage(page: PDFPage, colo: PDFFont, content: Content, W: numb
 }
 
 // The event's picture, cut to its panel by Wix's image service — at twice
-// the panel's size, for sharpness, which acrossWithImage reads back.
+// the panel's size, a pixel for each of the 4K render's (see
+// kulturPosterPull), which acrossWithImage reads back.
 async function embedEventImage(doc: PDFDocument, image: NonNullable<TicketEvent["image"]>, H: number) {
   const panel = panelSize(image, H / 1080);
   const url = eventImageUrl(image, panel.width * 2, panel.height * 2);
