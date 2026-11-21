@@ -62,7 +62,7 @@ export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number
 // Bumped whenever the layout changes, so the next pull redoes every
 // poster rather than only those whose event changed (see
 // planKulturPoster's hash).
-export const POSTER_LAYOUT_VERSION = 11;
+export const POSTER_LAYOUT_VERSION = 12;
 
 const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 // For now a light grey in place of the house's warm white (#fdf9f9).
@@ -215,24 +215,29 @@ function acrossWithImage(page: PDFPage, colo: PDFFont, content: Content, W: numb
   // the date and the bottom margin.
   const highest = presentsBaseline - PANEL_GAP * u;
   const middle = Math.min(highest - panelHeight / 2, Math.max(margin + panelHeight / 2, (name.top + name.bottom) / 2));
-  drawPicture(page, image.pdf, panelX, middle - panelHeight / 2, panelWidth, panelHeight, u);
+  drawPicture(page, image.pdf, panelX, middle - panelHeight / 2, panelWidth, panelHeight, u, true);
 }
 
 // A picture with rounded corners, filling its box (cut from its middle if
 // its shape differs), on a soft shadow a little below it.
-function drawPicture(page: PDFPage, image: PDFImage, x: number, y: number, width: number, height: number, u: number) {
+// Softer on the newsletter's: blurred twice as far, but reaching out less
+// past the picture's edge.
+function drawPicture(page: PDFPage, image: PDFImage, x: number, y: number, width: number, height: number, u: number, soft = false) {
   const radius = 28 * u;
 
   // The shadow as layers of faint black, each a little smaller than the
   // last, so it darkens smoothly towards the picture's edge. Most of it
   // lies under the picture; what shows is its fade, offset downwards.
-  const layers = 24;
-  const blur = 36 * u;
+  const layers = soft ? 36 : 24;
+  const blur = (soft ? 72 : 36) * u;
+  // How far past the picture's edge its outermost layer reaches, of the blur.
+  const reach = soft ? 0.3 : 0.6;
   const drop = 14 * u;
-  const strength = 0.3;
+  // How dark it gets at its darkest.
+  const strength = soft ? 0.225 : 0.3;
   const opacity = 1 - Math.pow(1 - strength, 1 / layers);
   for (let i = 0; i < layers; i++) {
-    const spread = blur * (0.6 - i / (layers - 1));
+    const spread = blur * (reach - i / (layers - 1));
     const w = width + spread * 2;
     const h = height + spread * 2;
     page.drawSvgPath(roundedRectSvg(w, h, Math.max(0, radius + spread)), {
@@ -340,7 +345,7 @@ export async function programmePdf(content: ProgrammeContent, format: PosterForm
   const block = fitLines(colo, ["DAS COLOSSEUM PROGRAMM", `DIESEN ${content.month}`], titleBox.width, titleBox.top - titleBox.bottom, 700 * u, 60 * u);
   let y = titleBox.bottom + (titleBox.top - titleBox.bottom + blockHeight(block)) / 2 - block.size * CAP_HEIGHT;
   for (const line of block.lines) {
-    if (across) page.drawText(line, { x: titleBox.x, y: y + Math.max(1.5 * u, block.size * 0.012), size: block.size, font: colo, color: WHITE });
+    if (across) drawHighlight(page, colo, line, titleBox.x, y, block.size, u);
     page.drawText(line, { x: titleBox.x, y, size: block.size, font: colo, color: RED });
     y -= block.leading;
   }
@@ -371,7 +376,7 @@ export async function programmePdf(content: ProgrammeContent, format: PosterForm
     const { cx, cy, turn } = spots[images.length][i];
     const angle = (turn * Math.PI) / 180;
     page.pushOperators(pushGraphicsState(), concatTransformationMatrix(Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), cx, cy));
-    drawPicture(page, picture, -cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, u);
+    drawPicture(page, picture, -cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, u, across);
     page.pushOperators(popGraphicsState());
   });
   return doc.save();
@@ -463,7 +468,7 @@ function drawTitle(
     const blockTop = top;
     let y = top - block.size * CAP_HEIGHT;
     for (const line of block.lines) {
-      if (embossed) page.drawText(line, { x, y: y + Math.max(1.5 * u, block.size * 0.012), size: block.size, font: colo, color: WHITE });
+      if (embossed) drawHighlight(page, colo, line, x, y, block.size, u);
       page.drawText(line, { x, y, size: block.size, font: colo, color: RED });
       y -= block.leading;
     }
@@ -482,6 +487,25 @@ function drawTitle(
   // Where the name stands, for the newsletter's picture to stand level
   // with.
   return name;
+}
+
+// The white edge just above an embossed line: the line again in white, a
+// little higher, its edge softened — copies of it spread over a small
+// disc, each faint, so they add up to three-quarters white in the middle
+// and fade at the rim.
+const HIGHLIGHT_DISC = [
+  [0, 0],
+  ...[0, 1, 2, 3, 4, 5].map((k) => [Math.cos((k * Math.PI) / 3) * 0.5, Math.sin((k * Math.PI) / 3) * 0.5]),
+  ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((k) => [Math.cos((k * Math.PI) / 6), Math.sin((k * Math.PI) / 6)]),
+];
+const HIGHLIGHT_OPACITY = 1 - Math.pow(1 - 0.75, 1 / HIGHLIGHT_DISC.length);
+function drawHighlight(page: PDFPage, font: PDFFont, line: string, x: number, y: number, size: number, u: number) {
+  const edge = Math.max(1.5 * u, size * 0.012);
+  const lift = edge * 0.8;
+  const blur = edge / 2;
+  for (const [dx, dy] of HIGHLIGHT_DISC) {
+    page.drawText(line, { x: x + dx * blur, y: y + lift + dy * blur, size, font, color: WHITE, opacity: HIGHLIGHT_OPACITY });
+  }
 }
 
 // The months as the posters write them: their first three letters.
