@@ -21,6 +21,13 @@ async function signedUpload(extension: string) {
   return { storagePath, token: data.token };
 }
 
+// An upload slot for a picture of a poster's own (see Edit Poster): a
+// JPEG, which the browser makes of whatever was chosen.
+export async function createPosterImageUploadUrl() {
+  await requirePage("media");
+  return signedUpload(".jpg");
+}
+
 // Upload slots for a poster's files: the A1 PDF and the image of its page
 // (its thumbnail in the library), and the two PNGs.
 export async function createPosterUploadUrls() {
@@ -52,10 +59,23 @@ export async function movePoster(id: string, folderId: string | null) {
 export async function deletePoster(id: string) {
   const user = await requirePage("media");
   const admin = createAdminClient();
-  const { data: poster, error } = await admin.from("posters").select("name").eq("id", id).single();
+  const { data: poster, error } = await admin.from("posters").select("name, source_key").eq("id", id).single();
   if (error) throw new Error(error.message);
 
-  const objects = await posterFiles(admin, id);
+  // One made by hand goes with what's set for it, picture and all — or the
+  // next pull would make it again (see addManualPoster).
+  let picture: string[] = [];
+  if (poster.source_key?.startsWith("manual:")) {
+    const { data: sets, error: setError } = await admin
+      .from("kultur_poster_texts")
+      .delete()
+      .eq("event_id", poster.source_key)
+      .select("image_path");
+    if (setError) throw new Error(setError.message);
+    picture = (sets ?? []).flatMap((set) => (set.image_path ? [set.image_path] : []));
+  }
+
+  const objects = [...(await posterFiles(admin, id)), ...picture];
   const { error: storageError } = await admin.storage.from(BUCKET).remove(objects);
   if (storageError) throw new Error(storageError.message);
   // Its deck and media items cascade, and their pages and playlist rows

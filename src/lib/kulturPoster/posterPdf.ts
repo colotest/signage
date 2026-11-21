@@ -2,9 +2,24 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import fontkit from "@pdf-lib/fontkit";
-import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
+import {
+  PDFDocument,
+  appendBezierCurve,
+  clip,
+  closePath,
+  endPath,
+  lineTo,
+  moveTo,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+  type PDFFont,
+  type PDFImage,
+  type PDFPage,
+} from "pdf-lib";
 import QRCode from "qrcode";
 import { COLOSSEUM_MARK } from "@/lib/colosseumMark";
+import { mediaPublicUrl } from "@/types/domain";
 import { eventImageUrl, type TicketEvent } from "./events";
 import { hyphenationPieces } from "./hyphenate";
 import { titleParts, type PosterText } from "./titleParts";
@@ -24,7 +39,11 @@ import { titleParts, type PosterText } from "./titleParts";
 // vectors (the QR code too), so A1 prints sharp. The newsletter's also
 // carries the event's picture from the site, at its right, level with the
 // title, and the date over it, level with the brand — and no QR code, a
-// newsletter's reader being a click from the tickets anyway.
+// newsletter's reader being a click from the tickets anyway. There the
+// picture has rounded corners and a soft shadow under it, and the title a
+// thin white edge above its letters, as if pressed into the page.
+// A poster made by hand (see addManualPoster) is drawn the same, from
+// what's been set for it rather than from an event.
 // Measurements are the house example's, on its 1080-wide still, scaled to
 // the page.
 
@@ -42,7 +61,7 @@ export const POSTER_FORMATS: Record<PosterFormat, { label: string; width: number
 // Bumped whenever the layout changes, so the next pull redoes every
 // poster rather than only those whose event changed (see
 // planKulturPoster's hash).
-export const POSTER_LAYOUT_VERSION = 10;
+export const POSTER_LAYOUT_VERSION = 11;
 
 const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 // For now a light grey in place of the house's warm white (#fdf9f9).
@@ -51,29 +70,47 @@ const RED = hex("#8b3535");
 // The cursive mark sits a shade lighter than the type.
 const MARK = hex("#934040");
 const QR = hex("#000000");
+const WHITE = rgb(1, 1, 1);
+const SHADOW = rgb(0, 0, 0);
 // Colo's capitals stand 0.817 of its size (as in handoverPdf).
 const CAP_HEIGHT = 0.817;
 
+// The newsletter's picture: the event's own on the site, or one uploaded
+// for the poster (see Edit Poster) — a JPEG in the media bucket.
+export type PosterImage =
+  | { source: "wix"; id: string; width: number; height: number }
+  | { source: "upload"; path: string; width: number; height: number };
+
 // What goes on a poster, beyond its size: hashed to tell whether one has
-// to be made again. Its text is the title taken apart by rule, unless
-// someone has set it by hand (see setKulturPosterText).
-export function posterContent(event: TicketEvent, override?: PosterText | null) {
+// to be made again.
+export type PosterContent = {
+  text: PosterText;
+  // Its date's lines, as written on it.
+  date: string[];
+  // Its tickets, for the QR code; none, none.
+  ticketUrl: string | null;
+  image: PosterImage | null;
+};
+
+// An event's: its title taken apart by rule, unless someone has set the
+// text by hand, and its picture on the site, unless one's been uploaded in
+// its place (see setKulturPoster).
+export function posterContent(event: TicketEvent, override?: { text: PosterText | null; image: PosterImage | null } | null): PosterContent {
   return {
-    text: override ?? titleParts(event.title, event.description),
+    text: override?.text ?? titleParts(event.title, event.description),
     date: dateLines(event),
     ticketUrl: event.ticketUrl,
-    image: event.image?.id ?? null,
+    image: override?.image ?? (event.image ? { source: "wix", ...event.image } : null),
   };
 }
 
-type Content = ReturnType<typeof posterContent>;
+type Content = PosterContent;
 
-export async function posterPdf(event: TicketEvent, format: PosterFormat, override?: PosterText | null): Promise<Uint8Array> {
+export async function posterPdf(content: PosterContent, format: PosterFormat, title: string): Promise<Uint8Array> {
   const { width: W, height: H, label } = POSTER_FORMATS[format];
-  const content = posterContent(event, override);
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`${event.title} – ${label}`);
+  doc.setTitle(`${title} – ${label}`);
   doc.setCreator("Colo Cloud");
   doc.registerFontkit(fontkit);
   const colo = await doc.embedFont(await readFile(join(process.cwd(), "src/fonts/colo.ttf")), { subset: true });
@@ -81,7 +118,7 @@ export async function posterPdf(event: TicketEvent, format: PosterFormat, overri
   const page = doc.addPage([W, H]);
   page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: PAPER });
   if (W <= H) upright(page, colo, content, W, H);
-  else if (event.image) acrossWithImage(page, colo, content, W, H, await embedEventImage(doc, event.image, H));
+  else if (content.image) acrossWithImage(page, colo, content, W, H, await embedPosterImage(doc, content.image, H));
   else across(page, colo, content, W, H);
   return doc.save();
 }
@@ -95,7 +132,7 @@ function upright(page: PDFPage, colo: PDFFont, content: Content, W: number, H: n
   const titleMargin = 27 * u;
 
   const presentsBaseline = drawBrand(page, colo, W / 2, H - 96 * u, measure, u);
-  const dateTop = drawDateAndQr(page, colo, content, W / 2, 101 * u, measure, u);
+  const dateTop = drawDateAndQr(page, colo, content, W / 2, 101 * u, measure, u, !!content.ticketUrl);
   drawTitle(page, colo, content.text, titleMargin, W - titleMargin * 2, presentsBaseline - 100 * u, dateTop + 100 * u, u);
 }
 
@@ -111,36 +148,35 @@ function across(page: PDFPage, colo: PDFFont, content: Content, W: number, H: nu
   drawBrand(page, colo, columnCentre, H - margin, columnWidth, u);
   drawDateAndQr(page, colo, content, columnCentre, margin, columnWidth, u, false);
   const titleWidth = W - margin - columnWidth - 64 * u - titleMargin;
-  drawTitle(page, colo, content.text, titleMargin, titleWidth, H - margin, margin, u);
+  drawTitle(page, colo, content.text, titleMargin, titleWidth, H - margin, margin, u, true);
 }
 
-// The newsletter's with the event's picture: the brand at the top left
-// and the title under it, as large as it fits; at the right, out to the
-// page's edge, the picture, its middle level with the title's name, and
-// the date over it, flush with its left edge and level with the brand.
-// The picture is as wide always, and as tall as its own shape asks within
-// bounds, so a wide one (often lettered: a festival's line-up, a book's
-// cover) loses little at its sides, and a tall one little at its top and
-// foot.
+// The newsletter's with a picture: the brand at the top left and the
+// title under it, as large as it fits; at the right, as far in from the
+// page's edge as the title is at the left, the picture, its middle level
+// with the title's name, and the date over it, flush with its left edge
+// and level with the brand. The picture is as wide always, and as tall as
+// its own shape asks within bounds, so a wide one (often lettered: a
+// festival's line-up, a book's cover) loses little at its sides, and a
+// tall one little at its top and foot.
 const PANEL_WIDTH = 880;
 // At most the room between the date and the page's bottom margin.
 const PANEL_HEIGHT = { min: 500, max: 690 };
 const ACROSS_MARGIN = 72;
+const TITLE_MARGIN = 54;
 const PANEL_GAP = 64;
 
-function panelSize(image: NonNullable<TicketEvent["image"]>, u: number) {
+function panelSize(image: PosterImage, u: number) {
   const height = Math.min(PANEL_HEIGHT.max, Math.max(PANEL_HEIGHT.min, (PANEL_WIDTH * image.height) / image.width));
   return { width: PANEL_WIDTH * u, height: height * u };
 }
 
-function acrossWithImage(page: PDFPage, colo: PDFFont, content: Content, W: number, H: number, image: PDFImage) {
+function acrossWithImage(page: PDFPage, colo: PDFFont, content: Content, W: number, H: number, image: { pdf: PDFImage; panel: { width: number; height: number } }) {
   const u = H / 1080;
   const margin = ACROSS_MARGIN * u;
-  const titleMargin = 54 * u;
-  // As cut to its panel (see embedEventImage).
-  const panelWidth = image.width / 2;
-  const panelHeight = image.height / 2;
-  const panelX = W - panelWidth;
+  const titleMargin = TITLE_MARGIN * u;
+  const { width: panelWidth, height: panelHeight } = image.panel;
+  const panelX = W - titleMargin - panelWidth;
 
   // The brand flush left at the top, a little smaller than upright.
   const markWidth = 400 * u;
@@ -154,38 +190,103 @@ function acrossWithImage(page: PDFPage, colo: PDFFont, content: Content, W: numb
   // The date level with it: its last line on PRÄSENTIERT's baseline, its
   // first's capitals as high as the mark's top — or smaller, if it
   // wouldn't fit across.
-  const lines = content.date.map((line) => writable(colo, line.toUpperCase()));
-  const brandHeight = markTop - presentsBaseline;
-  const dateWidth = W - margin - panelX;
-  const size = Math.min(
-    brandHeight / ((lines.length - 1) + CAP_HEIGHT),
-    ...lines.map((line) => (dateWidth / colo.widthOfTextAtSize(line, 100)) * 100),
-  );
-  let baseline = presentsBaseline;
-  for (const line of [...lines].reverse()) {
-    page.drawText(line, { x: panelX, y: baseline, size, font: colo, color: RED });
-    baseline += size;
+  const lines = content.date.map((line) => writable(colo, line.toUpperCase())).filter(Boolean);
+  if (lines.length > 0) {
+    const brandHeight = markTop - presentsBaseline;
+    const size = Math.min(
+      brandHeight / (lines.length - 1 + CAP_HEIGHT),
+      ...lines.map((line) => (panelWidth / colo.widthOfTextAtSize(line, 100)) * 100),
+    );
+    let baseline = presentsBaseline;
+    for (const line of [...lines].reverse()) {
+      page.drawText(line, { x: panelX, y: baseline, size, font: colo, color: RED });
+      baseline += size;
+    }
   }
 
   const titleWidth = panelX - 64 * u - titleMargin;
-  const name = drawTitle(page, colo, content.text, titleMargin, titleWidth, presentsBaseline - 90 * u, margin, u);
+  const name = drawTitle(page, colo, content.text, titleMargin, titleWidth, presentsBaseline - 90 * u, margin, u, true);
 
   // The picture's middle level with the name's, so far as it fits between
   // the date and the bottom margin.
   const highest = presentsBaseline - PANEL_GAP * u;
   const middle = Math.min(highest - panelHeight / 2, Math.max(margin + panelHeight / 2, (name.top + name.bottom) / 2));
-  page.drawImage(image, { x: panelX, y: middle - panelHeight / 2, width: panelWidth, height: panelHeight });
+  drawPicture(page, image.pdf, panelX, middle - panelHeight / 2, panelWidth, panelHeight, u);
 }
 
-// The event's picture, cut to its panel by Wix's image service — at twice
-// the panel's size, a pixel for each of the 4K render's (see
-// kulturPosterPull), which acrossWithImage reads back.
-async function embedEventImage(doc: PDFDocument, image: NonNullable<TicketEvent["image"]>, H: number) {
+// A picture with rounded corners, filling its box (cut from its middle if
+// its shape differs), on a soft shadow a little below it.
+function drawPicture(page: PDFPage, image: PDFImage, x: number, y: number, width: number, height: number, u: number) {
+  const radius = 28 * u;
+
+  // The shadow as layers of faint black, each a little smaller than the
+  // last, so it darkens smoothly towards the picture's edge. Most of it
+  // lies under the picture; what shows is its fade, offset downwards.
+  const layers = 24;
+  const blur = 36 * u;
+  const drop = 14 * u;
+  const strength = 0.3;
+  const opacity = 1 - Math.pow(1 - strength, 1 / layers);
+  for (let i = 0; i < layers; i++) {
+    const spread = blur * (0.6 - i / (layers - 1));
+    const w = width + spread * 2;
+    const h = height + spread * 2;
+    page.drawSvgPath(roundedRectSvg(w, h, Math.max(0, radius + spread)), {
+      x: x - spread,
+      y: y + height + spread - drop,
+      color: SHADOW,
+      opacity,
+    });
+  }
+
+  // The picture inside its rounded box: scaled to cover it, centred.
+  const scale = Math.max(width / image.width, height / image.height);
+  const w = image.width * scale;
+  const h = image.height * scale;
+  page.pushOperators(pushGraphicsState(), ...roundedRectOps(x, y, width, height, radius), clip(), endPath());
+  page.drawImage(image, { x: x + (width - w) / 2, y: y + (height - h) / 2, width: w, height: h });
+  page.pushOperators(popGraphicsState());
+}
+
+// A rounded rectangle as an SVG path, drawn down from its top left (as
+// drawSvgPath does).
+function roundedRectSvg(w: number, h: number, r: number) {
+  const k = r * 0.5523;
+  return (
+    `M${r} 0H${w - r}C${w - r + k} 0 ${w} ${r - k} ${w} ${r}V${h - r}C${w} ${h - r + k} ${w - r + k} ${h} ${w - r} ${h}` +
+    `H${r}C${r - k} ${h} 0 ${h - r + k} 0 ${h - r}V${r}C0 ${r - k} ${r - k} 0 ${r} 0Z`
+  );
+}
+
+// The same as PDF path operators, up from its bottom left at (x, y).
+function roundedRectOps(x: number, y: number, w: number, h: number, r: number) {
+  const k = r * 0.5523;
+  return [
+    moveTo(x + r, y),
+    lineTo(x + w - r, y),
+    appendBezierCurve(x + w - r + k, y, x + w, y + r - k, x + w, y + r),
+    lineTo(x + w, y + h - r),
+    appendBezierCurve(x + w, y + h - r + k, x + w - r + k, y + h, x + w - r, y + h),
+    lineTo(x + r, y + h),
+    appendBezierCurve(x + r - k, y + h, x, y + h - r + k, x, y + h - r),
+    lineTo(x, y + r),
+    appendBezierCurve(x, y + r - k, x + r - k, y, x + r, y),
+    closePath(),
+  ];
+}
+
+// The newsletter's picture, at twice its panel's size, a pixel for each of
+// the 4K render's (see kulturPosterPull): the event's cut to it by Wix's
+// image service, or the uploaded one as it is (drawPicture fits it).
+async function embedPosterImage(doc: PDFDocument, image: PosterImage, H: number) {
   const panel = panelSize(image, H / 1080);
-  const url = eventImageUrl(image, panel.width * 2, panel.height * 2);
+  const url =
+    image.source === "wix"
+      ? eventImageUrl(image, panel.width * 2, panel.height * 2)
+      : mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, image.path);
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`The event's picture couldn't be had from Wix (${res.status})`);
-  return doc.embedJpg(new Uint8Array(await res.arrayBuffer()));
+  if (!res.ok) throw new Error(`The poster's picture couldn't be had (${res.status})`);
+  return { pdf: await doc.embedJpg(new Uint8Array(await res.arrayBuffer())), panel };
 }
 
 // The cursive Colosseum, its top at markTop, and PRÄSENTIERT under it —
@@ -207,9 +308,9 @@ function drawBrand(page: PDFPage, colo: PDFFont, centreX: number, markTop: numbe
 // at qrBottom itself. Returns the date's top.
 function drawDateAndQr(page: PDFPage, colo: PDFFont, content: Content, centreX: number, qrBottom: number, measure: number, u: number, qr = true) {
   const qrSize = 170 * u;
-  if (qr) drawQr(page, content.ticketUrl, centreX - qrSize / 2, qrBottom, qrSize);
+  if (qr && content.ticketUrl) drawQr(page, content.ticketUrl, centreX - qrSize / 2, qrBottom, qrSize);
 
-  const lines = content.date.map((line) => writable(colo, line.toUpperCase()));
+  const lines = content.date.map((line) => writable(colo, line.toUpperCase())).filter(Boolean);
   const size = Math.min(100 * u, ...lines.map((line) => (measure / colo.widthOfTextAtSize(line, 100)) * 100));
   let baseline = qr ? qrBottom + qrSize + 32 * u : qrBottom;
   // Bottom line first, up from the QR code.
@@ -222,8 +323,19 @@ function drawDateAndQr(page: PDFPage, colo: PDFFont, content: Content, centreX: 
 
 // The title, flush left at x across width, in the room from boxTop down to
 // boxBottom: its name as large as the rest of its lines leave room for,
-// the whole group centred there.
-function drawTitle(page: PDFPage, colo: PDFFont, text: PosterText, x: number, width: number, boxTop: number, boxBottom: number, u: number) {
+// the whole group centred there. Embossed, each line has a thin white
+// edge just above it, as if pressed into the page.
+function drawTitle(
+  page: PDFPage,
+  colo: PDFFont,
+  text: PosterText,
+  x: number,
+  width: number,
+  boxTop: number,
+  boxBottom: number,
+  u: number,
+  embossed = false,
+) {
   const { kicker, headline, subtitle, badge } = text;
   const gap = 40 * u;
   // The smaller lines on the scale of PRÄSENTIERT and the date: as large
@@ -245,6 +357,7 @@ function drawTitle(page: PDFPage, colo: PDFFont, text: PosterText, x: number, wi
     const blockTop = top;
     let y = top - block.size * CAP_HEIGHT;
     for (const line of block.lines) {
+      if (embossed) page.drawText(line, { x, y: y + Math.max(1.5 * u, block.size * 0.012), size: block.size, font: colo, color: WHITE });
       page.drawText(line, { x, y, size: block.size, font: colo, color: RED });
       y -= block.leading;
     }

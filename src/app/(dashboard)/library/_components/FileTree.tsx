@@ -1901,11 +1901,12 @@ function PosterRow({
   });
   // Something dropped on it lands in its folder, as on a file row.
   const { setNodeRef: setDropRef } = useDroppable({ id: `poster-${poster.id}` });
-  // A Kultur Poster's text can be set by hand — in the Library, not the
-  // Playback Menu's picker (which has no upload links either). The popup
-  // sits outside the row, whose clicks and drags it would otherwise set off.
+  // A Kultur Poster — an event's, or one made by hand — can be set by hand
+  // — in the Library, not the Playback Menu's picker (which has no upload
+  // links either). The popup sits outside the row, whose clicks and drags
+  // it would otherwise set off.
   const uploadLinks = useContext(UploadLinksContext);
-  const fromFeed = !!uploadLinks && !!poster.source_key?.startsWith("wix-event:");
+  const fromFeed = !!uploadLinks && /^(wix-event|manual):/.test(poster.source_key ?? "");
   const [editingText, setEditingText] = useState(false);
 
   function handleDelete() {
@@ -1984,9 +1985,10 @@ function PosterRow({
             onPointerDown={(e) => e.stopPropagation()}
             title="Open the ticket page"
             aria-label={`Open the ticket page for ${poster.name}`}
-            className="press-ghost -m-1 shrink-0 p-1 text-muted hover:text-accent"
+            className="press-ghost -m-1 inline-flex shrink-0 items-center gap-1 p-1 text-[13px] text-muted hover:text-accent"
           >
             <OpenInIcon className="h-4 w-4" />
+            Ticket
           </a>
         )}
 
@@ -1999,7 +2001,7 @@ function PosterRow({
         <RowColumn width="w-40" wide>{formatDate(poster.created_at)}</RowColumn>
 
         <RowMenu label={`${poster.name} actions`}>
-          {fromFeed && <MenuItem onClick={() => setEditingText(true)}>Edit Poster Text…</MenuItem>}
+          {fromFeed && <MenuItem onClick={() => setEditingText(true)}>Edit Poster…</MenuItem>}
           <MenuInfo>
             Poster · {fileCount} {fileCount === 1 ? "file" : "files"}
           </MenuInfo>
