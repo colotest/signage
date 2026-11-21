@@ -87,7 +87,9 @@ export function PosterTextDialog({ sourceKey, open, onClose }: { sourceKey: stri
       await setKulturPoster(sourceKey, {
         // The rules' own text again is no override at all.
         text: next && !manual && loaded.auto && same(next, loaded.auto) ? null : next,
-        ...(manual ? { date, ticketUrl } : {}),
+        ...(manual ? { date } : {}),
+        // An event's own link again is none set at all.
+        ticketUrl: ticketUrl.trim() === loaded.siteTicketUrl ? null : ticketUrl,
         image,
       });
       setStatus("Making posters…");
@@ -207,21 +209,21 @@ export function PosterTextDialog({ sourceKey, open, onClose }: { sourceKey: stri
           <Field label="Below the name" placeholder="Subtitle or guest" {...field("subtitle")} />
           <Field label="Label" placeholder="e.g. AUSVERKAUFT" {...field("badge")} />
           {manual && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Date" placeholder="e.g. Samstag, 28. Nov" value={date[0]} disabled={busy} onChange={(e) => setDate([e.target.value, date[1]])} />
-                <Field label="Time" placeholder="e.g. 20:00 Uhr" value={date[1]} disabled={busy} onChange={(e) => setDate([date[0], e.target.value])} />
-              </div>
-              <Field
-                label="Ticket link"
-                type="url"
-                placeholder="https://… (for the QR code and the Ticket button)"
-                value={ticketUrl}
-                disabled={busy}
-                onChange={(e) => setTicketUrl(e.target.value)}
-              />
-            </>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Date" placeholder="e.g. Samstag, 28. Nov" value={date[0]} disabled={busy} onChange={(e) => setDate([e.target.value, date[1]])} />
+              <Field label="Time" placeholder="e.g. 20:00 Uhr" value={date[1]} disabled={busy} onChange={(e) => setDate([date[0], e.target.value])} />
+            </div>
           )}
+          {/* An event's shows the site's link until one's set; emptied,
+              it's the site's again. */}
+          <Field
+            label={loaded?.siteTicketUrl ? "Ticket link (empty: the site's)" : "Ticket link"}
+            type="url"
+            placeholder={loaded?.siteTicketUrl ?? "https://… (for the QR code and the Tickets button)"}
+            value={ticketUrl}
+            disabled={busy}
+            onChange={(e) => setTicketUrl(e.target.value)}
+          />
           {error && <p className="text-[13px] text-danger">{error}</p>}
           <div className="flex items-center justify-between gap-3">
             <p className="text-[12px] text-muted">{status ?? "Applies to the A1 Poster and both images."}</p>

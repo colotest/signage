@@ -360,9 +360,17 @@ export function FileTree({
 
   // Posters likewise: by name, uploader, their files' size together or
   // date, and by name for the columns they don't have.
+  // Posters with a date (an event's, a month's title page) as a programme,
+  // in date order whatever the sort, each month's title page just before
+  // its events; the rest (made by hand) after them, sorted as the list is.
   function sortPosters(items: PosterWithParts[]) {
     const copy = [...items];
     copy.sort((a, b) => {
+      if (a.starts_at || b.starts_at) {
+        if (!a.starts_at) return 1;
+        if (!b.starts_at) return -1;
+        return a.starts_at.localeCompare(b.starts_at);
+      }
       const value = (poster: PosterWithParts): string | number => {
         if (sortKey === "size") return posterSize(poster);
         if (sortKey === "date") return new Date(poster.created_at).getTime();
@@ -1987,8 +1995,8 @@ function PosterRow({
             aria-label={`Open the ticket page for ${poster.name}`}
             className="press-ghost -m-1 inline-flex shrink-0 items-center gap-1 p-1 text-[13px] text-muted hover:text-accent"
           >
+            Tickets
             <OpenInIcon className="h-4 w-4" />
-            Ticket
           </a>
         )}
 

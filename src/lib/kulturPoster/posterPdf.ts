@@ -6,6 +6,7 @@ import {
   PDFDocument,
   appendBezierCurve,
   clip,
+  concatTransformationMatrix,
   closePath,
   endPath,
   lineTo,
@@ -92,14 +93,17 @@ export type PosterContent = {
   image: PosterImage | null;
 };
 
-// An event's: its title taken apart by rule, unless someone has set the
-// text by hand, and its picture on the site, unless one's been uploaded in
-// its place (see setKulturPoster).
-export function posterContent(event: TicketEvent, override?: { text: PosterText | null; image: PosterImage | null } | null): PosterContent {
+// An event's: its title taken apart by rule, its picture and its tickets
+// on the site — each unless set by hand in its place (see
+// setKulturPoster).
+export function posterContent(
+  event: TicketEvent,
+  override?: { text: PosterText | null; image: PosterImage | null; ticketUrl: string | null } | null,
+): PosterContent {
   return {
     text: override?.text ?? titleParts(event.title, event.description),
     date: dateLines(event),
-    ticketUrl: event.ticketUrl,
+    ticketUrl: override?.ticketUrl ?? event.ticketUrl,
     image: override?.image ?? (event.image ? { source: "wix", ...event.image } : null),
   };
 }
@@ -280,13 +284,115 @@ function roundedRectOps(x: number, y: number, w: number, h: number, r: number) {
 // image service, or the uploaded one as it is (drawPicture fits it).
 async function embedPosterImage(doc: PDFDocument, image: PosterImage, H: number) {
   const panel = panelSize(image, H / 1080);
+  return { pdf: await embedPicture(doc, image, panel.width, panel.height), panel };
+}
+
+// A picture for a box of width × height, at twice that: the event's cut
+// to it by Wix's image service, or an uploaded one as it is (drawPicture
+// fits it).
+async function embedPicture(doc: PDFDocument, image: PosterImage, width: number, height: number) {
   const url =
     image.source === "wix"
-      ? eventImageUrl(image, panel.width * 2, panel.height * 2)
+      ? eventImageUrl(image, width * 2, height * 2)
       : mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, image.path);
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`The poster's picture couldn't be had (${res.status})`);
-  return { pdf: await doc.embedJpg(new Uint8Array(await res.arrayBuffer())), panel };
+  return doc.embedJpg(new Uint8Array(await res.arrayBuffer()));
+}
+
+// ── A month's title page ──
+//
+// Heads a month's posters in the folder: DAS COLOSSEUM PROGRAMM / DIESEN
+// DEZEMBER, as large as it fits, and up to three of the month's events'
+// pictures as cards, overlapping, each turned a little — no brand, date
+// or QR code. Across, the title takes the left half and the cards the
+// right; upright, the title the top and the cards the rest.
+
+export type ProgrammeContent = {
+  // The month as the title writes it: "DEZEMBER".
+  month: string;
+  // Up to three pictures, in the order they're laid down.
+  images: PosterImage[];
+};
+
+export async function programmePdf(content: ProgrammeContent, format: PosterFormat, title: string): Promise<Uint8Array> {
+  const { width: W, height: H, label } = POSTER_FORMATS[format];
+  const doc = await PDFDocument.create();
+  doc.setTitle(`${title} – ${label}`);
+  doc.setCreator("Colo Cloud");
+  doc.registerFontkit(fontkit);
+  const colo = await doc.embedFont(await readFile(join(process.cwd(), "src/fonts/colo.ttf")), { subset: true });
+  const page = doc.addPage([W, H]);
+  page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: PAPER });
+
+  const across = W > H;
+  const u = across ? H / 1080 : W / 1080;
+  const side = TITLE_MARGIN * u;
+  const titleBox = across
+    ? { x: side, width: W / 2 - side - 32 * u, top: H - ACROSS_MARGIN * u, bottom: ACROSS_MARGIN * u }
+    : { x: side, width: W - side * 2, top: H - 96 * u, bottom: H * 0.53 + 48 * u };
+  const cardBox = across
+    ? { x: W / 2 + 32 * u, y: ACROSS_MARGIN * u, width: W / 2 - 32 * u - side, height: H - ACROSS_MARGIN * u * 2 }
+    : { x: 72 * u, y: 96 * u, width: W - 144 * u, height: H * 0.53 - 96 * u };
+
+  // The title: its two lines each kept whole if it fits, as large as the
+  // box allows, centred in it.
+  const block = fitLines(colo, ["DAS COLOSSEUM PROGRAMM", `DIESEN ${content.month}`], titleBox.width, titleBox.top - titleBox.bottom, 700 * u, 60 * u);
+  let y = titleBox.bottom + (titleBox.top - titleBox.bottom + blockHeight(block)) / 2 - block.size * CAP_HEIGHT;
+  for (const line of block.lines) {
+    if (across) page.drawText(line, { x: titleBox.x, y: y + Math.max(1.5 * u, block.size * 0.012), size: block.size, font: colo, color: WHITE });
+    page.drawText(line, { x: titleBox.x, y, size: block.size, font: colo, color: RED });
+    y -= block.leading;
+  }
+
+  // The cards, 3:2, in a cascade down the box: the first at its top left,
+  // the second across its middle to the right, the third at its foot.
+  const images = content.images.slice(0, 3);
+  if (images.length === 0) return doc.save();
+  // No taller than half the box, so the first and last only just meet.
+  const cardWidth = Math.min(cardBox.width * 0.68, cardBox.height * 0.5 * 1.5) * (images.length === 1 ? 1.25 : 1);
+  const cardHeight = cardWidth / 1.5;
+  const pad = cardWidth * 0.06;
+  const { x, y: bottom, width: w, height: h } = cardBox;
+  const spots: Record<number, { cx: number; cy: number; turn: number }[]> = {
+    1: [{ cx: x + w / 2, cy: bottom + h / 2, turn: -3 }],
+    2: [
+      { cx: x + w * 0.38, cy: bottom + h * 0.66, turn: -5 },
+      { cx: x + w * 0.62, cy: bottom + h * 0.34, turn: 4 },
+    ],
+    3: [
+      { cx: x + w * 0.36, cy: bottom + h - cardHeight / 2 - pad, turn: -5 },
+      { cx: x + w * 0.64, cy: bottom + h / 2, turn: 4 },
+      { cx: x + w * 0.4, cy: bottom + cardHeight / 2 + pad, turn: -2 },
+    ],
+  };
+  const pictures = await Promise.all(images.map((image) => embedPicture(doc, image, cardWidth, cardHeight)));
+  pictures.forEach((picture, i) => {
+    const { cx, cy, turn } = spots[images.length][i];
+    const angle = (turn * Math.PI) / 180;
+    page.pushOperators(pushGraphicsState(), concatTransformationMatrix(Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), cx, cy));
+    drawPicture(page, picture, -cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, u);
+    page.pushOperators(popGraphicsState());
+  });
+  return doc.save();
+}
+
+// Lines of capitals, each its own (wrapped further only if it must), at
+// the largest size from max down to min that fits width and height.
+function fitLines(font: PDFFont, raw: string[], width: number, height: number, max: number, min: number): TextBlock {
+  const paragraphs = raw.map((line) => writable(font, line).split(" ").map(hyphenationPieces));
+  const leadingOf = (size: number, lines: string[]) => size * (lines.slice(1).some((line) => /[ÄÖÜ]/.test(line)) ? 1.0 : 0.92);
+  const set = (size: number) => {
+    const sets = paragraphs.map((words) => wrap(font, words, size, width, false));
+    return { lines: sets.flatMap((s) => s.lines), broken: sets.some((s) => s.broken) };
+  };
+  for (let size = max; size >= min; size *= 0.99) {
+    const { lines, broken } = set(size);
+    const leading = leadingOf(size, lines);
+    if (!broken && (lines.length - 1) * leading + size * CAP_HEIGHT <= height) return { size, leading, lines };
+  }
+  const { lines } = set(min);
+  return { size: min, leading: leadingOf(min, lines), lines };
 }
 
 // The cursive Colosseum, its top at markTop, and PRÄSENTIERT under it —

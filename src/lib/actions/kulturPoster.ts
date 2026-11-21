@@ -11,10 +11,12 @@ import {
   dayLabel,
   posterContent,
   posterPdf,
+  programmePdf,
   type PosterContent,
   type PosterFormat,
   type PosterImage,
 } from "@/lib/kulturPoster/posterPdf";
+import { monthOf, pickPictures } from "@/lib/kulturPoster/programme";
 import { titleParts, type PosterText } from "@/lib/kulturPoster/titleParts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writePosterFiles, type PosterFilesInput } from "@/lib/uploads/posters";
@@ -41,12 +43,18 @@ import { mediaPublicUrl } from "@/types/domain";
 // uploaded there in place of the event's. And the folder's + button makes
 // a poster by hand altogether (addManualPoster): no event's, so a pull
 // never archives or replaces it, only makes it again from what's been set
-// for it, when that changes.
+// for it, when that changes. Each month with events on sale gets a title
+// page of its own too (see programmePdf), with three of its events'
+// pictures, listed before them — the library lists the folder's posters
+// in date order (posters.starts_at).
 
 const FEED = "kultur_poster";
 const ARCHIVE_FEED = "kultur_poster_archiv";
 const KEY_PREFIX = "wix-event:";
 const MANUAL_PREFIX = "manual:";
+const MONTH_PREFIX = "month:";
+// Where a month's title page leads: the whole programme.
+const PROGRAMME_URL = "https://www.colosseumberlin.com/event";
 const BUCKET = "media";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -58,6 +66,8 @@ export type PosterJob = {
   name: string;
   // Its tickets, if it has any.
   linkUrl: string | null;
+  // When its event starts, to list it by.
+  startsAt: string | null;
   // The poster to remake, or none for a new one.
   posterId: string | null;
   // Each file's PDF, base64; the images are rendered from theirs.
@@ -70,7 +80,7 @@ export async function planKulturPoster(): Promise<{ jobs: PosterJob[]; unchanged
   const feedId = await feedFolderId(admin);
   const [events, { data: posters, error: postersError }, archiveId, sets] = await Promise.all([
     fetchTicketEvents(),
-    admin.from("posters").select("id, folder_id, source_key, source_hash").not("source_key", "is", null),
+    admin.from("posters").select("id, folder_id, source_key, source_hash, starts_at").not("source_key", "is", null),
     archiveFolderId(admin, feedId, false),
     posterSets(admin),
     dropSinglePosterPdfs(admin),
@@ -82,34 +92,73 @@ export async function planKulturPoster(): Promise<{ jobs: PosterJob[]; unchanged
   const listed = new Set<string>();
   const restore: string[] = [];
   let unchanged = 0;
+  // A kept poster's date, should it have none yet or its event have moved.
+  const redate: { id: string; startsAt: string | null }[] = [];
   // Made if new, made again if what goes into it changed; otherwise left.
-  const plan = async (sourceKey: string, name: string, content: PosterContent) => {
+  const plan = async (
+    poster: { sourceKey: string; name: string; linkUrl: string | null; startsAt: string | null },
+    content: object,
+    pdfs: () => Promise<Record<PosterFormat, string>>,
+  ) => {
+    const { sourceKey, name } = poster;
     const hash = createHash("sha256").update(JSON.stringify({ v: POSTER_LAYOUT_VERSION, name, ...content })).digest("hex");
     const existing = byKey.get(sourceKey);
     if (existing?.source_hash === hash) {
       unchanged++;
-      return existing;
+      const at = (iso: string | null) => (iso ? new Date(iso).getTime() : null);
+      if (at(existing.starts_at) !== at(poster.startsAt)) redate.push({ id: existing.id, startsAt: poster.startsAt });
+      if (archiveId && existing.folder_id === archiveId && !sourceKey.startsWith(MANUAL_PREFIX)) restore.push(existing.id);
+      return;
     }
-    jobs.push({ sourceKey, hash, name, linkUrl: content.ticketUrl, posterId: existing?.id ?? null, pdfs: await pdfsOf(content, name) });
-    return null;
+    jobs.push({ ...poster, hash, posterId: existing?.id ?? null, pdfs: await pdfs() });
   };
 
+  // Each month's events' pictures, for its title page.
+  const months = new Map<string, { name: string; year: number; first: string; pictures: { id: string; image: PosterImage }[] }>();
   for (const event of events) {
     const sourceKey = `${KEY_PREFIX}${event.id}`;
     const set = sets.get(event.id);
     listed.add(sourceKey);
-    const kept = await plan(sourceKey, posterName(event), posterContent(event, set && { text: setText(set), image: setImage(set) }));
-    if (kept && archiveId && kept.folder_id === archiveId) restore.push(kept.id);
+    const name = posterName(event);
+    const content = posterContent(event, set && { text: setText(set), image: setImage(set), ticketUrl: set.ticket_url });
+    await plan({ sourceKey, name, linkUrl: content.ticketUrl, startsAt: event.start }, content, () =>
+      pdfsOf((format) => posterPdf(content, format, name)),
+    );
+
+    const month = monthOf(event);
+    const entry = months.get(month.key) ?? { name: month.name, year: month.year, first: event.start, pictures: [] };
+    if (event.start < entry.first) entry.first = event.start;
+    if (content.image) entry.pictures.push({ id: event.id, image: content.image });
+    months.set(month.key, entry);
+  }
+  for (const [key, month] of months) {
+    const sourceKey = `${MONTH_PREFIX}${key}`;
+    listed.add(sourceKey);
+    const name = `Das Colosseum Programm · ${month.name} ${month.year}`;
+    const content = { month: month.name.toUpperCase(), images: pickPictures(key, month.pictures) };
+    // Just before the month's first event, to be listed before it.
+    const startsAt = new Date(new Date(month.first).getTime() - 60_000).toISOString();
+    await plan({ sourceKey, name, linkUrl: PROGRAMME_URL, startsAt }, content, () => pdfsOf((format) => programmePdf(content, format, name)));
   }
   for (const set of sets.values()) {
-    if (set.event_id.startsWith(MANUAL_PREFIX)) await plan(set.event_id, manualName(set), manualContent(set));
+    if (!set.event_id.startsWith(MANUAL_PREFIX)) continue;
+    const name = manualName(set);
+    const content = manualContent(set);
+    await plan({ sourceKey: set.event_id, name, linkUrl: content.ticketUrl, startsAt: null }, content, () =>
+      pdfsOf((format) => posterPdf(content, format, name)),
+    );
   }
 
   // Only from the folder itself: one moved somewhere else on purpose stays
-  // where it was put. And only an event's: one made by hand has no event
-  // to go off sale.
+  // where it was put. And only an event's or a month's: one made by hand
+  // has no event to go off sale.
   const stale = (posters ?? [])
-    .filter((poster) => poster.source_key!.startsWith(KEY_PREFIX) && !listed.has(poster.source_key!) && poster.folder_id === feedId)
+    .filter(
+      (poster) =>
+        (poster.source_key!.startsWith(KEY_PREFIX) || poster.source_key!.startsWith(MONTH_PREFIX)) &&
+        !listed.has(poster.source_key!) &&
+        poster.folder_id === feedId,
+    )
     .map((poster) => poster.id);
   if (stale.length > 0) {
     const archive = archiveId ?? (await archiveFolderId(admin, feedId, true))!;
@@ -118,6 +167,10 @@ export async function planKulturPoster(): Promise<{ jobs: PosterJob[]; unchanged
   }
   if (restore.length > 0) {
     const { error } = await admin.from("posters").update({ folder_id: feedId }).in("id", restore);
+    if (error) throw new Error(error.message);
+  }
+  for (const { id, startsAt } of redate) {
+    const { error } = await admin.from("posters").update({ starts_at: startsAt }).eq("id", id);
     if (error) throw new Error(error.message);
   }
 
@@ -132,10 +185,10 @@ export async function planKulturPoster(): Promise<{ jobs: PosterJob[]; unchanged
   return { jobs, unchanged, archived: stale.length };
 }
 
-async function pdfsOf(content: PosterContent, name: string) {
+async function pdfsOf(render: (format: PosterFormat) => Promise<Uint8Array>) {
   const pdfs = {} as Record<PosterFormat, string>;
   for (const format of Object.keys(POSTER_FORMATS) as PosterFormat[]) {
-    pdfs[format] = Buffer.from(await posterPdf(content, format, name)).toString("base64");
+    pdfs[format] = Buffer.from(await render(format)).toString("base64");
   }
   return pdfs;
 }
@@ -147,6 +200,7 @@ export async function saveKulturPoster({
   hash,
   name,
   linkUrl,
+  startsAt,
   posterId,
   files,
 }: {
@@ -154,10 +208,11 @@ export async function saveKulturPoster({
   hash: string;
   name: string;
   linkUrl: string | null;
+  startsAt: string | null;
   posterId: string | null;
   files: PosterFilesInput;
 }) {
-  if (!sourceKey.startsWith(KEY_PREFIX) && !sourceKey.startsWith(MANUAL_PREFIX)) throw new Error("Not a Kultur Poster");
+  if (![KEY_PREFIX, MANUAL_PREFIX, MONTH_PREFIX].some((prefix) => sourceKey.startsWith(prefix))) throw new Error("Not a Kultur Poster");
   const user = await requirePage("media");
   const admin = createAdminClient();
   const feedId = await feedFolderId(admin);
@@ -167,11 +222,11 @@ export async function saveKulturPoster({
     if (error) throw new Error(error.message);
     // Named for the event as it's called now, its files too.
     await writePosterFiles(admin, { id: poster.id, name }, files, user.id);
-    // An event's back on sale comes back out of the Archiv.
-    const archiveId = sourceKey.startsWith(KEY_PREFIX) ? await archiveFolderId(admin, feedId, false) : null;
+    // An event's (or a month's) back on sale comes back out of the Archiv.
+    const archiveId = sourceKey.startsWith(MANUAL_PREFIX) ? null : await archiveFolderId(admin, feedId, false);
     const { error: updateError } = await admin
       .from("posters")
-      .update({ name, link_url: linkUrl, source_hash: hash, ...(archiveId && poster.folder_id === archiveId ? { folder_id: feedId } : {}) })
+      .update({ name, link_url: linkUrl, starts_at: startsAt, source_hash: hash, ...(archiveId && poster.folder_id === archiveId ? { folder_id: feedId } : {}) })
       .eq("id", posterId);
     if (updateError) throw new Error(updateError.message);
   } else {
@@ -179,7 +234,7 @@ export async function saveKulturPoster({
     // way is made again by the next pull.
     const { data: poster, error } = await admin
       .from("posters")
-      .insert({ name, link_url: linkUrl, folder_id: feedId, source_key: sourceKey, uploaded_by: user.id })
+      .insert({ name, link_url: linkUrl, starts_at: startsAt, folder_id: feedId, source_key: sourceKey, uploaded_by: user.id })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
@@ -272,9 +327,12 @@ export type PosterEdit = {
   // Its text now, and whether that's been set by hand.
   text: PosterText;
   textSet: boolean;
-  // Made by hand: its date's lines and its tickets.
+  // Made by hand: its date's lines.
   date: string[];
+  // Its tickets as set by hand (made by hand, its only ones), and an
+  // event's on the site, which it has when none's set.
   ticketUrl: string | null;
+  siteTicketUrl: string | null;
   // Its pictures, to show: one uploaded for it, and an event's own.
   uploadedImageUrl: string | null;
   siteImageUrl: string | null;
@@ -303,6 +361,7 @@ export async function kulturPosterEdit(sourceKey: string): Promise<PosterEdit> {
       textSet: true,
       date: content.date,
       ticketUrl: content.ticketUrl,
+      siteTicketUrl: null,
       uploadedImageUrl: uploaded(set),
       siteImageUrl: null,
     };
@@ -322,7 +381,8 @@ export async function kulturPosterEdit(sourceKey: string): Promise<PosterEdit> {
     text: text ?? auto,
     textSet: !!text,
     date: [],
-    ticketUrl: null,
+    ticketUrl: set?.ticket_url ?? null,
+    siteTicketUrl: event.ticketUrl,
     uploadedImageUrl: uploaded(set),
     siteImageUrl: event.image && eventImageUrl(event.image, 640, (640 * event.image.height) / event.image.width),
   };
@@ -331,8 +391,10 @@ export async function kulturPosterEdit(sourceKey: string): Promise<PosterEdit> {
 export type PosterChange = {
   // The text, or (an event's) null to hand it back to the rules.
   text: PosterText | null;
-  // Made by hand: its date's lines and its tickets.
+  // Made by hand: its date's lines.
   date?: string[];
+  // Its tickets, for the QR code and the Tickets button; empty, an
+  // event's are the site's again (and one made by hand has none).
   ticketUrl?: string | null;
   // A picture uploaded for it (see createPosterImageUploadUrl), or null to
   // go back to the event's own (or, made by hand, to none); left out,
@@ -368,7 +430,7 @@ export async function setKulturPoster(sourceKey: string, change: PosterChange) {
     event_id: key,
     ...(text ?? { kicker: null, headline: null, subtitle: null, badge: null }),
     ...(manual && change.date ? { date_lines: change.date.map((line) => clean(line) ?? "").filter(Boolean) } : {}),
-    ...(manual && ticketUrl !== undefined ? { ticket_url: ticketUrl } : {}),
+    ...(ticketUrl !== undefined ? { ticket_url: ticketUrl } : {}),
     ...(change.image !== undefined
       ? { image_path: change.image?.path ?? null, image_width: change.image?.width ?? null, image_height: change.image?.height ?? null }
       : {}),
@@ -376,7 +438,8 @@ export async function setKulturPoster(sourceKey: string, change: PosterChange) {
     updated_at: new Date().toISOString(),
   };
   const imagePath = change.image !== undefined ? next.image_path : before?.image_path;
-  if (!manual && !text && !imagePath) {
+  const ticketSet = ticketUrl !== undefined ? ticketUrl : before?.ticket_url;
+  if (!manual && !text && !imagePath && !ticketSet) {
     // Nothing set by hand any more: the event's poster is the rules' again.
     const { error } = await admin.from("kultur_poster_texts").delete().eq("event_id", key);
     if (error) throw new Error(error.message);
