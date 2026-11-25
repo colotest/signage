@@ -69,9 +69,10 @@ export function MediaThumb({
   const fitClass = fit === "contain" ? "object-contain" : "object-cover";
 
   // Pages render themselves live at any size, so the thumbnail is the real
-  // thing — a ticking clock on the screen tile, just like the TV.
+  // thing — a ticking clock on the screen tile, just like the TV. (The
+  // Website shows its site on a live tile only; see Website.tsx.)
   if (item.media_type === "page") {
-    return <ScreenPage item={item} />;
+    return <ScreenPage item={item} preview={live ? "live" : "still"} />;
   }
 
   if (item.media_type === "image") {

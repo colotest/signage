@@ -66,7 +66,8 @@ function samePlayback(a: PlaylistItemWithMedia[], b: PlaylistItemWithMedia[]) {
         item.media_item_id === b[i].media_item_id &&
         item.duration_seconds === b[i].duration_seconds &&
         item.media_item.storage_path === b[i].media_item.storage_path &&
-        item.media_item.media_type === b[i].media_item.media_type,
+        item.media_item.media_type === b[i].media_item.media_type &&
+        (item.media_item.page_url ?? null) === (b[i].media_item.page_url ?? null),
     )
   );
 }
@@ -633,6 +634,8 @@ export function Player({
       // refetch, not a rename or a change to anything else in the library.
       // The refetched playlist differs in storage_path, which samePlayback
       // treats as a change, so the slide picks up the new file in place.
+      // The Website's new address (Edit Website, page_url) is the same: a
+      // new thing to show under a row that's still the same one.
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "media_items" },
@@ -642,7 +645,8 @@ export function Player({
           if (
             playing &&
             (playing.media_item.storage_path !== updated.storage_path ||
-              playing.media_item.media_type !== updated.media_type)
+              playing.media_item.media_type !== updated.media_type ||
+              (playing.media_item.page_url ?? null) !== (updated.page_url ?? null))
           ) {
             refetch();
           }

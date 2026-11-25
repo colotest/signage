@@ -27,6 +27,7 @@ import { ReplaceMediaButton } from "./ReplaceMediaButton";
 import { ReplaceDeckButton } from "./ReplaceDeckButton";
 import { KulturPosterButton } from "./KulturPosterButton";
 import { PosterTextDialog } from "./PosterTextDialog";
+import { WebsiteDialog } from "./WebsiteDialog";
 import { POSTER_PART_LABELS, posterPartFileName } from "@/lib/posters";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -1393,6 +1394,9 @@ function FileRow({
   // Held here rather than inside the title, so the "⋯" menu can open the
   // rename too — a double-click on the name still does its own thing.
   const [renaming, setRenaming] = useState(false);
+  // The Website page's address is set from its "⋯" (see WebsiteDialog).
+  const website = item.storage_path === "page:website";
+  const [editingWebsite, setEditingWebsite] = useState(false);
   // Disabled during selection mode so picking files for a playlist and
   // reorganizing folders never compete for the same click-and-drag gesture.
   // Nor while its name is being edited: a drag across the field selects
@@ -1433,96 +1437,101 @@ function FileRow({
       : formatResolutionAndDuration(item.width, item.height, item.media_type === "video" ? item.duration_seconds : null);
 
   return (
-    <div
-      ref={(node) => {
-        setDragRef(node);
-        setDropRef(node);
-        rowRef.current = node;
-      }}
-      {...attributes}
-      {...listeners}
-      onClick={selectionMode ? onToggleSelect : undefined}
-      data-flip-key={`file-${item.id}`}
-      className={cn(
-        "flex items-center gap-2 border-b border-border px-4 py-2 last:border-0",
-        selectionMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
-        isDragging && "opacity-40",
-        selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
-      )}
-    >
-      <Checkbox visible={selectionMode} state={selected} onChange={onToggleSelect} collapsedClassName="-mr-2" />
-      <div style={{ width: depth * 20 }} className="shrink-0" />
-      <MediaThumbSlot item={item} slotWidth={ROW_SLOT_W} slotHeight={ROW_SLOT_H} />
-
-      <RowInfo
-        title={
-          posterPart ? (
-            <span className="truncate text-[15px] font-medium">{posterPart.label}</span>
-          ) : (
-          <span className="flex min-w-0 items-center gap-1.5">
-            <RenameableTitle
-              id={item.id}
-              name={item.name}
-              // Not renameable by double-click when it's limited to roles
-              // the viewer doesn't have.
-              selecting={selectionMode || !editable}
-              editing={renaming}
-              onEditingChange={setRenaming}
-              className="truncate text-[15px] font-medium"
-            />
-            {!inDeck && <RoleDots roles={flags} />}
-          </span>
-          )
-        }
-        date={formatDate(item.created_at)}
-        uploader={uploader}
-      />
-
-      <RowColumn width="w-28">{kindLabel(item)}</RowColumn>
-      <RowColumn width="w-44">{dimensions}</RowColumn>
-      <RowColumn width="w-28" wide>{uploader}</RowColumn>
-      <RowColumn width="w-20">{item.media_type === "page" ? null : formatBytes(item.size_bytes)}</RowColumn>
-      <RowColumn width="w-40" wide>{formatDate(item.created_at)}</RowColumn>
-
-      <RowMenu label={`${item.name} actions`}>
-        {/* Grouped with the file's own details rather than the actions
-            below: it's about this file, not something done to it. */}
-        {editable && !posterPart && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
-        <MenuInfo>{kindLabel(item)}</MenuInfo>
-        {dimensions && <MenuInfo>{dimensions}</MenuInfo>}
-        {item.media_type !== "page" && <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>}
-        {(item.folder_id || item.media_type !== "page") && <div className="my-1 border-t border-border" />}
-        {item.folder_id && !inDeck && !posterPart && editable && (
-          <MenuItem disabled={pending} onClick={handleMoveToRoot}>
-            Move to Root
-          </MenuItem>
+    <>
+      <div
+        ref={(node) => {
+          setDragRef(node);
+          setDropRef(node);
+          rowRef.current = node;
+        }}
+        {...attributes}
+        {...listeners}
+        onClick={selectionMode ? onToggleSelect : undefined}
+        data-flip-key={`file-${item.id}`}
+        className={cn(
+          "flex items-center gap-2 border-b border-border px-4 py-2 last:border-0",
+          selectionMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+          isDragging && "opacity-40",
+          selectionMode && selected ? "bg-accent/10 dark:bg-accent/15" : "hover:bg-black/[.02] dark:hover:bg-white/[.03]",
         )}
-        {/* Pages are built in — there's no file behind one to replace, and
-            deleting one would leave no way to add it back. */}
-        {item.media_type !== "page" && (
-          <>
-            {/* Supabase's own ?download= is what actually saves the file
-                under its library name: the file lives on the storage
-                domain, so a plain download attribute (different origin)
-                would be ignored and the browser would just open it. */}
-            <a
-              href={`${mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path)}?download=${encodeURIComponent(posterPart?.fileName ?? item.name)}`}
-              download={posterPart?.fileName ?? item.name}
-              className={MENU_ITEM_CLASS}
-            >
-              Download
-            </a>
-            {!inDeck && !posterPart && editable && <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />}
-            {editable && !posterPart && (
-              <MenuItem danger disabled={pending} onClick={handleDelete}>
-                Delete
-              </MenuItem>
-            )}
-          </>
-        )}
-        {!inDeck && !posterPart && <LimitMenuItems kind="media" id={item.id} owner={owner} router={router} />}
-      </RowMenu>
-    </div>
+      >
+        <Checkbox visible={selectionMode} state={selected} onChange={onToggleSelect} collapsedClassName="-mr-2" />
+        <div style={{ width: depth * 20 }} className="shrink-0" />
+        <MediaThumbSlot item={item} slotWidth={ROW_SLOT_W} slotHeight={ROW_SLOT_H} />
+
+        <RowInfo
+          title={
+            posterPart ? (
+              <span className="truncate text-[15px] font-medium">{posterPart.label}</span>
+            ) : (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <RenameableTitle
+                id={item.id}
+                name={item.name}
+                // Not renameable by double-click when it's limited to roles
+                // the viewer doesn't have.
+                selecting={selectionMode || !editable}
+                editing={renaming}
+                onEditingChange={setRenaming}
+                className="truncate text-[15px] font-medium"
+              />
+              {!inDeck && <RoleDots roles={flags} />}
+            </span>
+            )
+          }
+          date={formatDate(item.created_at)}
+          uploader={uploader}
+        />
+
+        <RowColumn width="w-28">{kindLabel(item)}</RowColumn>
+        <RowColumn width="w-44">{dimensions}</RowColumn>
+        <RowColumn width="w-28" wide>{uploader}</RowColumn>
+        <RowColumn width="w-20">{item.media_type === "page" ? null : formatBytes(item.size_bytes)}</RowColumn>
+        <RowColumn width="w-40" wide>{formatDate(item.created_at)}</RowColumn>
+
+        <RowMenu label={`${item.name} actions`}>
+          {/* Grouped with the file's own details rather than the actions
+              below: it's about this file, not something done to it. */}
+          {editable && !posterPart && <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>}
+          {editable && website && <MenuItem onClick={() => setEditingWebsite(true)}>Edit Website…</MenuItem>}
+          <MenuInfo>{kindLabel(item)}</MenuInfo>
+          {website && <MenuInfo>{item.page_url ? new URL(item.page_url).host : "No address set"}</MenuInfo>}
+          {dimensions && <MenuInfo>{dimensions}</MenuInfo>}
+          {item.media_type !== "page" && <MenuInfo>{formatBytes(item.size_bytes)}</MenuInfo>}
+          {(item.folder_id || item.media_type !== "page") && <div className="my-1 border-t border-border" />}
+          {item.folder_id && !inDeck && !posterPart && editable && (
+            <MenuItem disabled={pending} onClick={handleMoveToRoot}>
+              Move to Root
+            </MenuItem>
+          )}
+          {/* Pages are built in — there's no file behind one to replace, and
+              deleting one would leave no way to add it back. */}
+          {item.media_type !== "page" && (
+            <>
+              {/* Supabase's own ?download= is what actually saves the file
+                  under its library name: the file lives on the storage
+                  domain, so a plain download attribute (different origin)
+                  would be ignored and the browser would just open it. */}
+              <a
+                href={`${mediaPublicUrl(process.env.NEXT_PUBLIC_SUPABASE_URL!, item.storage_path)}?download=${encodeURIComponent(posterPart?.fileName ?? item.name)}`}
+                download={posterPart?.fileName ?? item.name}
+                className={MENU_ITEM_CLASS}
+              >
+                Download
+              </a>
+              {!inDeck && !posterPart && editable && <ReplaceMediaButton item={item} className={MENU_ITEM_CLASS} />}
+              {editable && !posterPart && (
+                <MenuItem danger disabled={pending} onClick={handleDelete}>
+                  Delete
+                </MenuItem>
+              )}
+            </>
+          )}
+          {!inDeck && !posterPart && <LimitMenuItems kind="media" id={item.id} owner={owner} router={router} />}
+        </RowMenu>
+      </div>
+      {website && <WebsiteDialog item={item} open={editingWebsite} onClose={() => setEditingWebsite(false)} />}
+    </>
   );
 }
 

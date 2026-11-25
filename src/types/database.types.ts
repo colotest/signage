@@ -247,6 +247,8 @@ export type Database = {
           // The Poster it belongs to and which of its images it is (0051).
           poster_id: string | null;
           poster_part: "screen" | "newsletter" | null;
+          // The address the Website page shows (0055); null on everything else.
+          page_url: string | null;
         };
         Insert: {
           id?: string;
@@ -268,6 +270,7 @@ export type Database = {
           edit_role_ids?: string[];
           poster_id?: string | null;
           poster_part?: "screen" | "newsletter" | null;
+          page_url?: string | null;
         };
         Update: {
           id?: string;
@@ -289,6 +292,7 @@ export type Database = {
           edit_role_ids?: string[];
           poster_id?: string | null;
           poster_part?: "screen" | "newsletter" | null;
+          page_url?: string | null;
         };
         Relationships: [
           {
