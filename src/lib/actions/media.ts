@@ -6,6 +6,7 @@ import { folderName, quote, recordActivity } from "@/lib/activity";
 import { requirePage } from "@/lib/auth/session";
 import { requireEditable } from "@/lib/auth/owned";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { appOrigin } from "@/lib/origin";
 import { repointMediaItem } from "@/lib/uploads/replace";
 import type { MediaType } from "@/types/domain";
 
@@ -223,4 +224,93 @@ export async function deleteMediaItem(id: string) {
 
   revalidatePath("/library");
   revalidatePath("/dashboard");
+}
+
+// The Website page's address (see 0055 and screenPages/Website.tsx), from
+// its Edit Website. Empty clears it. An address without a scheme is taken
+// to be https. Returns the address as saved, and — since many sites refuse
+// to be shown inside another page — whether this one looks like it will,
+// so the dialog can say so before a screen shows the browser's refusal.
+export async function setWebsiteUrl(id: string, input: string): Promise<{ url: string | null; warning: string | null }> {
+  const user = await requireEditable("media", id);
+  const admin = createAdminClient();
+  const { data: item, error: fetchError } = await admin
+    .from("media_items")
+    .select("name, storage_path, page_url")
+    .eq("id", id)
+    .single();
+  if (fetchError) throw new Error(fetchError.message);
+  if (item.storage_path !== "page:website") throw new Error("Only the Website page has an address.");
+
+  const url = normalizeWebsiteUrl(input);
+  const { error } = await admin.from("media_items").update({ page_url: url }).eq("id", id);
+  if (error) throw new Error(error.message);
+  if (url !== item.page_url) {
+    recordActivity(user, {
+      action: "media.website",
+      target: `media:${id}`,
+      summary: url ? `Set ${quote(item.name)} to show ${url}` : `Cleared the address on ${quote(item.name)}`,
+    });
+  }
+  revalidatePath("/library");
+  revalidatePath("/dashboard");
+
+  return { url, warning: url ? await framingWarning(url) : null };
+}
+
+function normalizeWebsiteUrl(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(/^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`);
+  } catch {
+    throw new Error("That isn't a web address.");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("Only http and https addresses can be shown.");
+  if (!parsed.hostname.includes(".")) throw new Error("That isn't a web address.");
+  return parsed.toString();
+}
+
+// Reads the site's headers for the two ways it can say "not in a frame":
+// X-Frame-Options, and a CSP's frame-ancestors. Only ever a hint — a site
+// may answer a server differently from a TV's browser — so nothing stops
+// the address being saved; nor does a site that can't be reached from here.
+async function framingWarning(url: string): Promise<string | null> {
+  if (url.startsWith("http:")) {
+    return "This address isn't https: the screens load over https, and their browser will refuse to show it.";
+  }
+  // Nothing to ask of an address that names no public host.
+  const { hostname } = new URL(url);
+  if (hostname === "localhost" || /^[\d.]+$/.test(hostname) || hostname.includes(":")) return null;
+  let response: Response;
+  try {
+    response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(8000), headers: { accept: "text/html" } });
+  } catch {
+    return null;
+  }
+  response.body?.cancel().catch(() => {});
+
+  const refused = "This site doesn't allow itself to be shown inside another page, so screens will likely show an error instead.";
+  const xfo = response.headers.get("x-frame-options")?.toLowerCase() ?? "";
+  if (xfo.includes("deny") || xfo.includes("sameorigin")) return refused;
+  const ancestors = (response.headers.get("content-security-policy") ?? "")
+    .split(";")
+    .map((directive) => directive.trim().toLowerCase())
+    .find((directive) => directive.startsWith("frame-ancestors"));
+  if (ancestors) {
+    const ours = new URL(await appOrigin()).hostname;
+    const sources = ancestors.split(/\s+/).slice(1);
+    if (!sources.some((source) => frameSourceAllows(source, ours))) return refused;
+  }
+  return null;
+}
+
+// Whether one frame-ancestors source lets the player's host frame the page:
+// any host, any https page, or ours by name (a "*." wildcard included).
+function frameSourceAllows(source: string, host: string): boolean {
+  if (source === "*" || source === "https:") return true;
+  const named = source.replace(/^https?:\/\//, "").replace(/[:/].*$/, "");
+  if (named.startsWith("*.")) return host.endsWith(named.slice(1));
+  return named === host;
 }
