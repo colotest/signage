@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MediaItem } from "@/types/domain";
 
 // A web page, full screen, in the player's own browser: whatever address
@@ -24,22 +24,38 @@ const SANDBOX = "allow-scripts allow-same-origin allow-forms";
 // showing the site's phone layout squeezed into a few dozen pixels.
 const PREVIEW_LONG_SIDE = 1920;
 
+// Every live preview is a whole second copy of the site, laid out at a
+// screen's size — one per screen tile and per group monitor showing it.
+// A phone's browser can't hold many of those: iOS Safari kills the
+// dashboard's tab for the memory. So the site itself only previews where
+// there's a mouse (a desktop's browser) and on a tile big enough to read;
+// anywhere else it's the globe and the site's address.
+const LIVE_PREVIEW_MIN_LONG_SIDE = 200;
+const DESKTOP_QUERY = "(hover: hover) and (pointer: fine)";
+
 export function Website({ item, preview }: { item?: MediaItem; preview?: "live" | "still" }) {
   const url = item?.page_url ?? null;
-  // Held back until it has loaded, so a slow site comes in over the
-  // screen's background rather than over a flash of white.
-  const [loaded, setLoaded] = useState<string | null>(null);
-
   if (!url) return <div className="h-full w-full bg-[var(--screen-bg,#000)]" />;
   // A list row's thumbnail is far too small to read, and a library full of
   // them each loading the whole site would be a lot to ask: a globe will do.
   if (preview === "still") return <WebsiteGlyph url={url} />;
+  if (preview === "live") return <LivePreview url={url} title={item?.name} />;
+  return (
+    <div className="h-full w-full overflow-hidden bg-[var(--screen-bg,#000)]">
+      <Frame url={url} title={item?.name} />
+    </div>
+  );
+}
 
-  const frame = (
+function Frame({ url, title, preview = false }: { url: string; title?: string; preview?: boolean }) {
+  // Held back until it has loaded, so a slow site comes in over the
+  // screen's background rather than over a flash of white.
+  const [loaded, setLoaded] = useState<string | null>(null);
+  return (
     <iframe
       key={url}
       src={url}
-      title={item?.name ?? "Website"}
+      title={title ?? "Website"}
       sandbox={SANDBOX}
       allow="autoplay; fullscreen"
       referrerPolicy="strict-origin-when-cross-origin"
@@ -51,53 +67,87 @@ export function Website({ item, preview }: { item?: MediaItem; preview?: "live" 
       style={{ opacity: loaded === url ? 1 : 0, pointerEvents: preview ? "none" : undefined }}
     />
   );
-
-  return (
-    <div className="h-full w-full overflow-hidden bg-[var(--screen-bg,#000)]">
-      {preview === "live" ? <Scaled>{frame}</Scaled> : frame}
-    </div>
-  );
 }
 
-// Lays its child out at a screen's size and shrinks it into the box it's
-// given, keeping the box's own proportions.
-function Scaled({ children }: { children: ReactNode }) {
+function subscribeDesktop(onChange: () => void) {
+  const query = window.matchMedia(DESKTOP_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+// The site laid out at a screen's size and shrunk into the tile, keeping
+// the tile's own proportions — where it's affordable (see above). Not
+// during the server's render or hydration either, which can't know.
+function LivePreview({ url, title }: { url: string; title?: string }) {
+  const desktop = useSyncExternalStore(
+    subscribeDesktop,
+    () => window.matchMedia(DESKTOP_QUERY).matches,
+    () => false,
+  );
   const ref = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
 
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
-    const measure = () => setBox({ width: node.clientWidth, height: node.clientHeight });
+    const measure = () =>
+      setBox((current) =>
+        current && current.width === node.clientWidth && current.height === node.clientHeight
+          ? current
+          : { width: node.clientWidth, height: node.clientHeight },
+      );
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
 
-  const scale = box && box.width > 0 && box.height > 0 ? Math.min(1, Math.max(box.width, box.height) / PREVIEW_LONG_SIDE) : 1;
+  const long = box ? Math.max(box.width, box.height) : 0;
+  const live = desktop && long >= LIVE_PREVIEW_MIN_LONG_SIDE;
+  const scale = Math.min(1, long / PREVIEW_LONG_SIDE);
 
   return (
-    <div ref={ref} className="relative h-full w-full overflow-hidden">
-      {box && (
+    <div ref={ref} className="relative h-full w-full overflow-hidden bg-[var(--screen-bg,#000)]">
+      {live && box ? (
         <div
           className="absolute left-0 top-0 origin-top-left"
           style={{ width: box.width / scale, height: box.height / scale, transform: `scale(${scale})` }}
         >
-          {children}
+          <Frame url={url} title={title} preview />
         </div>
+      ) : (
+        <WebsiteGlyph url={url} showHost={long >= LIVE_PREVIEW_MIN_LONG_SIDE} />
       )}
     </div>
   );
 }
 
-function WebsiteGlyph({ url }: { url: string }) {
+function WebsiteGlyph({ url, showHost = false }: { url: string; showHost?: boolean }) {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-[var(--screen-bg,#000)] text-white/80" title={url}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-[55%] max-h-12 w-[55%] max-w-12" aria-hidden>
+    <div
+      className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[var(--screen-bg,#000)] text-[var(--screen-ink,#fff)]"
+      title={url}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        className="h-[55%] max-h-12 w-[55%] max-w-12 opacity-80"
+        aria-hidden
+      >
         <circle cx="12" cy="12" r="9" />
         <path d="M3 12h18M12 3c2.5 2.6 3.75 5.6 3.75 9S14.5 18.4 12 21M12 3C9.5 5.6 8.25 8.6 8.25 12S9.5 18.4 12 21" />
       </svg>
+      {showHost && <span className="max-w-[90%] truncate text-[12px] font-medium opacity-70">{hostOf(url)}</span>}
     </div>
   );
+}
+
+function hostOf(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
